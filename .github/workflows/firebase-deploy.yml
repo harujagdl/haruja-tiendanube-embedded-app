@@ -31,8 +31,8 @@ jobs:
         with:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
 
-      - name: Deploy Hosting, Functions, and Firestore
-        run: |
-          npx firebase-tools@latest deploy \
-            --project "$FIREBASE_PROJECT_ID" \
-            --only hosting,functions,firestore:rules,firestore:indexes
+- name: Deploy Hosting, Functions, and Firestore
+  run: |
+    npx firebase-tools@latest deploy \
+      --project "$FIREBASE_PROJECT_ID" \
+      --only hosting,functions,firestore:rules,firestore:indexes
