@@ -8,18 +8,21 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
+
     env:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -28,11 +31,17 @@ jobs:
 
       - name: Set up gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
 
-- name: Deploy Hosting, Functions, and Firestore
-  run: |
-    npx firebase-tools@latest deploy \
-      --project "$FIREBASE_PROJECT_ID" \
-      --only hosting,functions,firestore:rules,firestore:indexes
+      - name: Debug Firebase Project ID
+        run: |
+          echo "FIREBASE_PROJECT_ID is: '${FIREBASE_PROJECT_ID}'"
+          if [ -z "${FIREBASE_PROJECT_ID}" ]; then
+            echo "ERROR: FIREBASE_PROJECT_ID secret is empty or not set."
+            exit 1
+          fi
+
+      - name: Deploy Hosting, Functions, and Firestore
+        run: |
+          npx firebase-tools@latest deploy \
+            --project "${FIREBASE_PROJECT_ID}" \
+            --only hosting,functions,firestore:rules,firestore:indexes
