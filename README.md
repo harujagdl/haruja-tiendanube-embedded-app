@@ -72,3 +72,48 @@ El script crea documentos por cada ítem del diccionario dentro de `diccionario/
 1. Verifica que el workflow o el script local hayan terminado sin errores.
 2. Revisa en Firestore que existan documentos dentro de `diccionario/<categoria>/items`.
 3. Asegúrate de que el frontend apunte al proyecto correcto (configuración Firebase en `app/index.html`).
+
+# Migración inicial de prendas (FASE B)
+
+Este script carga el histórico real desde `Data/Creación Códigos HARUJA - PRUEBA.xlsx` y crea:
+
+- Colección `prendas` con los registros históricos (incluye `code`, `codigo`, `tipo`, `proveedor`, `color`, `talla`, `descripcion`, `createdAt` si existe).
+- Documento `counters/codigos` con `{ lastNumber: <maxConsecutivoHistorico> }`.
+
+El script es idempotente: si el código ya existe, lo salta y registra el conteo.
+
+## Requisitos
+
+- Node.js 18+
+- Cuenta de servicio de Firebase (no subir al repo)
+- Excel histórico en `Data/Creación Códigos HARUJA - PRUEBA.xlsx`
+
+## Instalación (local, sin Cloud Shell)
+
+```bash
+cd scripts
+npm install
+```
+
+## Credenciales
+
+Opciones para pasar credenciales:
+
+- Guardar el JSON como `scripts/serviceAccount.json`.
+- O usar variables: `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `GCP_SA_KEY`.
+
+Opcional:
+
+- `PRENDAS_XLSX` = ruta personalizada al Excel histórico.
+
+## Ejecutar migración
+
+```bash
+cd scripts
+node seed-from-excel.js
+```
+
+## Verificar en Firebase Console
+
+1. Abre Firestore y revisa la colección `prendas` (deberías ver los registros históricos).
+2. En `counters/codigos`, valida el campo `lastNumber` con el máximo consecutivo detectado.
