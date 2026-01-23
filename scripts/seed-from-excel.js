@@ -11,7 +11,7 @@ const DEFAULT_XLSX_LOCATIONS = [
   path.resolve(process.cwd(), '..', 'Data', DEFAULT_XLSX_FILENAME),
 ];
 
-const CODE_PATTERN = /^HA(\d{5})\/([A-Z0-9]+)-([A-Z0-9]+)$/i;
+const CODE_PATTERN = /^HA(\d{5})\/([A-Z]{2})-([A-Z0-9]+)$/;
 
 const COLUMN_ALIASES = {
   code: ['codigo', 'código', 'code', 'sku'],
@@ -66,6 +66,30 @@ const resolveIndexMap = (headers) => {
   }
 
   return indexMap;
+};
+
+const detectCodeColumn = (rows, startIndex, preferredIndex) => {
+  const columnCount = rows.reduce((max, row) => Math.max(max, row?.length ?? 0), 0);
+  let bestIndex = preferredIndex ?? null;
+  let bestCount = 0;
+
+  for (let colIndex = 0; colIndex < columnCount; colIndex += 1) {
+    let count = 0;
+    for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
+      const rawValue = rows[rowIndex]?.[colIndex];
+      if (!rawValue) continue;
+      const normalized = String(rawValue).trim().toUpperCase();
+      if (CODE_PATTERN.test(normalized)) {
+        count += 1;
+      }
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      bestIndex = colIndex;
+    }
+  }
+
+  return bestCount > 0 ? bestIndex : null;
 };
 
 const loadServiceAccount = () => {
@@ -129,7 +153,8 @@ const parseWorkbook = (workbook) => {
 
     const headers = headerInfo.headers.map((cell) => String(cell).trim());
     const indexMap = resolveIndexMap(headers);
-    if (indexMap.code === undefined) return;
+    const codeIndex = detectCodeColumn(rows, headerInfo.index + 1, indexMap.code);
+    if (codeIndex === null) return;
 
     for (let rowIndex = headerInfo.index + 1; rowIndex < rows.length; rowIndex += 1) {
       const row = rows[rowIndex];
@@ -137,12 +162,13 @@ const parseWorkbook = (workbook) => {
         continue;
       }
 
-      const rawCode = String(row[indexMap.code] ?? '').trim();
+      const rawCode = String(row[codeIndex] ?? '').trim();
       if (!rawCode) {
         continue;
       }
 
-      const match = rawCode.match(CODE_PATTERN);
+      const normalizedCode = rawCode.toUpperCase();
+      const match = normalizedCode.match(CODE_PATTERN);
       if (!match) {
         invalidCodes += 1;
         continue;
@@ -157,7 +183,7 @@ const parseWorkbook = (workbook) => {
       const tallaFromCode = match[3]?.toUpperCase() ?? '';
 
       const item = {
-        code: rawCode.toUpperCase(),
+        code: normalizedCode,
         tipo: indexMap.tipo !== undefined ? String(row[indexMap.tipo] ?? '').trim() : '',
         proveedor:
           indexMap.proveedor !== undefined
@@ -252,10 +278,7 @@ const main = async () => {
   if (maxConsecutivo > 0) {
     const counterRef = db.collection('counters').doc('codigos');
     await db.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(counterRef);
-      const currentValue = snapshot.exists ? Number(snapshot.data().lastNumber) || 0 : 0;
-      const nextValue = Math.max(currentValue, maxConsecutivo);
-      transaction.set(counterRef, { lastNumber: nextValue }, { merge: true });
+      transaction.set(counterRef, { lastNumber: maxConsecutivo }, { merge: true });
     });
   }
 
@@ -263,6 +286,7 @@ const main = async () => {
   console.log(`Insertados: ${inserted}`);
   console.log(`Ya existían: ${existing}`);
   console.log(`Códigos inválidos: ${invalidCodes}`);
+  console.log(`Códigos válidos detectados: ${items.length}`);
   console.log(`Máximo consecutivo detectado: ${maxConsecutivo || 0}`);
 };
 
