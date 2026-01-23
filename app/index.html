@@ -355,9 +355,9 @@
         collection,
         addDoc,
         doc,
+        getDoc,
         runTransaction,
-        serverTimestamp,
-        getDocs
+        serverTimestamp
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -379,6 +379,7 @@
       const registroCodigo = document.getElementById("registro-codigo");
       const registroCopy = document.getElementById("registro-copy");
       const registroReset = document.getElementById("registro-reset");
+      const registroSubmit = registroForm.querySelector("button[type='submit']");
       const registroProducto = document.getElementById("registro-producto");
       const registroProveedor = document.getElementById("registro-proveedor");
       const registroColor = document.getElementById("registro-color");
@@ -435,20 +436,23 @@
       };
 
       const loadCategoryEntries = async (category) => {
-        const snapshot = await getDocs(collection(db, "diccionario", category, "items"));
-        if (snapshot.empty) {
+        const snapshot = await getDoc(doc(db, "diccionario", category));
+        if (!snapshot.exists()) {
           return { category, entries: [], empty: true };
         }
 
-        const entries = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const clave = data.codigo || docSnap.id;
-          const valor = data.nombre || data.codigo || docSnap.id;
-          entries.push({ clave, valor });
-        });
+        const data = snapshot.data();
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (!items.length) {
+          return { category, entries: [], empty: true };
+        }
 
-        return { category, entries, empty: false };
+        const entries = items.map((item) => ({
+          clave: item.id || item.codigo || "",
+          valor: item.nombre || item.id || item.codigo || ""
+        })).filter((entry) => entry.clave);
+
+        return { category, entries, empty: entries.length === 0 };
       };
 
       const loadDictionary = async () => {
@@ -466,11 +470,6 @@
         };
       };
 
-      const getSelectedLabel = (selectEl) => {
-        const option = selectEl.options[selectEl.selectedIndex];
-        return option ? option.dataset.nombre || "" : "";
-      };
-
       const ensureRequired = () => {
         if (!registroProveedor.value || !registroProducto.value || !registroColor.value || !registroTalla.value) {
           setRegistroStatus("Completa Proveedor, Producto, Color y Talla.", "error");
@@ -479,8 +478,8 @@
         return true;
       };
 
-      const getNextCounter = async (tipoClave) => {
-        const counterRef = doc(db, "counters", `tipo_${tipoClave}`);
+      const getNextCounter = async (proveedorClave, tipoClave) => {
+        const counterRef = doc(db, "counters", `prov${proveedorClave}_tipo${tipoClave}`);
         return runTransaction(db, async (transaction) => {
           const snapshot = await transaction.get(counterRef);
           const nextValue = snapshot.exists() ? (snapshot.data().value || 0) + 1 : 1;
@@ -501,33 +500,21 @@
         const tipoClave = registroProducto.value;
         const colorClave = registroColor.value;
         const tallaClave = registroTalla.value;
-        const proveedorNombre = getSelectedLabel(registroProveedor);
-        const tipoNombre = getSelectedLabel(registroProducto);
-        const colorNombre = getSelectedLabel(registroColor);
-        const tallaNombre = getSelectedLabel(registroTalla);
-
         try {
-          const nextValue = await getNextCounter(tipoClave);
+          const nextValue = await getNextCounter(proveedorClave, tipoClave);
           const consecutivo = String(nextValue).padStart(3, "0");
-          const codigo = `HA${tipoClave}${consecutivo}/${colorClave}-${tallaClave}`;
+          const codigo = `HA${proveedorClave}${tipoClave}${consecutivo}/${colorClave}-${tallaClave}`;
 
           const costoValue = Number(document.getElementById("registro-costo").value);
           const createdByValue = document.getElementById("registro-created-by").value.trim();
-          const descripcion = `${tipoNombre} ${colorNombre} ${tallaNombre}`.trim();
-
           const data = {
-            codigoGenerado: codigo,
-            tipo: tipoClave,
-            proveedor: proveedorClave,
+            codigo,
+            proveedorId: proveedorClave,
+            tipoId: tipoClave,
             color: colorClave,
             talla: tallaClave,
-            descripcion,
             creadoPor: createdByValue || null,
-            createdAt: serverTimestamp(),
-            tipoNombre,
-            proveedorNombre,
-            colorNombre,
-            tallaNombre
+            createdAt: serverTimestamp()
           };
 
           if (Number.isFinite(costoValue) && costoValue > 0) {
@@ -569,7 +556,7 @@
         const cantidadValue = Number(document.getElementById("zpl-cantidad").value);
         const cantidad = Number.isFinite(cantidadValue) && cantidadValue > 0 ? cantidadValue : 1;
 
-        const formatoValido = /^HA\d{2}\d{3}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
+        const formatoValido = /^HA\d{5,7}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
         if (!codigo || !formatoValido) {
           setZplStatus("Ingresa un código válido (HA{P}{T}{NNN}/COLOR-TALLA).", "error");
           zplOutput.classList.add("hidden");
@@ -603,12 +590,14 @@
       const init = async () => {
         try {
           setRegistroStatus("Cargando diccionario...");
+          registroSubmit.disabled = true;
           setSelectLoading(registroProducto, "Cargando...");
           setSelectLoading(registroProveedor, "Cargando...");
           setSelectLoading(registroColor, "Cargando...");
           setSelectLoading(registroTalla, "Cargando...");
 
           const dictionary = await loadDictionary();
+          const dictionaryReady = !dictionary.empty && dictionary.missing.length === 0;
           if (dictionary.empty) {
             setRegistroStatus("No hay diccionario cargado aún.", "error");
           } else if (dictionary.missing.length) {
@@ -655,8 +644,11 @@
           } else {
             setSelectLoading(registroTalla, "Sin opciones disponibles");
           }
+
+          registroSubmit.disabled = !dictionaryReady;
         } catch (error) {
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
+          registroSubmit.disabled = true;
           console.error(error);
         }
       };
