@@ -23,10 +23,6 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # Deploy con firebase-tools (no requiere instalar global)
-      - name: Deploy (Hosting + Functions + Firestore rules/indexes)
-        env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           npx firebase-tools@latest --version
           npx firebase-tools@latest deploy \
