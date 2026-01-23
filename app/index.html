@@ -355,7 +355,7 @@
         collection,
         addDoc,
         doc,
-        getDoc,
+        getDocs,
         runTransaction,
         serverTimestamp
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
@@ -435,29 +435,38 @@
         }
       };
 
-      const loadCategoryEntries = async (category) => {
-        const snapshot = await getDoc(doc(db, "diccionario", category));
-        if (!snapshot.exists()) {
+      const COLLECTIONS = {
+        tipos: "diccionario_tipos",
+        proveedores: "diccionario_proveedores",
+        colores: "diccionario_colores",
+        tallas: "diccionario_tallas"
+      };
+
+      const loadCategoryEntries = async (category, collectionName) => {
+        const snapshot = await getDocs(collection(db, collectionName));
+        if (snapshot.empty) {
           return { category, entries: [], empty: true };
         }
 
-        const data = snapshot.data();
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (!items.length) {
-          return { category, entries: [], empty: true };
-        }
-
-        const entries = items.map((item) => ({
-          clave: item.id || item.codigo || "",
-          valor: item.nombre || item.id || item.codigo || ""
-        })).filter((entry) => entry.clave);
+        const entries = snapshot.docs
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            const clave = data.clave || docSnap.id;
+            const valor = data.valor || data.nombre || clave;
+            return { clave, valor };
+          })
+          .filter((entry) => entry.clave && entry.valor);
 
         return { category, entries, empty: entries.length === 0 };
       };
 
       const loadDictionary = async () => {
-        const categories = ["tipos", "proveedores", "colores", "tallas"];
-        const results = await Promise.all(categories.map(loadCategoryEntries));
+        const categories = Object.keys(COLLECTIONS);
+        const results = await Promise.all(
+          categories.map((category) =>
+            loadCategoryEntries(category, COLLECTIONS[category])
+          )
+        );
         const missing = results.filter((result) => result.empty).map((result) => result.category);
 
         return {
@@ -599,7 +608,7 @@
           const dictionary = await loadDictionary();
           const dictionaryReady = !dictionary.empty && dictionary.missing.length === 0;
           if (dictionary.empty) {
-            setRegistroStatus("No hay diccionario cargado aún.", "error");
+            setRegistroStatus("Diccionario vacío: corre el workflow Seed Firestore.", "error");
           } else if (dictionary.missing.length) {
             setRegistroStatus(
               `Faltan datos en: ${dictionary.missing.join(", ")}.`,
