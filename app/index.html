@@ -150,6 +150,38 @@
         background: var(--primary-dark);
       }
 
+      .status {
+        font-size: 14px;
+        color: var(--muted);
+        min-height: 20px;
+      }
+
+      .status.success {
+        color: #15803d;
+      }
+
+      .status.error {
+        color: #b91c1c;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
       @media (max-width: 600px) {
         header,
         main {
@@ -189,6 +221,68 @@
           </a>
         </section>
 
+        <section class="section" id="borradores">
+          <h2>Borradores (Firestore)</h2>
+          <p>Guarda prendas borrador para continuar el armado luego.</p>
+          <form class="form" id="draft-form">
+            <div>
+              <label for="draft-sku">Código (SKU) *</label>
+              <input id="draft-sku" name="sku" type="text" placeholder="SKU-12345" required />
+            </div>
+            <div>
+              <label for="draft-tipo">Tipo</label>
+              <input id="draft-tipo" name="tipo" type="text" placeholder="Remera" />
+            </div>
+            <div>
+              <label for="draft-proveedor">Proveedor</label>
+              <input id="draft-proveedor" name="proveedor" type="text" placeholder="Proveedor" />
+            </div>
+            <div>
+              <label for="draft-color">Color</label>
+              <input id="draft-color" name="color" type="text" placeholder="Negro" />
+            </div>
+            <div>
+              <label for="draft-talla">Talla</label>
+              <input id="draft-talla" name="talla" type="text" placeholder="M" />
+            </div>
+            <div>
+              <label for="draft-costo">Costo</label>
+              <input id="draft-costo" name="costo" type="number" min="0" step="0.01" placeholder="0" />
+            </div>
+            <div>
+              <label for="draft-precio">Precio</label>
+              <input id="draft-precio" name="precio" type="number" min="0" step="0.01" placeholder="0" />
+            </div>
+            <div>
+              <label for="draft-qty">Cantidad</label>
+              <input id="draft-qty" name="qty" type="number" min="1" value="1" />
+            </div>
+            <div>
+              <label for="draft-created-by">Creado por</label>
+              <input id="draft-created-by" name="createdBy" type="text" placeholder="Nombre" />
+            </div>
+            <button type="submit">Guardar borrador</button>
+          </form>
+          <p id="draft-status" class="status"></p>
+          <table>
+            <thead>
+              <tr>
+                <th>Creado</th>
+                <th>SKU</th>
+                <th>Tipo</th>
+                <th>Color</th>
+                <th>Talla</th>
+                <th>Qty</th>
+              </tr>
+            </thead>
+            <tbody id="draft-list">
+              <tr>
+                <td colspan="6">Cargando borradores...</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
         <section class="section" id="etiquetas">
           <h2>Impresión de etiquetas</h2>
           <p>Ingresa el SKU y la cantidad de etiquetas a generar.</p>
@@ -209,5 +303,141 @@
         </section>
       </main>
     </div>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+      import {
+        getFirestore,
+        collection,
+        addDoc,
+        serverTimestamp,
+        query,
+        orderBy,
+        limit,
+        getDocs
+      } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+      // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
+      const firebaseConfig = {
+        apiKey: "REEMPLAZAR_API_KEY",
+        authDomain: "haruja-tiendanube.firebaseapp.com",
+        projectId: "haruja-tiendanube",
+        storageBucket: "haruja-tiendanube.appspot.com",
+        messagingSenderId: "REEMPLAZAR_SENDER_ID",
+        appId: "REEMPLAZAR_APP_ID"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      const draftsRef = collection(db, "products_drafts");
+      const draftForm = document.getElementById("draft-form");
+      const statusEl = document.getElementById("draft-status");
+      const draftList = document.getElementById("draft-list");
+
+      const formatDate = (timestamp) => {
+        if (!timestamp) return "-";
+        return new Intl.DateTimeFormat("es-AR", {
+          dateStyle: "short",
+          timeStyle: "short"
+        }).format(timestamp.toDate());
+      };
+
+      const setStatus = (message, type = "") => {
+        statusEl.textContent = message;
+        statusEl.className = `status ${type}`.trim();
+      };
+
+      const renderRows = (docs) => {
+        if (!docs.length) {
+          draftList.innerHTML = "<tr><td colspan=\"6\">Sin borradores todavía.</td></tr>";
+          return;
+        }
+
+        draftList.innerHTML = docs
+          .map((doc) => {
+            const data = doc.data();
+            return `
+              <tr>
+                <td>${formatDate(data.createdAt)}</td>
+                <td>${data.sku || "-"}</td>
+                <td>${data.tipo || "-"}</td>
+                <td>${data.color || "-"}</td>
+                <td>${data.talla || "-"}</td>
+                <td>${data.qty ?? 1}</td>
+              </tr>
+            `;
+          })
+          .join("");
+      };
+
+      const loadDrafts = async () => {
+        try {
+          const draftsQuery = query(draftsRef, orderBy("createdAt", "desc"), limit(20));
+          const snapshot = await getDocs(draftsQuery);
+          renderRows(snapshot.docs);
+        } catch (error) {
+          setStatus("No pudimos cargar los borradores.", "error");
+          draftList.innerHTML = "<tr><td colspan=\"6\">Error al cargar.</td></tr>";
+          console.error(error);
+        }
+      };
+
+      draftForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setStatus("");
+
+        const formData = new FormData(draftForm);
+        const sku = formData.get("sku").trim();
+
+        if (!sku) {
+          setStatus("El SKU es obligatorio.", "error");
+          return;
+        }
+
+        const qtyValue = Number(formData.get("qty"));
+        const data = {
+          sku,
+          qty: Number.isFinite(qtyValue) && qtyValue > 0 ? qtyValue : 1,
+          createdAt: serverTimestamp()
+        };
+
+        const optionalFields = [
+          ["tipo", "tipo"],
+          ["proveedor", "proveedor"],
+          ["color", "color"],
+          ["talla", "talla"],
+          ["createdBy", "createdBy"]
+        ];
+
+        optionalFields.forEach(([key, field]) => {
+          const value = formData.get(field).trim();
+          if (value) {
+            data[key] = value;
+          }
+        });
+
+        const costo = Number(formData.get("costo"));
+        if (Number.isFinite(costo) && costo > 0) {
+          data.costo = costo;
+        }
+
+        const precio = Number(formData.get("precio"));
+        if (Number.isFinite(precio) && precio > 0) {
+          data.precio = precio;
+        }
+
+        try {
+          await addDoc(draftsRef, data);
+          setStatus("Borrador guardado correctamente.", "success");
+          draftForm.reset();
+          draftForm.querySelector("#draft-qty").value = "1";
+          await loadDrafts();
+        } catch (error) {
+          setStatus("No se pudo guardar el borrador.", "error");
+          console.error(error);
+        }
+      });
+
+      loadDrafts();
+    </script>
   </body>
 </html>
