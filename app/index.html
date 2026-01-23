@@ -173,6 +173,10 @@
         color: #b91c1c;
       }
 
+      .status.warning {
+        color: #b45309;
+      }
+
       .result-card {
         margin-top: 16px;
         padding: 16px;
@@ -310,6 +314,10 @@
               <label for="registro-created-by">Creado por (opcional)</label>
               <input id="registro-created-by" name="createdBy" type="text" placeholder="Nombre" />
             </div>
+            <div>
+              <label for="registro-detalles">Detalles (opcional)</label>
+              <input id="registro-detalles" name="detalles" type="text" placeholder="Ej: Pelly estampada" />
+            </div>
             <button type="submit">Generar código</button>
           </form>
           <p id="registro-status" class="status"></p>
@@ -356,8 +364,10 @@
         addDoc,
         doc,
         getDocs,
+        query,
         runTransaction,
-        serverTimestamp
+        serverTimestamp,
+        where
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -384,6 +394,7 @@
       const registroProveedor = document.getElementById("registro-proveedor");
       const registroColor = document.getElementById("registro-color");
       const registroTalla = document.getElementById("registro-talla");
+      const registroDetalles = document.getElementById("registro-detalles");
 
       const zplForm = document.getElementById("zpl-form");
       const zplStatus = document.getElementById("zpl-status");
@@ -487,12 +498,18 @@
         return true;
       };
 
-      const getNextCounter = async (proveedorClave, tipoClave) => {
-        const counterRef = doc(db, "counters", `prov${proveedorClave}_tipo${tipoClave}`);
+      const getSelectedName = (selectEl) => {
+        const option = selectEl.options[selectEl.selectedIndex];
+        return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
+      };
+
+      const getNextCounter = async () => {
+        const counterRef = doc(db, "counters", "codigos");
         return runTransaction(db, async (transaction) => {
           const snapshot = await transaction.get(counterRef);
-          const nextValue = snapshot.exists() ? (snapshot.data().value || 0) + 1 : 1;
-          transaction.set(counterRef, { value: nextValue }, { merge: true });
+          const lastNumber = snapshot.exists() ? Number(snapshot.data().lastNumber) || 0 : 0;
+          const nextValue = lastNumber + 1;
+          transaction.set(counterRef, { lastNumber: nextValue }, { merge: true });
           return nextValue;
         });
       };
@@ -505,23 +522,33 @@
           return;
         }
 
-        const proveedorClave = registroProveedor.value;
-        const tipoClave = registroProducto.value;
         const colorClave = registroColor.value;
         const tallaClave = registroTalla.value;
         try {
-          const nextValue = await getNextCounter(proveedorClave, tipoClave);
-          const consecutivo = String(nextValue).padStart(3, "0");
-          const codigo = `HA${proveedorClave}${tipoClave}${consecutivo}/${colorClave}-${tallaClave}`;
+          registroSubmit.disabled = true;
+          const nextValue = await getNextCounter();
+          const consecutivo = String(nextValue).padStart(5, "0");
+          const codigo = `HA${consecutivo}/${colorClave}-${tallaClave}`;
 
           const costoValue = Number(document.getElementById("registro-costo").value);
           const createdByValue = document.getElementById("registro-created-by").value.trim();
+          const detallesValue = registroDetalles.value.trim();
+          const tipoNombre = getSelectedName(registroProducto).trim();
+          const colorNombre = getSelectedName(registroColor).trim();
+          const tallaNombre = getSelectedName(registroTalla).trim();
+          let descripcion = [tipoNombre, colorNombre, tallaNombre].filter(Boolean).join(" ");
+          if (detallesValue) {
+            descripcion = descripcion ? `${descripcion} - ${detallesValue}` : detallesValue;
+          }
+
           const data = {
-            codigo,
-            proveedorId: proveedorClave,
-            tipoId: tipoClave,
+            code: codigo,
+            tipo: registroProducto.value,
+            proveedor: registroProveedor.value,
             color: colorClave,
             talla: tallaClave,
+            descripcion: descripcion || null,
+            detalles: detallesValue || null,
             creadoPor: createdByValue || null,
             createdAt: serverTimestamp()
           };
@@ -530,14 +557,28 @@
             data.costo = costoValue;
           }
 
+          const codeQuery = query(prendasRef, where("code", "==", codigo));
+          const legacyQuery = query(prendasRef, where("codigo", "==", codigo));
+          const [codeSnapshot, legacySnapshot] = await Promise.all([
+            getDocs(codeQuery),
+            getDocs(legacyQuery)
+          ]);
+          const duplicateFound = !codeSnapshot.empty || !legacySnapshot.empty;
+
           await addDoc(prendasRef, data);
 
           registroCodigo.textContent = codigo;
           registroResult.classList.remove("hidden");
-          setRegistroStatus("Prenda guardada correctamente.", "success");
+          if (duplicateFound) {
+            setRegistroStatus("Ya existe, se guardará como duplicado.", "warning");
+          } else {
+            setRegistroStatus("Prenda guardada correctamente.", "success");
+          }
         } catch (error) {
           setRegistroStatus("No se pudo generar el código. Intenta nuevamente.", "error");
           console.error(error);
+        } finally {
+          registroSubmit.disabled = false;
         }
       });
 
@@ -565,9 +606,9 @@
         const cantidadValue = Number(document.getElementById("zpl-cantidad").value);
         const cantidad = Number.isFinite(cantidadValue) && cantidadValue > 0 ? cantidadValue : 1;
 
-        const formatoValido = /^HA\d{5,7}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
+        const formatoValido = /^HA\d{5}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
         if (!codigo || !formatoValido) {
-          setZplStatus("Ingresa un código válido (HA{P}{T}{NNN}/COLOR-TALLA).", "error");
+          setZplStatus("Ingresa un código válido (HA{NNNNN}/COLOR-TALLA).", "error");
           zplOutput.classList.add("hidden");
           return;
         }
