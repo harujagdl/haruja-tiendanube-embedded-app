@@ -199,7 +199,7 @@ const main = async () => {
 
   for (const [key, lastSeq] of counters.entries()) {
     const counterRef = db.collection('counters').doc(key);
-    await counterRef.set({ lastSeq }, { merge: true });
+    await counterRef.set({ value: lastSeq }, { merge: true });
     upserted += 1;
   }
 
