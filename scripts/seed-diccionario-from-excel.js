@@ -33,7 +33,8 @@ const CATEGORY_FIELD = {
   tallas: 'talla',
 };
 
-const COLLECTION_NAME = 'diccionario_codigos';
+const ROOT_COLLECTION = 'diccionario';
+const ITEMS_COLLECTION = 'items';
 
 const isDryRun = process.argv.includes('--dry');
 
@@ -116,7 +117,7 @@ const loadServiceAccount = () => {
     return JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
   }
   throw new Error(
-    'Credenciales no encontradas. Define GOOGLE_APPLICATION_CREDENTIALS o FIREBASE_SERVICE_ACCOUNT_JSON.',
+    'Credenciales no encontradas. Define GCP_SA_KEY, GOOGLE_APPLICATION_CREDENTIALS o FIREBASE_SERVICE_ACCOUNT_JSON.',
   );
 };
 
@@ -235,17 +236,17 @@ const finalizeDictionary = (itemsByCategory) => {
   return result;
 };
 
-const createDocId = (category, codigo, extra) => {
+const createDocId = (codigo, extra) => {
   const normalized = normalizeKey(codigo || '');
   if (normalized) {
-    return `${category}_${normalized}`;
+    return normalized;
   }
   const hash = crypto
     .createHash('sha1')
     .update(JSON.stringify(extra || {}))
     .digest('hex')
     .slice(0, 16);
-  return `${category}_${hash}`;
+  return `item_${hash}`;
 };
 
 const main = async () => {
@@ -280,21 +281,33 @@ const main = async () => {
   for (const category of CATEGORY_KEYS) {
     const field = CATEGORY_FIELD[category];
     const items = dictionary[category];
+    const categoryDoc = db.collection(ROOT_COLLECTION).doc(category);
+    batch.set(
+      categoryDoc,
+      { updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true },
+    );
 
     for (const item of items) {
       const { codigo, nombre, ...extra } = item;
-      const docId = createDocId(category, codigo, item);
+      const docId = createDocId(codigo, item);
       const payload = {
+        codigo,
+        nombre,
         categoria: category,
-        [field]: codigo,
-        [`${field}Nombre`]: nombre,
+        campo: field,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
       if (Object.keys(extra).length) {
         payload.extra = extra;
       }
 
-      batch.set(db.collection(COLLECTION_NAME).doc(docId), payload, { merge: true });
+      batch.set(
+        categoryDoc.collection(ITEMS_COLLECTION).doc(docId),
+        payload,
+        { merge: true },
+      );
       batchCount += 1;
       if (batchCount === 450) {
         await batch.commit();
@@ -308,7 +321,7 @@ const main = async () => {
     await batch.commit();
   }
 
-  console.log(`Diccionario cargado en ${COLLECTION_NAME}.`);
+  console.log(`Diccionario cargado en ${ROOT_COLLECTION}/{categoria}/${ITEMS_COLLECTION}.`);
 };
 
 main().catch((error) => {

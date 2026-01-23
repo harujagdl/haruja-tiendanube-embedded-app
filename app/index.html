@@ -434,47 +434,35 @@
         }
       };
 
-      const loadDictionary = async () => {
-        const snapshot = await getDocs(collection(db, "diccionario_codigos"));
+      const loadCategoryEntries = async (category) => {
+        const snapshot = await getDocs(collection(db, "diccionario", category, "items"));
         if (snapshot.empty) {
-          return { empty: true };
+          return { category, entries: [], empty: true };
         }
 
-        const tipoOptions = new Map();
-        const proveedorOptions = new Map();
-        const colorOptions = new Map();
-        const tallaOptions = new Map();
-
+        const entries = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          collectOption(
-            tipoOptions,
-            data.tipo || data.tipoCodigo,
-            data.tipoNombre ?? data.tipo
-          );
-          collectOption(
-            proveedorOptions,
-            data.proveedor || data.proveedorCodigo,
-            data.proveedorNombre ?? data.proveedor
-          );
-          collectOption(
-            colorOptions,
-            data.color || data.colorCodigo,
-            data.colorNombre ?? data.color
-          );
-          collectOption(
-            tallaOptions,
-            data.talla || data.tallaCodigo,
-            data.tallaNombre ?? data.talla
-          );
+          const clave = data.codigo || docSnap.id;
+          const valor = data.nombre || data.codigo || docSnap.id;
+          entries.push({ clave, valor });
         });
 
+        return { category, entries, empty: false };
+      };
+
+      const loadDictionary = async () => {
+        const categories = ["tipos", "proveedores", "colores", "tallas"];
+        const results = await Promise.all(categories.map(loadCategoryEntries));
+        const missing = results.filter((result) => result.empty).map((result) => result.category);
+
         return {
-          empty: false,
-          tipos: Array.from(tipoOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
-          proveedores: Array.from(proveedorOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
-          colores: Array.from(colorOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
-          tallas: Array.from(tallaOptions.entries()).map(([clave, valor]) => ({ clave, valor }))
+          empty: missing.length === categories.length,
+          missing,
+          tipos: results.find((result) => result.category === "tipos")?.entries ?? [],
+          proveedores: results.find((result) => result.category === "proveedores")?.entries ?? [],
+          colores: results.find((result) => result.category === "colores")?.entries ?? [],
+          tallas: results.find((result) => result.category === "tallas")?.entries ?? []
         };
       };
 
@@ -623,26 +611,50 @@
           const dictionary = await loadDictionary();
           if (dictionary.empty) {
             setRegistroStatus("No hay diccionario cargado aún.", "error");
-            return;
+          } else if (dictionary.missing.length) {
+            setRegistroStatus(
+              `Faltan datos en: ${dictionary.missing.join(", ")}.`,
+              "error"
+            );
+          } else {
+            setRegistroStatus("");
           }
 
-          fillSelect(
-            registroProducto,
-            dictionary.tipos.sort((a, b) => a.clave.localeCompare(b.clave))
-          );
-          fillSelect(
-            registroProveedor,
-            dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave))
-          );
-          fillSelect(
-            registroColor,
-            dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave))
-          );
-          fillSelect(
-            registroTalla,
-            dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave))
-          );
-          setRegistroStatus("");
+          if (dictionary.tipos.length) {
+            fillSelect(
+              registroProducto,
+              dictionary.tipos.sort((a, b) => a.clave.localeCompare(b.clave))
+            );
+          } else {
+            setSelectLoading(registroProducto, "Sin opciones disponibles");
+          }
+
+          if (dictionary.proveedores.length) {
+            fillSelect(
+              registroProveedor,
+              dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave))
+            );
+          } else {
+            setSelectLoading(registroProveedor, "Sin opciones disponibles");
+          }
+
+          if (dictionary.colores.length) {
+            fillSelect(
+              registroColor,
+              dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave))
+            );
+          } else {
+            setSelectLoading(registroColor, "Sin opciones disponibles");
+          }
+
+          if (dictionary.tallas.length) {
+            fillSelect(
+              registroTalla,
+              dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave))
+            );
+          } else {
+            setSelectLoading(registroTalla, "Sin opciones disponibles");
+          }
         } catch (error) {
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
           console.error(error);
