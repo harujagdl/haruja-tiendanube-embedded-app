@@ -1,6 +1,6 @@
 # Seed de diccionario en Firestore
 
-Este script carga el diccionario de códigos desde el Excel y actualiza Firestore en la colección `diccionario`.
+Este script carga el diccionario de códigos desde el Excel y actualiza Firestore en la colección `diccionario_codigos`.
 
 ## Requisitos
 
@@ -39,4 +39,18 @@ Carga real en Firestore:
 npm run seed
 ```
 
-El script actualiza los documentos `tipos`, `proveedores`, `colores` y `tallas` con los campos `items` (ordenados por nombre) y `byCode` (mapa por código).
+El script crea documentos por cada ítem del diccionario dentro de `diccionario_codigos` con campos como `tipo`, `proveedor`, `color` o `talla` (y `*Nombre`) según corresponda.
+
+## Ejecutar desde GitHub Actions
+
+1. Entra a **Actions** → **Seed Diccionario to Firestore**.
+2. Presiona **Run workflow**.
+3. Verifica en Firestore la colección `diccionario_codigos`.
+
+## Verificar en Firestore
+
+- En Firebase Console, abre Firestore y confirma que la colección `diccionario_codigos` tenga documentos.
+
+## Probar en Hosting
+
+- Despliega el sitio con el flujo normal de Hosting y abre la URL pública. Los menús desplegables deberían cargar desde Firestore.
