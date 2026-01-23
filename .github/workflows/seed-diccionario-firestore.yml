@@ -1,4 +1,4 @@
-name: Seed Diccionario to Firestore
+name: Seed Diccionario Firestore
 
 on:
   workflow_dispatch:
@@ -30,3 +30,4 @@ jobs:
         run: npm run seed
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
