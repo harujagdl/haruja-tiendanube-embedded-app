@@ -337,7 +337,7 @@
           <form class="form" id="zpl-form">
             <div>
               <label for="zpl-codigo">Código (SKU)</label>
-              <input id="zpl-codigo" name="codigo" type="text" placeholder="HA22007/NG-M" />
+              <input id="zpl-codigo" name="codigo" type="text" placeholder="HA2A007/NG-M" />
             </div>
             <div>
               <label for="zpl-cantidad">Cantidad</label>
@@ -453,15 +453,7 @@
         tallas: "diccionario_tallas"
       };
 
-      const CODE_PATTERN = /^HA(\d{5})\/([A-Z]{2})-([A-Z0-9]+)$/;
-
-      const parseConsecutivo = (rawCode) => {
-        if (!rawCode) return null;
-        const match = String(rawCode).trim().toUpperCase().match(CODE_PATTERN);
-        if (!match) return null;
-        const numberValue = Number(match[1]);
-        return Number.isFinite(numberValue) ? numberValue : null;
-      };
+      const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
 
       const loadCategoryEntries = async (category, collectionName) => {
         const snapshot = await getDocs(collection(db, collectionName));
@@ -513,61 +505,24 @@
         return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
       };
 
-      const fetchFallbackMax = async () => {
-        const snapshot = await getDocs(prendasRef);
-        let maxValue = 0;
-        let validCount = 0;
+      const getNextCounter = async (providerCode, typeCode) => {
+        const key = `${providerCode}${typeCode}`;
+        const counterRef = doc(db, "counters", key);
 
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const fromCode = parseConsecutivo(data.code);
-          const fromLegacy = fromCode ?? parseConsecutivo(data.codigo);
-          if (Number.isFinite(fromLegacy)) {
-            validCount += 1;
-            maxValue = Math.max(maxValue, fromLegacy);
+        return runTransaction(db, async (transaction) => {
+          const snapshot = await transaction.get(counterRef);
+          if (!snapshot.exists()) {
+            console.warn(`Counter inexistente para ${key}. Ejecuta el seed del Excel.`);
+            throw new Error(`No existe contador para ${key} (corre seed)`);
           }
+          const lastSeq = Number(snapshot.data().lastSeq);
+          if (!Number.isFinite(lastSeq)) {
+            throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
+          }
+          const nextValue = lastSeq + 1;
+          transaction.set(counterRef, { lastSeq: nextValue }, { merge: true });
+          return { nextValue, key };
         });
-
-        console.info(`Fallback contador: ${validCount} códigos válidos detectados.`);
-        return validCount > 0 ? maxValue : null;
-      };
-
-      const getNextCounter = async () => {
-        const counterRef = doc(db, "counters", "codigos");
-        const attemptTransaction = () =>
-          runTransaction(db, async (transaction) => {
-            const snapshot = await transaction.get(counterRef);
-            if (!snapshot.exists()) {
-              throw new Error("COUNTER_MISSING");
-            }
-            const lastNumber = Number(snapshot.data().lastNumber);
-            if (!Number.isFinite(lastNumber)) {
-              throw new Error("COUNTER_INVALID");
-            }
-            const nextValue = lastNumber + 1;
-            transaction.set(counterRef, { lastNumber: nextValue }, { merge: true });
-            return nextValue;
-          });
-
-        try {
-          return await attemptTransaction();
-        } catch (error) {
-          if (!["COUNTER_MISSING", "COUNTER_INVALID"].includes(error.message)) {
-            throw error;
-          }
-          console.warn("Counter inválido o inexistente. Buscando fallback en prendas.");
-          const fallbackMax = await fetchFallbackMax();
-          if (!Number.isFinite(fallbackMax)) {
-            throw new Error(
-              "No se pudo inicializar el contador de códigos. Revisa counters/codigos en Firestore."
-            );
-          }
-          await runTransaction(db, async (transaction) => {
-            transaction.set(counterRef, { lastNumber: fallbackMax }, { merge: true });
-          });
-          console.info(`Counter inicializado con ${fallbackMax}. Reintentando transacción.`);
-          return attemptTransaction();
-        }
       };
 
       registroForm.addEventListener("submit", async (event) => {
@@ -578,13 +533,16 @@
           return;
         }
 
+        const providerCode = registroProveedor.value;
+        const typeCode = registroProducto.value;
         const colorClave = registroColor.value;
         const tallaClave = registroTalla.value;
         try {
           registroSubmit.disabled = true;
-          const nextValue = await getNextCounter();
-          const consecutivo = String(nextValue).padStart(5, "0");
-          const codigo = `HA${consecutivo}/${colorClave}-${tallaClave}`;
+          const { nextValue, key } = await getNextCounter(providerCode, typeCode);
+          const consecutivo = String(nextValue).padStart(3, "0");
+          const codigo = `HA${providerCode}${typeCode}${consecutivo}/${colorClave}-${tallaClave}`;
+          console.info(`Generando código ${codigo} para counter ${key}.`);
 
           const costoValue = Number(document.getElementById("registro-costo").value);
           const createdByValue = document.getElementById("registro-created-by").value.trim();
@@ -599,8 +557,13 @@
 
           const data = {
             code: codigo,
-            tipo: registroProducto.value,
-            proveedor: registroProveedor.value,
+            providerCode,
+            typeCode,
+            seqNumber: nextValue,
+            colorCode: colorClave,
+            sizeCode: tallaClave,
+            tipo: typeCode,
+            proveedor: providerCode,
             color: colorClave,
             talla: tallaClave,
             descripcion: descripcion || null,
@@ -626,13 +589,13 @@
           registroCodigo.textContent = codigo;
           registroResult.classList.remove("hidden");
           if (duplicateFound) {
-            setRegistroStatus("Ya existe, se guardará como duplicado.", "warning");
+            setRegistroStatus("Código ya existe (duplicado).", "warning");
           } else {
             setRegistroStatus("Prenda guardada correctamente.", "success");
           }
         } catch (error) {
           const message =
-            error?.message?.includes("contador")
+            error?.message?.includes("contador") || error?.message?.includes("Contador")
               ? error.message
               : "No se pudo generar el código. Intenta nuevamente.";
           setRegistroStatus(message, "error");
@@ -666,9 +629,9 @@
         const cantidadValue = Number(document.getElementById("zpl-cantidad").value);
         const cantidad = Number.isFinite(cantidadValue) && cantidadValue > 0 ? cantidadValue : 1;
 
-        const formatoValido = /^HA\d{5}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
+        const formatoValido = CODE_PATTERN.test(codigo.toUpperCase());
         if (!codigo || !formatoValido) {
-          setZplStatus("Ingresa un código válido (HA{NNNNN}/COLOR-TALLA).", "error");
+          setZplStatus("Ingresa un código válido (HA{#}{A}{NNN}/COLOR-TALLA).", "error");
           zplOutput.classList.add("hidden");
           return;
         }
