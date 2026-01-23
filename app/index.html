@@ -453,6 +453,16 @@
         tallas: "diccionario_tallas"
       };
 
+      const CODE_PATTERN = /^HA(\d{5})\/([A-Z]{2})-([A-Z0-9]+)$/;
+
+      const parseConsecutivo = (rawCode) => {
+        if (!rawCode) return null;
+        const match = String(rawCode).trim().toUpperCase().match(CODE_PATTERN);
+        if (!match) return null;
+        const numberValue = Number(match[1]);
+        return Number.isFinite(numberValue) ? numberValue : null;
+      };
+
       const loadCategoryEntries = async (category, collectionName) => {
         const snapshot = await getDocs(collection(db, collectionName));
         if (snapshot.empty) {
@@ -503,15 +513,61 @@
         return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
       };
 
+      const fetchFallbackMax = async () => {
+        const snapshot = await getDocs(prendasRef);
+        let maxValue = 0;
+        let validCount = 0;
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() || {};
+          const fromCode = parseConsecutivo(data.code);
+          const fromLegacy = fromCode ?? parseConsecutivo(data.codigo);
+          if (Number.isFinite(fromLegacy)) {
+            validCount += 1;
+            maxValue = Math.max(maxValue, fromLegacy);
+          }
+        });
+
+        console.info(`Fallback contador: ${validCount} códigos válidos detectados.`);
+        return validCount > 0 ? maxValue : null;
+      };
+
       const getNextCounter = async () => {
         const counterRef = doc(db, "counters", "codigos");
-        return runTransaction(db, async (transaction) => {
-          const snapshot = await transaction.get(counterRef);
-          const lastNumber = snapshot.exists() ? Number(snapshot.data().lastNumber) || 0 : 0;
-          const nextValue = lastNumber + 1;
-          transaction.set(counterRef, { lastNumber: nextValue }, { merge: true });
-          return nextValue;
-        });
+        const attemptTransaction = () =>
+          runTransaction(db, async (transaction) => {
+            const snapshot = await transaction.get(counterRef);
+            if (!snapshot.exists()) {
+              throw new Error("COUNTER_MISSING");
+            }
+            const lastNumber = Number(snapshot.data().lastNumber);
+            if (!Number.isFinite(lastNumber)) {
+              throw new Error("COUNTER_INVALID");
+            }
+            const nextValue = lastNumber + 1;
+            transaction.set(counterRef, { lastNumber: nextValue }, { merge: true });
+            return nextValue;
+          });
+
+        try {
+          return await attemptTransaction();
+        } catch (error) {
+          if (!["COUNTER_MISSING", "COUNTER_INVALID"].includes(error.message)) {
+            throw error;
+          }
+          console.warn("Counter inválido o inexistente. Buscando fallback en prendas.");
+          const fallbackMax = await fetchFallbackMax();
+          if (!Number.isFinite(fallbackMax)) {
+            throw new Error(
+              "No se pudo inicializar el contador de códigos. Revisa counters/codigos en Firestore."
+            );
+          }
+          await runTransaction(db, async (transaction) => {
+            transaction.set(counterRef, { lastNumber: fallbackMax }, { merge: true });
+          });
+          console.info(`Counter inicializado con ${fallbackMax}. Reintentando transacción.`);
+          return attemptTransaction();
+        }
       };
 
       registroForm.addEventListener("submit", async (event) => {
@@ -575,7 +631,11 @@
             setRegistroStatus("Prenda guardada correctamente.", "success");
           }
         } catch (error) {
-          setRegistroStatus("No se pudo generar el código. Intenta nuevamente.", "error");
+          const message =
+            error?.message?.includes("contador")
+              ? error.message
+              : "No se pudo generar el código. Intenta nuevamente.";
+          setRegistroStatus(message, "error");
           console.error(error);
         } finally {
           registroSubmit.disabled = false;
