@@ -1,0 +1,13 @@
+{
+  "name": "haruja-tiendanube-embedded-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node scripts/seed-diccionario.mjs",
+    "seed:dry": "node scripts/seed-diccionario.mjs --dry"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "xlsx": "^0.18.5"
+  }
+}
