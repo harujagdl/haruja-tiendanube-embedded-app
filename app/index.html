@@ -357,7 +357,7 @@
         doc,
         runTransaction,
         serverTimestamp,
-        getDoc
+        getDocs
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -408,20 +408,74 @@
         return option;
       };
 
-      const loadDictionary = async (documentId, targetSelect) => {
-        const snapshot = await getDoc(doc(db, "diccionario", documentId));
-        if (!snapshot.exists()) {
-          throw new Error(`No existe el diccionario ${documentId}`);
+      const setSelectLoading = (selectEl, message) => {
+        selectEl.innerHTML = "";
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = message;
+        selectEl.appendChild(option);
+        selectEl.disabled = true;
+      };
+
+      const fillSelect = (selectEl, entries) => {
+        selectEl.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Seleccionar";
+        selectEl.appendChild(placeholder);
+        entries.forEach((item) => selectEl.appendChild(buildOption(item)));
+        selectEl.disabled = false;
+      };
+
+      const collectOption = (map, codigo, nombre) => {
+        if (!codigo) return;
+        if (!map.has(codigo)) {
+          map.set(codigo, nombre || codigo);
+        }
+      };
+
+      const loadDictionary = async () => {
+        const snapshot = await getDocs(collection(db, "diccionario_codigos"));
+        if (snapshot.empty) {
+          return { empty: true };
         }
 
-        const entries = Object.entries(snapshot.data() || {})
-          .map(([clave, valor]) => ({
-            clave,
-            valor: typeof valor === "string" ? valor : valor?.nombre || String(valor)
-          }))
-          .sort((a, b) => a.clave.localeCompare(b.clave));
+        const tipoOptions = new Map();
+        const proveedorOptions = new Map();
+        const colorOptions = new Map();
+        const tallaOptions = new Map();
 
-        entries.forEach((item) => targetSelect.appendChild(buildOption(item)));
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          collectOption(
+            tipoOptions,
+            data.tipo || data.tipoCodigo,
+            data.tipoNombre ?? data.tipo
+          );
+          collectOption(
+            proveedorOptions,
+            data.proveedor || data.proveedorCodigo,
+            data.proveedorNombre ?? data.proveedor
+          );
+          collectOption(
+            colorOptions,
+            data.color || data.colorCodigo,
+            data.colorNombre ?? data.color
+          );
+          collectOption(
+            tallaOptions,
+            data.talla || data.tallaCodigo,
+            data.tallaNombre ?? data.talla
+          );
+        });
+
+        return {
+          empty: false,
+          tipos: Array.from(tipoOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
+          proveedores: Array.from(proveedorOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
+          colores: Array.from(colorOptions.entries()).map(([clave, valor]) => ({ clave, valor })),
+          tallas: Array.from(tallaOptions.entries()).map(([clave, valor]) => ({ clave, valor }))
+        };
       };
 
       const getSelectedLabel = (selectEl) => {
@@ -560,12 +614,35 @@
 
       const init = async () => {
         try {
-          await Promise.all([
-            loadDictionary("tipos", registroProducto),
-            loadDictionary("proveedores", registroProveedor),
-            loadDictionary("colores", registroColor),
-            loadDictionary("tallas", registroTalla)
-          ]);
+          setRegistroStatus("Cargando diccionario...");
+          setSelectLoading(registroProducto, "Cargando...");
+          setSelectLoading(registroProveedor, "Cargando...");
+          setSelectLoading(registroColor, "Cargando...");
+          setSelectLoading(registroTalla, "Cargando...");
+
+          const dictionary = await loadDictionary();
+          if (dictionary.empty) {
+            setRegistroStatus("No hay diccionario cargado aún.", "error");
+            return;
+          }
+
+          fillSelect(
+            registroProducto,
+            dictionary.tipos.sort((a, b) => a.clave.localeCompare(b.clave))
+          );
+          fillSelect(
+            registroProveedor,
+            dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave))
+          );
+          fillSelect(
+            registroColor,
+            dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave))
+          );
+          fillSelect(
+            registroTalla,
+            dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave))
+          );
+          setRegistroStatus("");
         } catch (error) {
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
           console.error(error);
