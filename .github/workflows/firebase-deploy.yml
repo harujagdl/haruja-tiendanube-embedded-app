@@ -2,7 +2,7 @@ name: Deploy to Firebase
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   deploy:
@@ -17,12 +17,14 @@ jobs:
         with:
           node-version: "20"
 
-      # Autentica con tu Service Account (secret GCP_SA_KEY)
       - name: Auth to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      - name: Deploy (Hosting + Functions + Firestore)
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           npx firebase-tools@latest --version
           npx firebase-tools@latest deploy \
