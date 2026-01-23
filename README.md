@@ -73,6 +73,42 @@ El script crea documentos por cada ítem del diccionario dentro de `diccionario/
 2. Revisa en Firestore que existan documentos dentro de `diccionario/<categoria>/items`.
 3. Asegúrate de que el frontend apunte al proyecto correcto (configuración Firebase en `app/index.html`).
 
+# Seed de counters por proveedor + tipo (Excel histórico)
+
+Este script analiza el histórico desde `Data/Creación Códigos HARUJA - PRUEBA.xlsx` y crea/actualiza la colección `counters` con el último consecutivo por combinación de proveedor + tipo.
+
+## Requisitos
+
+- Node.js 18+
+- Cuenta de servicio de Firebase (no subir al repo)
+- Excel histórico en `Data/Creación Códigos HARUJA - PRUEBA.xlsx`
+
+## Ejecutar localmente
+
+Dry run (solo resumen, no escribe en Firestore):
+
+```bash
+DRY_RUN=true EXCEL_PATH="Data/Creación Códigos HARUJA - PRUEBA.xlsx" node scripts/seedCountersFromExcel.mjs
+```
+
+Escritura real en Firestore:
+
+```bash
+DRY_RUN=false EXCEL_PATH="Data/Creación Códigos HARUJA - PRUEBA.xlsx" node scripts/seedCountersFromExcel.mjs
+```
+
+## Ejecutar desde GitHub Actions
+
+1. Entra a **Actions** → **Seed Counters from Excel**.
+2. Presiona **Run workflow**.
+3. Ajusta `dryRun` o `excelPath` si hace falta.
+4. Verifica en Firestore la colección `counters`.
+
+## Salida esperada
+
+- `totalRows`, `validCodes`, `invalidCodes` y ejemplos de filas inválidas.
+- `keysFound` con resumen de `lastSeq` y `sampleLastCode` por clave.
+
 # Migración inicial de prendas (FASE B)
 
 Este script carga el histórico real desde `Data/Creación Códigos HARUJA - PRUEBA.xlsx` y crea:
