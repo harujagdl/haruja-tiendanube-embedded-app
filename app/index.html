@@ -355,11 +355,9 @@
         collection,
         addDoc,
         doc,
-        getDocs,
-        query,
         runTransaction,
         serverTimestamp,
-        where
+        getDoc
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -374,7 +372,6 @@
 
       const app = initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      const dictionaryRef = collection(db, "dictionary");
       const prendasRef = collection(db, "prendas");
       const registroForm = document.getElementById("registro-form");
       const registroStatus = document.getElementById("registro-status");
@@ -411,12 +408,20 @@
         return option;
       };
 
-      const loadDictionary = async (tipo, targetSelect) => {
-        const snapshot = await getDocs(query(dictionaryRef, where("tipo", "==", tipo), where("activo", "==", true)));
-        const options = snapshot.docs
-          .map((docSnapshot) => docSnapshot.data())
+      const loadDictionary = async (documentId, targetSelect) => {
+        const snapshot = await getDoc(doc(db, "diccionario", documentId));
+        if (!snapshot.exists()) {
+          throw new Error(`No existe el diccionario ${documentId}`);
+        }
+
+        const entries = Object.entries(snapshot.data() || {})
+          .map(([clave, valor]) => ({
+            clave,
+            valor: typeof valor === "string" ? valor : valor?.nombre || String(valor)
+          }))
           .sort((a, b) => a.clave.localeCompare(b.clave));
-        options.forEach((item) => targetSelect.appendChild(buildOption(item)));
+
+        entries.forEach((item) => targetSelect.appendChild(buildOption(item)));
       };
 
       const getSelectedLabel = (selectEl) => {
@@ -432,9 +437,8 @@
         return true;
       };
 
-      const getNextCounter = async (proveedorClave, productoClave) => {
-        const counterId = `${proveedorClave}_${productoClave}`;
-        const counterRef = doc(db, "counters", counterId);
+      const getNextCounter = async (tipoClave) => {
+        const counterRef = doc(db, "counters", `tipo_${tipoClave}`);
         return runTransaction(db, async (transaction) => {
           const snapshot = await transaction.get(counterRef);
           const nextValue = snapshot.exists() ? (snapshot.data().value || 0) + 1 : 1;
@@ -452,43 +456,40 @@
         }
 
         const proveedorClave = registroProveedor.value;
-        const productoClave = registroProducto.value;
+        const tipoClave = registroProducto.value;
         const colorClave = registroColor.value;
         const tallaClave = registroTalla.value;
         const proveedorNombre = getSelectedLabel(registroProveedor);
-        const productoNombre = getSelectedLabel(registroProducto);
+        const tipoNombre = getSelectedLabel(registroProducto);
         const colorNombre = getSelectedLabel(registroColor);
         const tallaNombre = getSelectedLabel(registroTalla);
 
         try {
-          const nextValue = await getNextCounter(proveedorClave, productoClave);
+          const nextValue = await getNextCounter(tipoClave);
           const consecutivo = String(nextValue).padStart(3, "0");
-          const codigo = `HA${proveedorClave}${productoClave}${consecutivo}/${colorClave}-${tallaClave}`;
+          const codigo = `HA${tipoClave}${consecutivo}/${colorClave}-${tallaClave}`;
 
           const costoValue = Number(document.getElementById("registro-costo").value);
           const createdByValue = document.getElementById("registro-created-by").value.trim();
+          const descripcion = `${tipoNombre} ${colorNombre} ${tallaNombre}`.trim();
 
           const data = {
+            codigoGenerado: codigo,
+            tipo: tipoClave,
+            proveedor: proveedorClave,
+            color: colorClave,
+            talla: tallaClave,
+            descripcion,
+            creadoPor: createdByValue || null,
             createdAt: serverTimestamp(),
-            proveedorClave,
+            tipoNombre,
             proveedorNombre,
-            productoClave,
-            productoNombre,
-            colorClave,
             colorNombre,
-            tallaClave,
-            tallaNombre,
-            codigo,
-            sku: codigo,
-            status: "draft"
+            tallaNombre
           };
 
           if (Number.isFinite(costoValue) && costoValue > 0) {
             data.costo = costoValue;
-          }
-
-          if (createdByValue) {
-            data.createdBy = createdByValue;
           }
 
           await addDoc(prendasRef, data);
@@ -560,10 +561,10 @@
       const init = async () => {
         try {
           await Promise.all([
-            loadDictionary("Producto", registroProducto),
-            loadDictionary("Proveedor", registroProveedor),
-            loadDictionary("Color", registroColor),
-            loadDictionary("Talla", registroTalla)
+            loadDictionary("tipos", registroProducto),
+            loadDictionary("proveedores", registroProveedor),
+            loadDictionary("colores", registroColor),
+            loadDictionary("tallas", registroTalla)
           ]);
         } catch (error) {
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
