@@ -136,6 +136,15 @@
         font-size: 14px;
       }
 
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        font-size: 14px;
+        background: #fff;
+      }
+
       button {
         padding: 12px 16px;
         border-radius: 12px;
@@ -162,6 +171,50 @@
 
       .status.error {
         color: #b91c1c;
+      }
+
+      .result-card {
+        margin-top: 16px;
+        padding: 16px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #f8fafc;
+      }
+
+      .result-code {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin: 8px 0 16px;
+      }
+
+      .result-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .zpl-output {
+        margin-top: 16px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 180px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        font-size: 13px;
+        font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+      }
+
+      .hidden {
+        display: none;
       }
 
       table {
@@ -221,85 +274,77 @@
           </a>
         </section>
 
-        <section class="section" id="borradores">
-          <h2>Borradores (Firestore)</h2>
-          <p>Guarda prendas borrador para continuar el armado luego.</p>
-          <form class="form" id="draft-form">
+        <section class="section" id="registro">
+          <h2>Registro de nuevas prendas</h2>
+          <p>Selecciona los atributos clave para generar el código y guardar la prenda en Firestore.</p>
+          <form class="form" id="registro-form">
             <div>
-              <label for="draft-sku">Código (SKU) *</label>
-              <input id="draft-sku" name="sku" type="text" placeholder="SKU-12345" required />
+              <label for="registro-producto">Tipo / Producto *</label>
+              <select id="registro-producto" name="producto" required>
+                <option value="">Seleccionar</option>
+              </select>
             </div>
             <div>
-              <label for="draft-tipo">Tipo</label>
-              <input id="draft-tipo" name="tipo" type="text" placeholder="Remera" />
+              <label for="registro-proveedor">Proveedor *</label>
+              <select id="registro-proveedor" name="proveedor" required>
+                <option value="">Seleccionar</option>
+              </select>
             </div>
             <div>
-              <label for="draft-proveedor">Proveedor</label>
-              <input id="draft-proveedor" name="proveedor" type="text" placeholder="Proveedor" />
+              <label for="registro-color">Color *</label>
+              <select id="registro-color" name="color" required>
+                <option value="">Seleccionar</option>
+              </select>
             </div>
             <div>
-              <label for="draft-color">Color</label>
-              <input id="draft-color" name="color" type="text" placeholder="Negro" />
+              <label for="registro-talla">Talla *</label>
+              <select id="registro-talla" name="talla" required>
+                <option value="">Seleccionar</option>
+              </select>
             </div>
             <div>
-              <label for="draft-talla">Talla</label>
-              <input id="draft-talla" name="talla" type="text" placeholder="M" />
+              <label for="registro-costo">Costo (opcional)</label>
+              <input id="registro-costo" name="costo" type="number" min="0" step="0.01" placeholder="0" />
             </div>
             <div>
-              <label for="draft-costo">Costo</label>
-              <input id="draft-costo" name="costo" type="number" min="0" step="0.01" placeholder="0" />
+              <label for="registro-created-by">Creado por (opcional)</label>
+              <input id="registro-created-by" name="createdBy" type="text" placeholder="Nombre" />
             </div>
-            <div>
-              <label for="draft-precio">Precio</label>
-              <input id="draft-precio" name="precio" type="number" min="0" step="0.01" placeholder="0" />
-            </div>
-            <div>
-              <label for="draft-qty">Cantidad</label>
-              <input id="draft-qty" name="qty" type="number" min="1" value="1" />
-            </div>
-            <div>
-              <label for="draft-created-by">Creado por</label>
-              <input id="draft-created-by" name="createdBy" type="text" placeholder="Nombre" />
-            </div>
-            <button type="submit">Guardar borrador</button>
+            <button type="submit">Generar código</button>
           </form>
-          <p id="draft-status" class="status"></p>
-          <table>
-            <thead>
-              <tr>
-                <th>Creado</th>
-                <th>SKU</th>
-                <th>Tipo</th>
-                <th>Color</th>
-                <th>Talla</th>
-                <th>Qty</th>
-              </tr>
-            </thead>
-            <tbody id="draft-list">
-              <tr>
-                <td colspan="6">Cargando borradores...</td>
-              </tr>
-            </tbody>
-          </table>
+          <p id="registro-status" class="status"></p>
+          <div id="registro-result" class="result-card hidden">
+            <span class="muted">Código generado</span>
+            <div id="registro-codigo" class="result-code">HA00000/--</div>
+            <div class="result-actions">
+              <button type="button" id="registro-copy">Copiar</button>
+              <button type="button" id="registro-reset">Crear otro</button>
+            </div>
+          </div>
         </section>
 
         <section class="section" id="etiquetas">
           <h2>Impresión de etiquetas</h2>
-          <p>Ingresa el SKU y la cantidad de etiquetas a generar.</p>
-          <!-- TODO: Integrar lectura de SKU desde Firestore. -->
-          <!-- TODO: Ejecutar Functions para generar el ZPL. -->
-          <!-- TODO: Enviar comandos ZPL a impresora configurada. -->
-          <form class="form">
+          <p>Ingresa el código y la cantidad de etiquetas a generar.</p>
+          <form class="form" id="zpl-form">
             <div>
-              <label for="sku">Código (SKU)</label>
-              <input id="sku" name="sku" type="text" placeholder="SKU-12345" />
+              <label for="zpl-codigo">Código (SKU)</label>
+              <input id="zpl-codigo" name="codigo" type="text" placeholder="HA22007/NG-M" />
             </div>
             <div>
-              <label for="cantidad">Cantidad</label>
-              <input id="cantidad" name="cantidad" type="number" min="1" value="1" />
+              <label for="zpl-cantidad">Cantidad</label>
+              <input id="zpl-cantidad" name="cantidad" type="number" min="1" value="1" />
             </div>
-            <button type="button">Imprimir etiqueta</button>
+            <button type="submit">Imprimir etiqueta</button>
           </form>
+          <p id="zpl-status" class="status"></p>
+          <div class="zpl-output hidden" id="zpl-output">
+            <label for="zpl-textarea">ZPL generado</label>
+            <textarea id="zpl-textarea" readonly></textarea>
+            <div class="result-actions" style="margin-top: 12px;">
+              <button type="button" id="zpl-copy">Copiar ZPL</button>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -309,11 +354,12 @@
         getFirestore,
         collection,
         addDoc,
-        serverTimestamp,
+        doc,
+        getDocs,
         query,
-        orderBy,
-        limit,
-        getDocs
+        runTransaction,
+        serverTimestamp,
+        where
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -328,116 +374,204 @@
 
       const app = initializeApp(firebaseConfig);
       const db = getFirestore(app);
-      const draftsRef = collection(db, "products_drafts");
-      const draftForm = document.getElementById("draft-form");
-      const statusEl = document.getElementById("draft-status");
-      const draftList = document.getElementById("draft-list");
+      const dictionaryRef = collection(db, "dictionary");
+      const prendasRef = collection(db, "prendas");
+      const registroForm = document.getElementById("registro-form");
+      const registroStatus = document.getElementById("registro-status");
+      const registroResult = document.getElementById("registro-result");
+      const registroCodigo = document.getElementById("registro-codigo");
+      const registroCopy = document.getElementById("registro-copy");
+      const registroReset = document.getElementById("registro-reset");
+      const registroProducto = document.getElementById("registro-producto");
+      const registroProveedor = document.getElementById("registro-proveedor");
+      const registroColor = document.getElementById("registro-color");
+      const registroTalla = document.getElementById("registro-talla");
 
-      const formatDate = (timestamp) => {
-        if (!timestamp) return "-";
-        return new Intl.DateTimeFormat("es-AR", {
-          dateStyle: "short",
-          timeStyle: "short"
-        }).format(timestamp.toDate());
+      const zplForm = document.getElementById("zpl-form");
+      const zplStatus = document.getElementById("zpl-status");
+      const zplOutput = document.getElementById("zpl-output");
+      const zplTextarea = document.getElementById("zpl-textarea");
+      const zplCopy = document.getElementById("zpl-copy");
+
+      const setRegistroStatus = (message, type = "") => {
+        registroStatus.textContent = message;
+        registroStatus.className = `status ${type}`.trim();
       };
 
-      const setStatus = (message, type = "") => {
-        statusEl.textContent = message;
-        statusEl.className = `status ${type}`.trim();
+      const setZplStatus = (message, type = "") => {
+        zplStatus.textContent = message;
+        zplStatus.className = `status ${type}`.trim();
       };
 
-      const renderRows = (docs) => {
-        if (!docs.length) {
-          draftList.innerHTML = "<tr><td colspan=\"6\">Sin borradores todavía.</td></tr>";
-          return;
+      const buildOption = ({ clave, valor }) => {
+        const option = document.createElement("option");
+        option.value = clave;
+        option.textContent = `${clave} - ${valor}`;
+        option.dataset.nombre = valor;
+        return option;
+      };
+
+      const loadDictionary = async (tipo, targetSelect) => {
+        const snapshot = await getDocs(query(dictionaryRef, where("tipo", "==", tipo), where("activo", "==", true)));
+        const options = snapshot.docs
+          .map((docSnapshot) => docSnapshot.data())
+          .sort((a, b) => a.clave.localeCompare(b.clave));
+        options.forEach((item) => targetSelect.appendChild(buildOption(item)));
+      };
+
+      const getSelectedLabel = (selectEl) => {
+        const option = selectEl.options[selectEl.selectedIndex];
+        return option ? option.dataset.nombre || "" : "";
+      };
+
+      const ensureRequired = () => {
+        if (!registroProveedor.value || !registroProducto.value || !registroColor.value || !registroTalla.value) {
+          setRegistroStatus("Completa Proveedor, Producto, Color y Talla.", "error");
+          return false;
         }
-
-        draftList.innerHTML = docs
-          .map((doc) => {
-            const data = doc.data();
-            return `
-              <tr>
-                <td>${formatDate(data.createdAt)}</td>
-                <td>${data.sku || "-"}</td>
-                <td>${data.tipo || "-"}</td>
-                <td>${data.color || "-"}</td>
-                <td>${data.talla || "-"}</td>
-                <td>${data.qty ?? 1}</td>
-              </tr>
-            `;
-          })
-          .join("");
+        return true;
       };
 
-      const loadDrafts = async () => {
-        try {
-          const draftsQuery = query(draftsRef, orderBy("createdAt", "desc"), limit(20));
-          const snapshot = await getDocs(draftsQuery);
-          renderRows(snapshot.docs);
-        } catch (error) {
-          setStatus("No pudimos cargar los borradores.", "error");
-          draftList.innerHTML = "<tr><td colspan=\"6\">Error al cargar.</td></tr>";
-          console.error(error);
-        }
-      };
-
-      draftForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        setStatus("");
-
-        const formData = new FormData(draftForm);
-        const sku = formData.get("sku").trim();
-
-        if (!sku) {
-          setStatus("El SKU es obligatorio.", "error");
-          return;
-        }
-
-        const qtyValue = Number(formData.get("qty"));
-        const data = {
-          sku,
-          qty: Number.isFinite(qtyValue) && qtyValue > 0 ? qtyValue : 1,
-          createdAt: serverTimestamp()
-        };
-
-        const optionalFields = [
-          ["tipo", "tipo"],
-          ["proveedor", "proveedor"],
-          ["color", "color"],
-          ["talla", "talla"],
-          ["createdBy", "createdBy"]
-        ];
-
-        optionalFields.forEach(([key, field]) => {
-          const value = formData.get(field).trim();
-          if (value) {
-            data[key] = value;
-          }
+      const getNextCounter = async (proveedorClave, productoClave) => {
+        const counterId = `${proveedorClave}_${productoClave}`;
+        const counterRef = doc(db, "counters", counterId);
+        return runTransaction(db, async (transaction) => {
+          const snapshot = await transaction.get(counterRef);
+          const nextValue = snapshot.exists() ? (snapshot.data().value || 0) + 1 : 1;
+          transaction.set(counterRef, { value: nextValue }, { merge: true });
+          return nextValue;
         });
+      };
 
-        const costo = Number(formData.get("costo"));
-        if (Number.isFinite(costo) && costo > 0) {
-          data.costo = costo;
+      registroForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        setRegistroStatus("");
+
+        if (!ensureRequired()) {
+          return;
         }
 
-        const precio = Number(formData.get("precio"));
-        if (Number.isFinite(precio) && precio > 0) {
-          data.precio = precio;
-        }
+        const proveedorClave = registroProveedor.value;
+        const productoClave = registroProducto.value;
+        const colorClave = registroColor.value;
+        const tallaClave = registroTalla.value;
+        const proveedorNombre = getSelectedLabel(registroProveedor);
+        const productoNombre = getSelectedLabel(registroProducto);
+        const colorNombre = getSelectedLabel(registroColor);
+        const tallaNombre = getSelectedLabel(registroTalla);
 
         try {
-          await addDoc(draftsRef, data);
-          setStatus("Borrador guardado correctamente.", "success");
-          draftForm.reset();
-          draftForm.querySelector("#draft-qty").value = "1";
-          await loadDrafts();
+          const nextValue = await getNextCounter(proveedorClave, productoClave);
+          const consecutivo = String(nextValue).padStart(3, "0");
+          const codigo = `HA${proveedorClave}${productoClave}${consecutivo}/${colorClave}-${tallaClave}`;
+
+          const costoValue = Number(document.getElementById("registro-costo").value);
+          const createdByValue = document.getElementById("registro-created-by").value.trim();
+
+          const data = {
+            createdAt: serverTimestamp(),
+            proveedorClave,
+            proveedorNombre,
+            productoClave,
+            productoNombre,
+            colorClave,
+            colorNombre,
+            tallaClave,
+            tallaNombre,
+            codigo,
+            sku: codigo,
+            status: "draft"
+          };
+
+          if (Number.isFinite(costoValue) && costoValue > 0) {
+            data.costo = costoValue;
+          }
+
+          if (createdByValue) {
+            data.createdBy = createdByValue;
+          }
+
+          await addDoc(prendasRef, data);
+
+          registroCodigo.textContent = codigo;
+          registroResult.classList.remove("hidden");
+          setRegistroStatus("Prenda guardada correctamente.", "success");
         } catch (error) {
-          setStatus("No se pudo guardar el borrador.", "error");
+          setRegistroStatus("No se pudo generar el código. Intenta nuevamente.", "error");
           console.error(error);
         }
       });
 
-      loadDrafts();
+      registroCopy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(registroCodigo.textContent.trim());
+          setRegistroStatus("Código copiado al portapapeles.", "success");
+        } catch (error) {
+          setRegistroStatus("No se pudo copiar el código.", "error");
+          console.error(error);
+        }
+      });
+
+      registroReset.addEventListener("click", () => {
+        registroForm.reset();
+        registroResult.classList.add("hidden");
+        setRegistroStatus("");
+      });
+
+      zplForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        setZplStatus("");
+
+        const codigo = document.getElementById("zpl-codigo").value.trim();
+        const cantidadValue = Number(document.getElementById("zpl-cantidad").value);
+        const cantidad = Number.isFinite(cantidadValue) && cantidadValue > 0 ? cantidadValue : 1;
+
+        const formatoValido = /^HA\d{2}\d{3}\/[A-Z0-9]+-[A-Z0-9]+$/i.test(codigo);
+        if (!codigo || !formatoValido) {
+          setZplStatus("Ingresa un código válido (HA{P}{T}{NNN}/COLOR-TALLA).", "error");
+          zplOutput.classList.add("hidden");
+          return;
+        }
+
+        const template = `^XA
+^CF0,40
+^FO30,30^FD${codigo}^FS
+^CF0,30
+^FO30,90^FDPRECIO$^FS
+^FO30,140^BQN,2,6^FDLA,${codigo}^FS
+^XZ`;
+
+        const zpl = Array.from({ length: cantidad }, () => template).join("\n");
+        zplTextarea.value = zpl;
+        zplOutput.classList.remove("hidden");
+        setZplStatus("ZPL generado correctamente.", "success");
+      });
+
+      zplCopy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(zplTextarea.value);
+          setZplStatus("ZPL copiado al portapapeles.", "success");
+        } catch (error) {
+          setZplStatus("No se pudo copiar el ZPL.", "error");
+          console.error(error);
+        }
+      });
+
+      const init = async () => {
+        try {
+          await Promise.all([
+            loadDictionary("Producto", registroProducto),
+            loadDictionary("Proveedor", registroProveedor),
+            loadDictionary("Color", registroColor),
+            loadDictionary("Talla", registroTalla)
+          ]);
+        } catch (error) {
+          setRegistroStatus("No pudimos cargar el diccionario.", "error");
+          console.error(error);
+        }
+      };
+
+      init();
     </script>
   </body>
 </html>
