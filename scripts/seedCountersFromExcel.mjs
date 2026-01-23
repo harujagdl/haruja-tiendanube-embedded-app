@@ -11,7 +11,7 @@ const DEFAULT_XLSX_LOCATIONS = [
   path.resolve(process.cwd(), '..', 'Data', DEFAULT_XLSX_FILENAME),
 ];
 
-const CODE_PATTERN = /^HA(\d)([A-Z])(\d{3})\/([A-Z]{2})-([A-Z0-9]+)$/;
+const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
 
 const COLUMN_ALIASES = {
   code: ['codigo', 'código', 'code', 'sku'],
@@ -210,7 +210,7 @@ const parseWorkbook = (workbook) => {
       validCodes += 1;
       const key = `${providerCode}${typeCode}`;
       const existing = counters.get(key) ?? {
-        lastSeq: 0,
+        value: 0,
         totalCodesSeen: 0,
         sampleLastCode: '',
       };
@@ -220,8 +220,8 @@ const parseWorkbook = (workbook) => {
         totalCodesSeen: existing.totalCodesSeen + 1,
       };
 
-      if (seqNumber >= existing.lastSeq) {
-        updated.lastSeq = seqNumber;
+      if (seqNumber >= existing.value) {
+        updated.value = seqNumber;
         updated.sampleLastCode = normalized;
       }
 
@@ -256,7 +256,7 @@ const main = async () => {
   console.log('Resumen de counters detectados:');
   for (const key of sortedKeys) {
     const entry = counters.get(key);
-    console.log(`- ${key}: lastSeq=${entry.lastSeq} sample=${entry.sampleLastCode}`);
+    console.log(`- ${key}: value=${entry.value} sample=${entry.sampleLastCode}`);
   }
 
   console.log('---');
@@ -293,7 +293,7 @@ const main = async () => {
     batch.set(
       counterRef,
       {
-        lastSeq: entry.lastSeq,
+        value: entry.value,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         source: 'seed-excel',
         totalCodesSeen: entry.totalCodesSeen,

@@ -513,14 +513,14 @@
           const snapshot = await transaction.get(counterRef);
           if (!snapshot.exists()) {
             console.warn(`Counter inexistente para ${key}. Ejecuta el seed del Excel.`);
-            throw new Error(`No existe contador para ${key} (corre seed)`);
+            throw new Error(`No existe contador para ${key}. Ejecuta el seed del Excel.`);
           }
-          const lastSeq = Number(snapshot.data().lastSeq);
-          if (!Number.isFinite(lastSeq)) {
+          const counterValue = Number(snapshot.data().value ?? snapshot.data().lastSeq);
+          if (!Number.isFinite(counterValue)) {
             throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
           }
-          const nextValue = lastSeq + 1;
-          transaction.set(counterRef, { lastSeq: nextValue }, { merge: true });
+          const nextValue = counterValue + 1;
+          transaction.set(counterRef, { value: nextValue }, { merge: true });
           return { nextValue, key };
         });
       };
@@ -548,33 +548,31 @@
           const createdByValue = document.getElementById("registro-created-by").value.trim();
           const detallesValue = registroDetalles.value.trim();
           const tipoNombre = getSelectedName(registroProducto).trim();
+          const proveedorNombre = getSelectedName(registroProveedor).trim();
           const colorNombre = getSelectedName(registroColor).trim();
           const tallaNombre = getSelectedName(registroTalla).trim();
-          let descripcion = [tipoNombre, colorNombre, tallaNombre].filter(Boolean).join(" ");
-          if (detallesValue) {
-            descripcion = descripcion ? `${descripcion} - ${detallesValue}` : detallesValue;
-          }
+          const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
+            .filter(Boolean)
+            .join(" ");
 
           const data = {
+            codigo,
+            proveedor: providerCode,
+            tipo: typeCode,
+            color: colorClave,
+            talla: tallaClave,
+            descripcion: descripcion || null,
+            detalles: detallesValue || null,
+            costo: Number.isFinite(costoValue) ? costoValue : 0,
             code: codigo,
             providerCode,
             typeCode,
             seqNumber: nextValue,
             colorCode: colorClave,
             sizeCode: tallaClave,
-            tipo: typeCode,
-            proveedor: providerCode,
-            color: colorClave,
-            talla: tallaClave,
-            descripcion: descripcion || null,
-            detalles: detallesValue || null,
             creadoPor: createdByValue || null,
             createdAt: serverTimestamp()
           };
-
-          if (Number.isFinite(costoValue) && costoValue > 0) {
-            data.costo = costoValue;
-          }
 
           const codeQuery = query(prendasRef, where("code", "==", codigo));
           const legacyQuery = query(prendasRef, where("codigo", "==", codigo));
