@@ -76,6 +76,7 @@ const loadServiceAccount = () => {
 const parseCodes = (codes) => {
   const counters = new Map();
   const invalidCodes = [];
+  let matchedCodes = 0;
 
   codes.forEach((rawCode, index) => {
     const code = String(rawCode ?? "").trim().toUpperCase();
@@ -87,6 +88,7 @@ const parseCodes = (codes) => {
       return;
     }
 
+    matchedCodes += 1;
     const providerCode = match[1];
     const typeCode = match[2];
     const seqNumber = Number(match[3]);
@@ -97,14 +99,13 @@ const parseCodes = (codes) => {
     }
 
     const key = `prov${providerCode}_tipo${typeCode}`;
-    const current = counters.get(key) ?? { value: 0 };
-
+    const current = counters.get(key) ?? { value: 0, sampleLastCode: "" };
     if (seqNumber >= current.value) {
-      counters.set(key, { value: seqNumber, sampleLastCode: code });
+      counters.set(key, { value: Math.max(current.value, seqNumber), sampleLastCode: code });
     }
   });
 
-  return { counters, invalidCodes };
+  return { counters, invalidCodes, matchedCodes };
 };
 
 const main = async () => {
@@ -122,7 +123,7 @@ const main = async () => {
     throw new Error("El JSON debe ser un array de códigos.");
   }
 
-  const { counters, invalidCodes } = parseCodes(raw);
+  const { counters, invalidCodes, matchedCodes } = parseCodes(raw);
 
   if (!counters.size) {
     throw new Error("No se encontraron códigos válidos para generar counters.");
@@ -137,8 +138,15 @@ const main = async () => {
 
   console.log("---");
   console.log(`totalCodes: ${raw.length}`);
+  console.log(`matchedCodes: ${matchedCodes}`);
   console.log(`invalidCodes: ${invalidCodes.length}`);
-  console.log(`keysFound: ${sortedKeys.join(", ")}`);
+  console.log(`keysGenerated: ${sortedKeys.length}`);
+  if (counters.has("prov4_tipoA")) {
+    console.log(`example: prov4_tipoA => max=${counters.get("prov4_tipoA").value}`);
+  } else if (sortedKeys.length) {
+    const exampleKey = sortedKeys[0];
+    console.log(`example: ${exampleKey} => max=${counters.get(exampleKey).value}`);
+  }
 
   if (invalidCodes.length) {
     console.log("invalidCodes (top 10):");
@@ -149,6 +157,7 @@ const main = async () => {
 
   if (dryRun) {
     console.log("DRY_RUN=true. No se escribieron datos en Firestore.");
+    console.log("docsWritten: 0");
     return;
   }
 
@@ -178,6 +187,7 @@ const main = async () => {
 
   await batch.commit();
   console.log(`Seed completado. Counters escritos: ${counters.size}`);
+  console.log(`docsWritten: ${counters.size}`);
 };
 
 main().catch((error) => {
