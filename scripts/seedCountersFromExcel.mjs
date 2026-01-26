@@ -208,7 +208,7 @@ const parseWorkbook = (workbook) => {
       }
 
       validCodes += 1;
-      const key = `${providerCode}${typeCode}`;
+      const key = `prov${providerCode}_tipo${typeCode}`;
       const existing = counters.get(key) ?? {
         value: 0,
         totalCodesSeen: 0,
