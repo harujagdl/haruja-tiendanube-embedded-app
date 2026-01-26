@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "seed:json": "DRY_RUN=false node scripts/seedCountersFromJson.mjs",
-    "seed:json:dry": "DRY_RUN=true node scripts/seedCountersFromJson.mjs"
+    "seed:json:dry": "DRY_RUN=true node scripts/seedCountersFromJson.mjs",
+    "seed:prendas:dry": "node scripts/seed-prendas-from-excel.mjs --dry-run true --excel Data/HarujaPrendas_2025.xlsx",
+    "seed:prendas": "node scripts/seed-prendas-from-excel.mjs --dry-run false --excel Data/HarujaPrendas_2025.xlsx"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
