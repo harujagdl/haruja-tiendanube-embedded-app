@@ -3,21 +3,40 @@ import path from "path";
 import process from "process";
 import admin from "firebase-admin";
 
-const JSON_PATH =
-  process.env.JSON_PATH ||
-  process.argv[2] ||
-  "Data/codigos_historicos.json";
+const JSON_PATH = process.env.JSON_PATH || process.argv[2] || "Data/codigos_historicos.json";
+const DRY_RUN = String(process.env.DRY_RUN ?? "true").toLowerCase() === "true";
 
-const DRY_RUN =
-  String(process.env.DRY_RUN ?? "true").toLowerCase() === "true";
+/**
+ * Parse robusto para históricos mezclados:
+ * - Nuevo: HA4A027/AM-M   => prov=4, tipo=A, seq=027
+ * - Proveedor 2 dígitos: HA32A001/.. => prov=32, tipo=A, seq=001
+ * - Viejo numérico: HA32001/RP-UN => prov=3, tipo=2, seq=001
+ *
+ * Regla: toma lo que está entre "HA" y "/"
+ * - seq = últimos 3
+ * - tipo = 1 caracter antes de esos 3
+ * - proveedor = el resto al inicio
+ */
+const parseCodigo = (raw) => {
+  const s = String(raw || "").trim().toUpperCase();
+  const slash = s.indexOf("/");
+  if (!s.startsWith("HA") || slash === -1) return null;
 
-// 🔑 REGEX CORRECTO
-const CODE_REGEX = /^HA(\d+)([A-Z])(\d{3})\//i;
+  const body = s.slice(2, slash); // entre HA y /
+  if (body.length < 5) return null; // prov(>=1) + tipo(1) + seq(3)
+
+  const seqStr = body.slice(-3);
+  const typeCode = body.slice(-4, -3);
+  const providerCode = body.slice(0, -4);
+
+  const seq = Number(seqStr);
+  if (!providerCode || !typeCode || !Number.isFinite(seq)) return null;
+
+  return { providerCode, typeCode, seq };
+};
 
 const loadServiceAccount = () => {
-  if (process.env.GCP_SA_KEY) {
-    return JSON.parse(process.env.GCP_SA_KEY);
-  }
+  if (process.env.GCP_SA_KEY) return JSON.parse(process.env.GCP_SA_KEY);
   throw new Error("Falta GCP_SA_KEY en secrets");
 };
 
@@ -37,39 +56,36 @@ const main = async () => {
   const values = Array.isArray(raw) ? raw : Object.values(raw);
 
   for (const item of values) {
-    total++;
+    total += 1;
 
-    const code =
-      typeof item === "string"
-        ? item
-        : item?.codigo || item?.code || "";
-
+    // soporta: ["HA..."] o [{codigo:"HA..."}, ...] o [{code:"HA..."}, ...]
+    const code = typeof item === "string" ? item : item?.codigo || item?.code || "";
     if (!code) continue;
 
-    const match = String(code).toUpperCase().match(CODE_REGEX);
-    if (!match) continue;
+    const parsed = parseCodigo(code);
+    if (!parsed) continue;
 
-    matched++;
+    matched += 1;
 
-    const provider = match[1];
-    const type = match[2];
-    const seq = Number(match[3]);
-
-    if (!Number.isFinite(seq)) continue;
-
-    const key = `prov${provider}_tipo${type}`;
+    const key = `prov${parsed.providerCode}_tipo${parsed.typeCode}`;
     const current = counters.get(key) ?? 0;
-
-    counters.set(key, Math.max(current, seq));
+    counters.set(key, Math.max(current, parsed.seq));
   }
 
   console.log("Resumen detectado:");
-  for (const [key, value] of counters.entries()) {
-    console.log(`- ${key} => ${value}`);
+  const sortedKeys = Array.from(counters.keys()).sort();
+  for (const key of sortedKeys) {
+    console.log(`- ${key} => ${counters.get(key)}`);
   }
 
+  console.log("---");
   console.log(`Total registros: ${total}`);
   console.log(`Códigos válidos: ${matched}`);
+  console.log(`Keys detectadas: ${sortedKeys.length}`);
+
+  if (!counters.size) {
+    throw new Error("No se detectaron códigos válidos en el JSON (revisa formato y contenido).");
+  }
 
   if (DRY_RUN) {
     console.log("DRY_RUN=true → no se escribió en Firestore");
@@ -99,10 +115,10 @@ const main = async () => {
   }
 
   await batch.commit();
-  console.log(`✔ Counters escritos: ${counters.size}`);
+  console.log(`✔ Counters escritos/actualizados: ${counters.size}`);
 };
 
 main().catch((err) => {
-  console.error(err);
+  console.error("Error:", err?.message || err);
   process.exit(1);
 });
