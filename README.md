@@ -22,16 +22,16 @@ Opcional:
 Dry run (solo resumen, no escribe en Firestore):
 
 ```bash
-npm run seed:dry
+npm run seed:json:dry
 ```
 
 Escritura real en Firestore:
 
 ```bash
-npm run seed
+npm run seed:json
 ```
 
-> Nota: este es el único seed oficial. Evita ejecutar scripts antiguos o en conflicto.
+> Nota: este es el único seed oficial. Evita ejecutar scripts antiguos (ver `scripts/_deprecated`) o en conflicto. Ejecuta este seed solo una vez para inicializar counters.
 
 ## Ejecutar desde GitHub Actions
 
