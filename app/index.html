@@ -505,22 +505,59 @@
         return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
       };
 
+      const HISTORICOS_URL = "Data/codigos_historicos.json";
+      let historicosCache = null;
+
+      const loadHistoricosMap = async () => {
+        if (historicosCache) {
+          return historicosCache;
+        }
+        historicosCache = fetch(HISTORICOS_URL)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("No se pudo cargar el histórico de códigos.");
+            }
+            return response.json();
+          })
+          .then((codes) => {
+            const maxPorKey = {};
+            const pattern = /^HA(\d)([A-Z])(\d{3})\//;
+            codes.forEach((code) => {
+              const match = pattern.exec(String(code).trim().toUpperCase());
+              if (!match) return;
+              const key = `prov${match[1]}_tipo${match[2]}`;
+              const seq = Number(match[3]);
+              if (!Number.isFinite(seq)) return;
+              if (!maxPorKey[key] || seq > maxPorKey[key]) {
+                maxPorKey[key] = seq;
+              }
+            });
+            return maxPorKey;
+          })
+          .catch((error) => {
+            console.warn("No se pudo cargar el histórico de códigos.", error);
+            return {};
+          });
+        return historicosCache;
+      };
+
       const getNextCounter = async (providerCode, typeCode) => {
-        const key = `${providerCode}${typeCode}`;
-        const counterRef = doc(db, "counters", key);
+        const key = `prov${providerCode}_tipo${typeCode}`;
+        const counterRef = doc(db, "counters", "codigos");
 
         return runTransaction(db, async (transaction) => {
           const snapshot = await transaction.get(counterRef);
-          if (!snapshot.exists()) {
-            console.warn(`Counter inexistente para ${key}. Ejecuta el seed del Excel.`);
-            throw new Error(`No existe contador para ${key}. Ejecuta el seed del Excel.`);
-          }
-          const counterValue = Number(snapshot.data().value ?? snapshot.data().lastSeq);
+          const data = snapshot.data() || {};
+          let counterValue = Number(data[key]?.lastNumber);
           if (!Number.isFinite(counterValue)) {
-            throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
+            const maxPorKey = await loadHistoricosMap();
+            counterValue = Number(maxPorKey[key] ?? 0);
+          }
+          if (!Number.isFinite(counterValue)) {
+            throw new Error(`Contador inválido para ${key}. Revisa counters/codigos.`);
           }
           const nextValue = counterValue + 1;
-          transaction.set(counterRef, { value: nextValue }, { merge: true });
+          transaction.set(counterRef, { [key]: { lastNumber: nextValue } }, { merge: true });
           return { nextValue, key };
         });
       };
