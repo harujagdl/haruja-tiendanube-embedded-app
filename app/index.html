@@ -549,15 +549,21 @@
           const snapshot = await transaction.get(counterRef);
           const data = snapshot.data() || {};
           let counterValue = Number(data.value);
+
           if (!Number.isFinite(counterValue)) {
-            const maxPorKey = await loadHistoricosMap();
-            counterValue = Number(maxPorKey[key] ?? 0);
+          counterValue = Number(data.lastNumber);
+          }
+
+          if (!Number.isFinite(counterValue)) {
+          const maxPorKey = await loadHistoricosMap();
+          counterValue = Number(maxPorKey[key] ?? 0);
           }
           if (!Number.isFinite(counterValue)) {
             throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
           }
+          console.log("COUNTER READ", { key, data, counterValue });
           const nextValue = counterValue + 1;
-          transaction.set(counterRef, { value: nextValue }, { merge: true });
+          transaction.set(counterRef, { value: nextValue, lastNumber: nextValue }, { merge: true });
           return { nextValue, key };
         });
       };
