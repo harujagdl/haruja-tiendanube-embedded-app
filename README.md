@@ -1,155 +1,41 @@
-# Seed de diccionario en Firestore
+# Seed oficial: Counters desde JSON
 
-Este script carga el diccionario de códigos desde el Excel y actualiza Firestore en las colecciones:
-
-- `diccionario/tipos/items`
-- `diccionario/proveedores/items`
-- `diccionario/colores/items`
-- `diccionario/tallas/items`
+Este flujo oficial procesa `Data/codigos_historicos.json` y actualiza `counters/{provX_tipoY}` con los campos `value` y `lastNumber`.
 
 ## Requisitos
 
 - Node.js 18+
 - Credenciales de servicio de Firebase (no subir al repo)
-- Archivo Excel en `Data/Diccionario creación códigos HARUJA.xlsx`
-
-## Instalación
-
-```bash
-npm install
-```
+- Archivo JSON histórico en `Data/codigos_historicos.json`
 
 ## Variables de entorno
 
-Configura una de las siguientes opciones:
-
 - `FIREBASE_PROJECT_ID` = ID del proyecto Firebase.
 - `GCP_SA_KEY` = string JSON con las credenciales (secreto recomendado).
-- `GOOGLE_APPLICATION_CREDENTIALS` = ruta al JSON de la cuenta de servicio.
-- `FIREBASE_SERVICE_ACCOUNT_JSON` = string JSON con las credenciales.
 
 Opcional:
 
-- `DICCIONARIO_XLSX` = ruta personalizada al Excel.
-
-## Ejecutar
-
-Dry run (solo lectura):
-
-```bash
-npm run seed:dry
-```
-
-Carga real en Firestore:
-
-```bash
-npm run seed
-```
-
-El script crea documentos por cada ítem del diccionario dentro de `diccionario/<categoria>/items` usando `codigo` como ID estable (por ejemplo: `NG`, `M`).
-
-## Ejecutar desde GitHub Actions
-
-1. Entra a **Actions** → **Seed Diccionario Firestore**.
-2. Presiona **Run workflow**.
-3. Verifica en Firestore las colecciones `diccionario/<categoria>/items`.
-
-## Verificar en Firestore
-
-- En Firebase Console, abre Firestore y confirma que cada colección `diccionario/<categoria>/items` tenga documentos.
-
-## Validar el frontend
-
-- Abre el panel y confirma que los dropdowns de Tipo, Proveedor, Color y Talla carguen opciones.
-- Si una colección está vacía, el formulario mostrará un mensaje indicando qué categorías faltan y el select aparecerá como "Sin opciones disponibles".
-
-## Probar en Hosting
-
-- Despliega el sitio con el flujo normal de Hosting y abre la URL pública. Los menús desplegables deberían cargar desde Firestore.
-
-## ¿Qué hacer si los dropdowns no cargan?
-
-1. Verifica que el workflow o el script local hayan terminado sin errores.
-2. Revisa en Firestore que existan documentos dentro de `diccionario/<categoria>/items`.
-3. Asegúrate de que el frontend apunte al proyecto correcto (configuración Firebase en `app/index.html`).
-
-# Seed de counters por proveedor + tipo (Excel histórico)
-
-Este script analiza el histórico desde `Data/Creación Códigos HARUJA - PRUEBA.xlsx` y crea/actualiza la colección `counters` con el último consecutivo por combinación de proveedor + tipo.
-
-## Requisitos
-
-- Node.js 18+
-- Cuenta de servicio de Firebase (no subir al repo)
-- Excel histórico en `Data/Creación Códigos HARUJA - PRUEBA.xlsx`
+- `JSON_PATH` = ruta personalizada al JSON histórico.
 
 ## Ejecutar localmente
 
 Dry run (solo resumen, no escribe en Firestore):
 
 ```bash
-DRY_RUN=true EXCEL_PATH="Data/Creación Códigos HARUJA - PRUEBA.xlsx" node scripts/seedCountersFromExcel.mjs
+npm run seed:dry
 ```
 
 Escritura real en Firestore:
 
 ```bash
-DRY_RUN=false EXCEL_PATH="Data/Creación Códigos HARUJA - PRUEBA.xlsx" node scripts/seedCountersFromExcel.mjs
+npm run seed
 ```
+
+> Nota: este es el único seed oficial. Evita ejecutar scripts antiguos o en conflicto.
 
 ## Ejecutar desde GitHub Actions
 
-1. Entra a **Actions** → **Seed Counters from Excel**.
+1. Entra a **Actions** → **Seed Counters from JSON**.
 2. Presiona **Run workflow**.
-3. Ajusta `dryRun` o `excelPath` si hace falta.
+3. Ajusta `dryRun` o `jsonPath` si hace falta.
 4. Verifica en Firestore la colección `counters`.
-
-## Salida esperada
-
-- `totalRows`, `validCodes`, `invalidCodes` y ejemplos de filas inválidas.
-- `keysFound` con resumen de `lastSeq` y `sampleLastCode` por clave.
-
-# Migración inicial de prendas (FASE B)
-
-Este script carga el histórico real desde `Data/Creación Códigos HARUJA - PRUEBA.xlsx` y crea:
-
-- Colección `prendas` con los registros históricos (incluye `code`, `codigo`, `tipo`, `proveedor`, `color`, `talla`, `descripcion`, `createdAt` si existe).
-- Documento `counters/codigos` con `{ lastNumber: <maxConsecutivoHistorico> }`.
-
-El script es idempotente: si el código ya existe, lo salta y registra el conteo.
-
-## Requisitos
-
-- Node.js 18+
-- Cuenta de servicio de Firebase (no subir al repo)
-- Excel histórico en `Data/Creación Códigos HARUJA - PRUEBA.xlsx`
-
-## Instalación (local, sin Cloud Shell)
-
-```bash
-cd scripts
-npm install
-```
-
-## Credenciales
-
-Opciones para pasar credenciales:
-
-- Guardar el JSON como `scripts/serviceAccount.json`.
-- O usar variables: `GOOGLE_APPLICATION_CREDENTIALS`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `GCP_SA_KEY`.
-
-Opcional:
-
-- `PRENDAS_XLSX` = ruta personalizada al Excel histórico.
-
-## Ejecutar migración
-
-```bash
-cd scripts
-node seed-from-excel.js
-```
-
-## Verificar en Firebase Console
-
-1. Abre Firestore y revisa la colección `prendas` (deberías ver los registros históricos).
-2. En `counters/codigos`, valida el campo `lastNumber` con el máximo consecutivo detectado.
