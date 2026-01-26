@@ -142,7 +142,7 @@ const parseWorkbook = (workbook) => {
       validCodes += 1;
 
       // Llave simple (por compatibilidad con tu error "1A")
-      const keySimple = `${providerCode}${typeCode}`;
+      const key = `prov${providerCode}_tipo${typeCode}`;
 
       const currentMax = counters.get(keySimple) ?? 0;
       if (seqNumber > currentMax) counters.set(keySimple, seqNumber);
