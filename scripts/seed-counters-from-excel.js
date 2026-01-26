@@ -28,9 +28,7 @@ const normalizeString = (value = '') =>
 
 const findDefaultXlsxPath = () => {
   const explicitPath = process.env.PRENDAS_XLSX;
-  if (explicitPath) {
-    return path.resolve(explicitPath);
-  }
+  if (explicitPath) return path.resolve(explicitPath);
   return DEFAULT_XLSX_LOCATIONS.find((candidate) => fs.existsSync(candidate));
 };
 
@@ -54,11 +52,8 @@ const resolveIndexMap = (headers) => {
     const index = normalizedHeaders.findIndex((header) =>
       aliases.some((alias) => header === alias || header.includes(alias)),
     );
-    if (index !== -1) {
-      indexMap[field] = index;
-    }
+    if (index !== -1) indexMap[field] = index;
   }
-
   return indexMap;
 };
 
@@ -73,9 +68,7 @@ const detectCodeColumn = (rows, startIndex, preferredIndex) => {
       const rawValue = rows[rowIndex]?.[colIndex];
       if (!rawValue) continue;
       const normalized = String(rawValue).trim().toUpperCase();
-      if (CODE_PATTERN.test(normalized)) {
-        count += 1;
-      }
+      if (CODE_PATTERN.test(normalized)) count += 1;
     }
     if (count > bestCount) {
       bestCount = count;
@@ -87,29 +80,21 @@ const detectCodeColumn = (rows, startIndex, preferredIndex) => {
 };
 
 const loadServiceAccount = () => {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-  }
-  if (process.env.GCP_SA_KEY) {
-    return JSON.parse(process.env.GCP_SA_KEY);
-  }
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  if (process.env.GCP_SA_KEY) return JSON.parse(process.env.GCP_SA_KEY);
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     const credentialsPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
     return JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
   }
 
   const localPath = path.resolve(process.cwd(), 'serviceAccount.json');
-  if (fs.existsSync(localPath)) {
-    return JSON.parse(fs.readFileSync(localPath, 'utf8'));
-  }
+  if (fs.existsSync(localPath)) return JSON.parse(fs.readFileSync(localPath, 'utf8'));
 
   const fallbackPath = path.resolve(process.cwd(), '..', 'scripts', 'serviceAccount.json');
-  if (fs.existsSync(fallbackPath)) {
-    return JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
-  }
+  if (fs.existsSync(fallbackPath)) return JSON.parse(fs.readFileSync(fallbackPath, 'utf8'));
 
   throw new Error(
-    'Credenciales no encontradas. Usa serviceAccount.json en /scripts o define GCP_SA_KEY/GOOGLE_APPLICATION_CREDENTIALS.',
+    'Credenciales no encontradas. Usa serviceAccount.json o define GCP_SA_KEY/GOOGLE_APPLICATION_CREDENTIALS.',
   );
 };
 
@@ -138,34 +123,29 @@ const parseWorkbook = (workbook) => {
 
     for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
       const row = rows[rowIndex];
-      if (!row || row.every((cell) => String(cell ?? '').trim() === '')) {
-        continue;
-      }
+      if (!row || row.every((cell) => String(cell ?? '').trim() === '')) continue;
+
       totalRows += 1;
 
       const rawCode = String(row[codeIndex] ?? '').trim();
-      if (!rawCode) {
-        continue;
-      }
+      if (!rawCode) continue;
 
       const match = rawCode.toUpperCase().match(CODE_PATTERN);
-      if (!match) {
-        continue;
-      }
+      if (!match) continue;
 
-      const providerCode = match[1];
-      const typeCode = match[2];
-      const seqNumber = Number(match[3]);
-      if (!Number.isFinite(seqNumber)) {
-        continue;
-      }
+      const providerCode = match[1]; // "4"
+      const typeCode = match[2];     // "D"
+      const seqNumber = Number(match[3]); // 12
+
+      if (!Number.isFinite(seqNumber)) continue;
 
       validCodes += 1;
-      const key = `${providerCode}${typeCode}`;
-      const currentMax = counters.get(key) ?? 0;
-      if (seqNumber > currentMax) {
-        counters.set(key, seqNumber);
-      }
+
+      // Llave simple (por compatibilidad con tu error "1A")
+      const keySimple = `${providerCode}${typeCode}`;
+
+      const currentMax = counters.get(keySimple) ?? 0;
+      if (seqNumber > currentMax) counters.set(keySimple, seqNumber);
     }
   });
 
@@ -173,8 +153,9 @@ const parseWorkbook = (workbook) => {
 };
 
 const main = async () => {
-  const xlsxPath = findDefaultXlsxPath();
+  const isDry = process.argv.includes('--dry');
 
+  const xlsxPath = findDefaultXlsxPath();
   if (!xlsxPath || !fs.existsSync(xlsxPath)) {
     throw new Error(
       `No existe el archivo Excel. Define PRENDAS_XLSX o guarda ${DEFAULT_XLSX_FILENAME} en /Data.`,
@@ -191,22 +172,54 @@ const main = async () => {
   const serviceAccount = loadServiceAccount();
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    projectId: process.env.FIREBASE_PROJECT_ID,
+    projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id,
   });
 
   const db = admin.firestore();
+
+  // Documento "central" como el que ya tienes en Firestore
+  const codigosDocRef = db.collection('counters').doc('codigos');
+
   let upserted = 0;
 
-  for (const [key, lastSeq] of counters.entries()) {
-    const counterRef = db.collection('counters').doc(key);
-    await counterRef.set({ value: lastSeq }, { merge: true });
+  for (const [keySimple, lastSeq] of counters.entries()) {
+    // keySimple: "4D"
+    // Derivar key "prov4_tipoD" para el doc central
+    const provider = keySimple.slice(0, -1);
+    const type = keySimple.slice(-1);
+
+    const keyCentral = `prov${provider}_tipo${type}`;
+
+    if (isDry) {
+      console.log(`[DRY] counters/${keySimple} -> lastNumber=${lastSeq}`);
+      console.log(`[DRY] counters/codigos.${keyCentral}.lastNumber=${lastSeq}`);
+      upserted += 1;
+      continue;
+    }
+
+    // 1) Formato documento por key (por si tu frontend busca counters/1A)
+    const perKeyRef = db.collection('counters').doc(keySimple);
+    await perKeyRef.set(
+      { value: lastSeq, lastNumber: lastSeq },
+      { merge: true },
+    );
+
+    // 2) Formato documento central (el que ya viste en Firestore)
+    await codigosDocRef.set(
+      {
+        [keyCentral]: { lastNumber: lastSeq },
+      },
+      { merge: true },
+    );
+
     upserted += 1;
   }
 
   console.log('Seed de counters finalizado.');
+  console.log(`Modo: ${isDry ? 'DRY (no escribe)' : 'REAL (escribe Firestore)'}`);
   console.log(`Filas leídas: ${totalRows}`);
   console.log(`Códigos válidos: ${validCodes}`);
-  console.log(`Counters creados/actualizados: ${upserted}`);
+  console.log(`Counters procesados: ${upserted}`);
 };
 
 main().catch((error) => {
