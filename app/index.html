@@ -543,21 +543,21 @@
 
       const getNextCounter = async (providerCode, typeCode) => {
         const key = `prov${providerCode}_tipo${typeCode}`;
-        const counterRef = doc(db, "counters", "codigos");
+        const counterRef = doc(db, "counters", key);
 
         return runTransaction(db, async (transaction) => {
           const snapshot = await transaction.get(counterRef);
           const data = snapshot.data() || {};
-          let counterValue = Number(data[key]?.lastNumber);
+          let counterValue = Number(data.value);
           if (!Number.isFinite(counterValue)) {
             const maxPorKey = await loadHistoricosMap();
             counterValue = Number(maxPorKey[key] ?? 0);
           }
           if (!Number.isFinite(counterValue)) {
-            throw new Error(`Contador inválido para ${key}. Revisa counters/codigos.`);
+            throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
           }
           const nextValue = counterValue + 1;
-          transaction.set(counterRef, { [key]: { lastNumber: nextValue } }, { merge: true });
+          transaction.set(counterRef, { value: nextValue }, { merge: true });
           return { nextValue, key };
         });
       };
