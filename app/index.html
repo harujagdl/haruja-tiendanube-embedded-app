@@ -505,7 +505,7 @@
         return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
       };
 
-      const HISTORICOS_URL = "Data/codigos_historicos.json";
+      const HISTORICOS_URL = "../Data/codigos_historicos.json";
       let historicosCache = null;
 
       const loadHistoricosMap = async () => {
@@ -521,7 +521,7 @@
           })
           .then((codes) => {
             const maxPorKey = {};
-            const pattern = /^HA(\d)([A-Z])(\d{3})\//;
+            const pattern = /^HA(\d+)([A-Z])(\d{3})\//i;
             codes.forEach((code) => {
               const match = pattern.exec(String(code).trim().toUpperCase());
               if (!match) return;
