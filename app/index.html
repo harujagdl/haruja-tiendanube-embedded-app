@@ -239,6 +239,176 @@
         font-weight: 600;
       }
 
+      .panel-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        align-items: end;
+      }
+
+      .filters-grid .inline-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #f8fafc;
+      }
+
+      .filters-grid .inline-toggle input {
+        width: auto;
+      }
+
+      .counters {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+      }
+
+      .counter-card {
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        background: #f8fafc;
+      }
+
+      .counter-card span {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .counter-card strong {
+        font-size: 18px;
+      }
+
+      .table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .badge-new {
+        background: #e0ecff;
+        color: #1d4ed8;
+      }
+
+      .badge-old {
+        background: #e8f5e9;
+        color: #166534;
+      }
+
+      .badge-sold {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .row-new {
+        background: #f5f8ff;
+      }
+
+      .row-old {
+        background: #f3fbf6;
+      }
+
+      .loader {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid #d1d5db;
+        border-top-color: var(--primary);
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .alert {
+        padding: 12px 16px;
+        border-radius: 10px;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+        color: #991b1b;
+        font-size: 14px;
+      }
+
+      .pagination {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 16px;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .pagination button {
+        min-width: 120px;
+      }
+
+      .admin-only {
+        display: none;
+      }
+
+      .admin-enabled .admin-only {
+        display: table-cell;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        z-index: 999;
+      }
+
+      .modal-card {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 20px;
+        width: min(420px, 100%);
+        box-shadow: var(--shadow);
+      }
+
+      .modal-card h3 {
+        margin: 0 0 8px;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
       @media (max-width: 600px) {
         header,
         main {
@@ -275,6 +445,11 @@
             <h2>Impresión de etiquetas (ZPL)</h2>
             <p>Genera etiquetas listas para impresión y control interno.</p>
             <span class="cta">Preparar</span>
+          </a>
+          <a class="card" href="#base-datos-codigos">
+            <h2>Base de datos códigos HarujaGdl</h2>
+            <p>Consulta códigos existentes, nuevos y detalles clave de prendas.</p>
+            <span class="cta">Abrir</span>
           </a>
         </section>
 
@@ -354,7 +529,100 @@
             </div>
           </div>
         </section>
+
+        <section class="section" id="base-datos-codigos">
+          <h2>Base de datos códigos HarujaGdl</h2>
+          <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
+          <div class="panel-controls">
+            <div class="filters-grid">
+              <div>
+                <label for="prendas-search">Buscar por código o descripción</label>
+                <input id="prendas-search" type="text" placeholder="Ej: HA12A003 o sudadera" />
+              </div>
+              <div>
+                <label for="prendas-status">Status</label>
+                <select id="prendas-status">
+                  <option value="todos">Todos</option>
+                  <option value="disponible">Disponible</option>
+                  <option value="vendido">Vendido</option>
+                </select>
+              </div>
+              <div>
+                <label for="prendas-proveedor">Proveedor</label>
+                <select id="prendas-proveedor">
+                  <option value="todos">Todos</option>
+                </select>
+              </div>
+              <div>
+                <label for="prendas-tipo">Tipo</label>
+                <select id="prendas-tipo">
+                  <option value="todos">Todos</option>
+                </select>
+              </div>
+              <div class="inline-toggle">
+                <input id="admin-toggle" type="checkbox" />
+                <label for="admin-toggle">Modo admin</label>
+              </div>
+            </div>
+            <div class="counters">
+              <div class="counter-card">
+                <span>Total</span>
+                <strong id="prendas-total">0</strong>
+              </div>
+              <div class="counter-card">
+                <span>Nuevos (7 días)</span>
+                <strong id="prendas-nuevos">0</strong>
+              </div>
+              <div class="counter-card">
+                <span>Existentes</span>
+                <strong id="prendas-existentes">0</strong>
+              </div>
+            </div>
+          </div>
+          <div id="prendas-alert" class="alert hidden"></div>
+          <div id="prendas-loader" class="loader hidden">
+            <span class="spinner"></span>
+            <span>Cargando base de datos...</span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Descripción</th>
+                  <th>Color</th>
+                  <th>Talla</th>
+                  <th>Proveedor</th>
+                  <th>Status</th>
+                  <th>Disponibilidad</th>
+                  <th>Fecha</th>
+                  <th class="admin-only">(Admin) Costo</th>
+                  <th class="admin-only">(Admin) Margen</th>
+                </tr>
+              </thead>
+              <tbody id="prendas-tbody"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button type="button" id="prendas-prev">Anterior</button>
+            <span id="prendas-page">Página 1</span>
+            <button type="button" id="prendas-next">Siguiente</button>
+          </div>
+        </section>
       </main>
+    </div>
+    <div id="admin-modal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Activar modo admin</h3>
+        <p class="muted">Ingresa la contraseña para ver costos y márgenes.</p>
+        <label for="admin-password">Contraseña</label>
+        <input id="admin-password" type="password" placeholder="********" />
+        <p id="admin-error" class="status error hidden"></p>
+        <div class="modal-actions">
+          <button type="button" id="admin-cancel">Cancelar</button>
+          <button type="button" id="admin-confirm">Confirmar</button>
+        </div>
+      </div>
     </div>
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -365,9 +633,11 @@
         doc,
         getDocs,
         query,
+        orderBy,
         runTransaction,
         serverTimestamp,
-        where
+        where,
+        limit
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -402,6 +672,27 @@
       const zplTextarea = document.getElementById("zpl-textarea");
       const zplCopy = document.getElementById("zpl-copy");
 
+      const prendasSearch = document.getElementById("prendas-search");
+      const prendasStatus = document.getElementById("prendas-status");
+      const prendasProveedor = document.getElementById("prendas-proveedor");
+      const prendasTipo = document.getElementById("prendas-tipo");
+      const prendasTotal = document.getElementById("prendas-total");
+      const prendasNuevos = document.getElementById("prendas-nuevos");
+      const prendasExistentes = document.getElementById("prendas-existentes");
+      const prendasTbody = document.getElementById("prendas-tbody");
+      const prendasPrev = document.getElementById("prendas-prev");
+      const prendasNext = document.getElementById("prendas-next");
+      const prendasPage = document.getElementById("prendas-page");
+      const prendasLoader = document.getElementById("prendas-loader");
+      const prendasAlert = document.getElementById("prendas-alert");
+      const adminToggle = document.getElementById("admin-toggle");
+      const adminModal = document.getElementById("admin-modal");
+      const adminPassword = document.getElementById("admin-password");
+      const adminError = document.getElementById("admin-error");
+      const adminCancel = document.getElementById("admin-cancel");
+      const adminConfirm = document.getElementById("admin-confirm");
+      const prendasPanel = document.getElementById("base-datos-codigos");
+
       const setRegistroStatus = (message, type = "") => {
         registroStatus.textContent = message;
         registroStatus.className = `status ${type}`.trim();
@@ -410,6 +701,46 @@
       const setZplStatus = (message, type = "") => {
         zplStatus.textContent = message;
         zplStatus.className = `status ${type}`.trim();
+      };
+
+      const safeString = (value) => {
+        if (value === null || value === undefined) return "";
+        return String(value);
+      };
+
+      const normalizeText = (value) =>
+        safeString(value)
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+
+      const formatDateDDMMYYYY = (date) => {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+          return "--";
+        }
+        const day = String(date.getDate()).padStart(2, "0");
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      const toDateValue = (value) => {
+        if (!value) return null;
+        if (value instanceof Date) return value;
+        if (typeof value?.toDate === "function") return value.toDate();
+        if (typeof value === "number") return new Date(value);
+        if (typeof value === "string") {
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        return null;
+      };
+
+      const isNew = (createdAt, days = 7) => {
+        const createdDate = toDateValue(createdAt);
+        if (!createdDate) return false;
+        const diff = Date.now() - createdDate.getTime();
+        return diff <= days * 24 * 60 * 60 * 1000;
       };
 
       const buildOption = ({ clave, valor }) => {
@@ -454,6 +785,18 @@
       };
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
+      const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
+      const PRENDAS_PAGE_SIZE = 50;
+      const ADMIN_PASSWORD = "HARUJA_ADMIN";
+      const ADMIN_SESSION_KEY = "haruja_admin_mode";
+
+      const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
+      const prendasState = {
+        data: [],
+        filtered: [],
+        page: 1,
+        isAdmin: false
+      };
 
       const loadCategoryEntries = async (category, collectionName) => {
         const snapshot = await getDocs(collection(db, collectionName));
@@ -490,6 +833,208 @@
           colores: results.find((result) => result.category === "colores")?.entries ?? [],
           tallas: results.find((result) => result.category === "tallas")?.entries ?? []
         };
+      };
+
+      const setPrendasLoading = (isLoading) => {
+        prendasLoader.classList.toggle("hidden", !isLoading);
+      };
+
+      const setPrendasAlert = (message = "") => {
+        if (message) {
+          prendasAlert.textContent = message;
+          prendasAlert.classList.remove("hidden");
+        } else {
+          prendasAlert.textContent = "";
+          prendasAlert.classList.add("hidden");
+        }
+      };
+
+      const getPrendaDate = (data) =>
+        toDateValue(data?.createdAt) ||
+        toDateValue(data?.fecha) ||
+        toDateValue(data?.updatedAt);
+
+      const buildFilterOptions = (selectEl, values) => {
+        const current = selectEl.value;
+        selectEl.innerHTML = "";
+        const allOption = document.createElement("option");
+        allOption.value = "todos";
+        allOption.textContent = "Todos";
+        selectEl.appendChild(allOption);
+        values.forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          selectEl.appendChild(option);
+        });
+        if (current) {
+          selectEl.value = current;
+        }
+      };
+
+      const updateFiltersFromData = (data) => {
+        const proveedores = new Set();
+        const tipos = new Set();
+        data.forEach((item) => {
+          const proveedor = safeString(item.proveedor || item.proveedorNombre);
+          const tipo = safeString(item.tipo || item.tipoNombre);
+          if (proveedor) proveedores.add(proveedor);
+          if (tipo) tipos.add(tipo);
+        });
+        buildFilterOptions(prendasProveedor, Array.from(proveedores).sort());
+        buildFilterOptions(prendasTipo, Array.from(tipos).sort());
+      };
+
+      const renderPrendasPanel = (data) => {
+        const total = data.length;
+        const nuevos = data.filter((item) => isNew(getPrendaDate(item))).length;
+        prendasTotal.textContent = total;
+        prendasNuevos.textContent = nuevos;
+        prendasExistentes.textContent = total - nuevos;
+
+        const totalPages = Math.max(1, Math.ceil(total / PRENDAS_PAGE_SIZE));
+        prendasState.page = Math.min(prendasState.page, totalPages);
+        const start = (prendasState.page - 1) * PRENDAS_PAGE_SIZE;
+        const pageData = data.slice(start, start + PRENDAS_PAGE_SIZE);
+
+        prendasPage.textContent = `Página ${prendasState.page} de ${totalPages}`;
+        prendasPrev.disabled = prendasState.page <= 1;
+        prendasNext.disabled = prendasState.page >= totalPages;
+
+        prendasTbody.innerHTML = "";
+        if (!pageData.length) {
+          const emptyRow = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.colSpan = 10;
+          cell.textContent = "No hay resultados con los filtros actuales.";
+          emptyRow.appendChild(cell);
+          prendasTbody.appendChild(emptyRow);
+          return;
+        }
+
+        pageData.forEach((item) => {
+          const codigo = safeString(item.code || item.codigo) || "--";
+          const descripcion = safeString(item.descripcion) || "--";
+          const color = safeString(item.color) || "--";
+          const talla = safeString(item.talla) || "--";
+          const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
+          const status = safeString(item.status) || "--";
+          const disponibilidad = safeString(item.disponibilidad) || "--";
+          const fechaTexto = safeString(item.fechaTexto);
+          const dateValue = getPrendaDate(item);
+          const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
+          const costo = safeString(item.costo) || "--";
+          const margen = safeString(item.margen) || "--";
+          const isNewItem = isNew(dateValue);
+          const statusBadge =
+            normalizeText(status) === "vendido"
+              ? `<span class="badge badge-sold">Vendido</span>`
+              : "";
+          const newBadge = isNewItem
+            ? `<span class="badge badge-new">Nuevo</span>`
+            : `<span class="badge badge-old">Existente</span>`;
+
+          const row = document.createElement("tr");
+          row.className = isNewItem ? "row-new" : "row-old";
+          row.innerHTML = `
+            <td>${codigo}</td>
+            <td>${descripcion}</td>
+            <td>${color}</td>
+            <td>${talla}</td>
+            <td>${proveedor}</td>
+            <td>
+              <div>${status}</div>
+              <div>${newBadge} ${statusBadge}</div>
+            </td>
+            <td>${disponibilidad}</td>
+            <td>${fecha}</td>
+            <td class="admin-only">${costo}</td>
+            <td class="admin-only">${margen}</td>
+          `;
+          prendasTbody.appendChild(row);
+        });
+      };
+
+      const applyFiltersAndRender = () => {
+        const searchTerm = normalizeText(prendasSearch.value);
+        const statusFilter = normalizeText(prendasStatus.value);
+        const proveedorFilter = normalizeText(prendasProveedor.value);
+        const tipoFilter = normalizeText(prendasTipo.value);
+
+        const filtered = prendasState.data.filter((item) => {
+          const codigo = safeString(item.code || item.codigo);
+          const descripcion = safeString(item.descripcion);
+          const textMatch = normalizeText(`${codigo} ${descripcion}`);
+          if (searchTerm && !textMatch.includes(searchTerm)) {
+            return false;
+          }
+
+          const statusValue = normalizeText(item.status || item.disponibilidad);
+          if (statusFilter !== "todos" && statusValue !== statusFilter) {
+            return false;
+          }
+
+          const proveedorValue = normalizeText(item.proveedor || item.proveedorNombre);
+          if (proveedorFilter !== "todos" && proveedorValue !== proveedorFilter) {
+            return false;
+          }
+
+          const tipoValue = normalizeText(item.tipo || item.tipoNombre);
+          if (tipoFilter !== "todos" && tipoValue !== tipoFilter) {
+            return false;
+          }
+
+          return true;
+        });
+
+        prendasState.filtered = filtered;
+        renderPrendasPanel(filtered);
+      };
+
+      const loadPrendas2025 = async () => {
+        setPrendasAlert("");
+        setPrendasLoading(true);
+        try {
+          let snapshot;
+          try {
+            snapshot = await getDocs(
+              query(prendas2025Ref, orderBy("createdAt", "desc"), limit(500))
+            );
+          } catch (error) {
+            console.warn("Fallback por createdAt falló, intentando fecha.", error);
+            try {
+              snapshot = await getDocs(
+                query(prendas2025Ref, orderBy("fecha", "desc"), limit(500))
+              );
+            } catch (fallbackError) {
+              console.warn("Fallback por fecha falló, intentando updatedAt.", fallbackError);
+              snapshot = await getDocs(
+                query(prendas2025Ref, orderBy("updatedAt", "desc"), limit(500))
+              );
+            }
+          }
+
+          const data = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data()
+          }));
+
+          data.sort((a, b) => {
+            const dateA = getPrendaDate(a)?.getTime() || 0;
+            const dateB = getPrendaDate(b)?.getTime() || 0;
+            return dateB - dateA;
+          });
+
+          prendasState.data = data;
+          prendasState.page = 1;
+          updateFiltersFromData(data);
+          applyFiltersAndRender();
+        } catch (error) {
+          console.error(error);
+          setPrendasAlert("No se pudo cargar la base de datos de códigos.");
+        } finally {
+          setPrendasLoading(false);
+        }
       };
 
       const ensureRequired = () => {
@@ -701,6 +1246,82 @@
         }
       });
 
+      const setAdminMode = (enabled) => {
+        prendasState.isAdmin = enabled;
+        prendasPanel.classList.toggle("admin-enabled", enabled);
+        adminToggle.checked = enabled;
+        if (enabled) {
+          sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+        } else {
+          sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        }
+      };
+
+      const openAdminModal = () => {
+        adminPassword.value = "";
+        adminError.textContent = "";
+        adminError.classList.add("hidden");
+        adminModal.classList.remove("hidden");
+        adminPassword.focus();
+      };
+
+      const closeAdminModal = () => {
+        adminModal.classList.add("hidden");
+      };
+
+      adminToggle.addEventListener("change", () => {
+        if (adminToggle.checked) {
+          openAdminModal();
+        } else {
+          setAdminMode(false);
+        }
+      });
+
+      adminCancel.addEventListener("click", () => {
+        closeAdminModal();
+        setAdminMode(false);
+      });
+
+      adminConfirm.addEventListener("click", () => {
+        const value = adminPassword.value.trim();
+        if (value === ADMIN_PASSWORD) {
+          setAdminMode(true);
+          closeAdminModal();
+        } else {
+          adminError.textContent = "Contraseña incorrecta. Intenta nuevamente.";
+          adminError.classList.remove("hidden");
+        }
+      });
+
+      adminModal.addEventListener("click", (event) => {
+        if (event.target === adminModal) {
+          closeAdminModal();
+          setAdminMode(false);
+        }
+      });
+
+      [prendasSearch, prendasStatus, prendasProveedor, prendasTipo].forEach((element) => {
+        element.addEventListener("input", () => {
+          prendasState.page = 1;
+          applyFiltersAndRender();
+        });
+        element.addEventListener("change", () => {
+          prendasState.page = 1;
+          applyFiltersAndRender();
+        });
+      });
+
+      prendasPrev.addEventListener("click", () => {
+        prendasState.page = Math.max(1, prendasState.page - 1);
+        renderPrendasPanel(prendasState.filtered);
+      });
+
+      prendasNext.addEventListener("click", () => {
+        const totalPages = Math.max(1, Math.ceil(prendasState.filtered.length / PRENDAS_PAGE_SIZE));
+        prendasState.page = Math.min(totalPages, prendasState.page + 1);
+        renderPrendasPanel(prendasState.filtered);
+      });
+
       const init = async () => {
         try {
           setRegistroStatus("Cargando diccionario...");
@@ -764,6 +1385,11 @@
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
           registroSubmit.disabled = true;
           console.error(error);
+        } finally {
+          if (sessionStorage.getItem(ADMIN_SESSION_KEY) === "true") {
+            setAdminMode(true);
+          }
+          await loadPrendas2025();
         }
       };
 
