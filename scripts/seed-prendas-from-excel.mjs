@@ -9,6 +9,10 @@ const COLLECTION_NAME = "HarujaPrendas_2025";
 const SOURCE_TAG = "seed-excel-harujaPrendas2025";
 const BATCH_LIMIT = 450;
 
+/**
+ * Mapeo de encabezados del Excel -> campos Firestore
+ * (normalizamos acentos/espacios)
+ */
 const HEADER_FIELD_MAP = {
   codigo: "code",
   tipo: "tipo",
@@ -34,7 +38,17 @@ const normalizeHeader = (value) =>
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "");
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const normalizeCode = (value) => String(value || "").trim().toUpperCase();
+
+/**
+ * Firestore NO permite "/" en docId (porque separa rutas).
+ * Ej: "HA32001/RP-UN" -> "HA32001__RP-UN"
+ */
+const makeSafeDocId = (code) => normalizeCode(code).replaceAll("/", "__");
 
 const parseBoolean = (value, defaultValue = true) => {
   if (value === undefined || value === null) return defaultValue;
@@ -50,22 +64,29 @@ const parseArgs = () => {
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+
     if (arg === "--dry-run" || arg === "--dryRun") {
-      result.dryRun = args[i + 1];
+      const next = args[i + 1];
+      result.dryRun = next ?? "true";
       i += 1;
       continue;
     }
-    if (arg.startsWith("--dry-run=")) {
+    if (arg.startsWith("--dry-run=") || arg.startsWith("--dryRun=")) {
       result.dryRun = arg.split("=")[1];
       continue;
     }
-    if (arg === "--excel") {
-      result.excelPath = args[i + 1];
-      i += 1;
+
+    if (arg === "--excel" || arg === "--excelPath") {
+      const next = args[i + 1];
+      if (next) {
+        result.excelPath = next;
+        i += 1;
+      }
       continue;
     }
-    if (arg.startsWith("--excel=")) {
+    if (arg.startsWith("--excel=") || arg.startsWith("--excelPath=")) {
       result.excelPath = arg.split("=")[1];
+      continue;
     }
   }
 
@@ -81,12 +102,21 @@ const parseNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+/**
+ * Parse código Haruja:
+ * HA{provider}{type}{seq3}/{color}-{talla}
+ * Ej: HA4A027/BG-M
+ *
+ * provider puede ser 1+ dígitos (ej: 4, 32, 102)
+ * type es 1 letra
+ * seq es 3 dígitos
+ */
 const parseCodigo = (raw) => {
-  const s = String(raw || "").trim().toUpperCase();
+  const s = normalizeCode(raw);
   const slash = s.indexOf("/");
   if (!s.startsWith("HA") || slash === -1) return null;
 
-  const body = s.slice(2, slash);
+  const body = s.slice(2, slash); // todo antes del /
   if (body.length < 5) return null;
 
   const seqStr = body.slice(-3);
@@ -95,7 +125,6 @@ const parseCodigo = (raw) => {
   const seqNumber = Number(seqStr);
 
   if (!providerCode || !typeCode || !Number.isFinite(seqNumber)) return null;
-
   return { providerCode, typeCode, seqNumber };
 };
 
@@ -117,11 +146,13 @@ const parseFecha = (value) => {
     return { fechaTexto: null, fechaDate: null };
   }
 
+  // Si xlsx ya la trajo como Date
   if (value instanceof Date) {
     const date = new Date(value.getFullYear(), value.getMonth(), value.getDate());
     return { fechaTexto: formatDateText(date), fechaDate: date };
   }
 
+  // Serial de Excel
   if (typeof value === "number") {
     const date = parseExcelSerialDate(value);
     if (!date) return { fechaTexto: String(value), fechaDate: null };
@@ -131,6 +162,8 @@ const parseFecha = (value) => {
 
   const raw = String(value).trim();
   if (!raw) return { fechaTexto: null, fechaDate: null };
+
+  // dd/mm/yyyy o dd-mm-yyyy
   const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
   if (!match) return { fechaTexto: raw, fechaDate: null };
 
@@ -140,7 +173,7 @@ const parseFecha = (value) => {
   const date = new Date(year, month - 1, day);
 
   if (Number.isNaN(date.getTime())) return { fechaTexto: raw, fechaDate: null };
-  return { fechaTexto: raw, fechaDate: date };
+  return { fechaTexto: formatDateText(date), fechaDate: date };
 };
 
 const loadServiceAccount = () => {
@@ -176,18 +209,22 @@ const main = async () => {
 
   const workbook = xlsx.readFile(fullPath, { cellDates: true });
   const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    throw new Error("El Excel no contiene hojas.");
-  }
+  if (!sheetName) throw new Error("El Excel no contiene hojas.");
 
   const sheet = workbook.Sheets[sheetName];
-  const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
-  if (rows.length < 2) {
-    throw new Error("El Excel no contiene filas de datos.");
-  }
+  const rows = xlsx.utils.sheet_to_json(sheet, {
+    header: 1,
+    defval: null,
+    raw: true,
+    blankrows: false,
+  });
 
+  if (rows.length < 2) throw new Error("El Excel no contiene filas de datos.");
+
+  // Headers
   const headerRow = rows[0];
   const headerIndexes = new Map();
+
   headerRow.forEach((header, index) => {
     const normalized = normalizeHeader(header);
     if (!normalized) return;
@@ -204,13 +241,14 @@ const main = async () => {
     if (row.every((cell) => cell === null || cell === undefined || cell === "")) return;
 
     const rowNumber = idx + 2;
+
     const getValue = (field) => {
       const colIndex = headerIndexes.get(field);
       if (colIndex === undefined) return null;
       return row[colIndex];
     };
 
-    const codeRaw = String(getValue("code") ?? "").trim();
+    const codeRaw = normalizeCode(getValue("code"));
     if (!codeRaw) {
       invalids.push({ rowNumber, code: null, reason: "Sin Código" });
       return;
@@ -223,16 +261,27 @@ const main = async () => {
     }
 
     const { fechaTexto, fechaDate } = parseFecha(getValue("fecha"));
+
+    // Si hay algo en fecha pero no se pudo parsear, lo marcamos inválido.
+    // (Si prefieres NO invalidar por fecha, te lo cambio.)
     if (fechaTexto && !fechaDate) {
       invalids.push({ rowNumber, code: codeRaw, reason: `Fecha inválida (${fechaTexto})` });
       return;
     }
 
+    const docId = makeSafeDocId(codeRaw);
+
     const docData = {
+      // Mantén "code" como en tu app actual:
       code: codeRaw,
+      // Alias útil por claridad:
+      codigo: codeRaw,
+
+      docId, // debug
       providerCode: parsedCode.providerCode,
       typeCode: parsedCode.typeCode,
       seqNumber: parsedCode.seqNumber,
+
       source: SOURCE_TAG,
     };
 
@@ -249,13 +298,11 @@ const main = async () => {
     setField("disponibilidad", String(getValue("disponibilidad") ?? "").trim());
     setField("proveedor", String(getValue("proveedor") ?? "").trim());
 
-    if (fechaTexto) {
-      docData.fechaTexto = fechaTexto;
-      if (fechaDate) {
-        docData.fecha = admin.firestore.Timestamp.fromDate(
-          new Date(fechaDate.getFullYear(), fechaDate.getMonth(), fechaDate.getDate())
-        );
-      }
+    if (fechaDate) {
+      docData.fechaTexto = fechaTexto; // DD/MM/YYYY
+      docData.fecha = admin.firestore.Timestamp.fromDate(
+        new Date(fechaDate.getFullYear(), fechaDate.getMonth(), fechaDate.getDate())
+      );
     }
 
     setField("precio", parseNumber(getValue("precio")));
@@ -266,7 +313,7 @@ const main = async () => {
     setField("costoSubtotal", parseNumber(getValue("costoSubtotal")));
     setField("margen", parseNumber(getValue("margen")));
 
-    documents.push({ docId: codeRaw, data: docData });
+    documents.push({ docId, data: docData });
   });
 
   console.log(`Archivo: ${excelPath}`);
@@ -278,14 +325,15 @@ const main = async () => {
     console.log("---");
     console.log("Top 10 inválidos:");
     invalids.slice(0, 10).forEach((item, index) => {
-      console.log(
-        `${index + 1}. Fila ${item.rowNumber} (${item.code ?? "sin código"}): ${item.reason}`
-      );
+      console.log(`${index + 1}. Fila ${item.rowNumber} (${item.code ?? "sin código"}): ${item.reason}`);
     });
   }
 
   if (dryRun) {
+    console.log("---");
     console.log("DRY_RUN=true → no se escribirá en Firestore.");
+    console.log("Ejemplo (top 5) docIds a escribir:");
+    documents.slice(0, 5).forEach((d) => console.log(`- ${d.docId}  (code=${d.data.code})`));
     return;
   }
 
@@ -295,8 +343,10 @@ const main = async () => {
 
   for (let i = 0; i < documents.length; i += BATCH_LIMIT) {
     const chunk = documents.slice(i, i + BATCH_LIMIT);
+
     const refs = chunk.map((doc) => collectionRef.doc(doc.docId));
     const snapshots = await db.getAll(...refs);
+
     const batch = db.batch();
 
     snapshots.forEach((snap, index) => {
