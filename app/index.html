@@ -560,8 +560,8 @@
                 </select>
               </div>
               <div class="inline-toggle">
-                <input id="admin-toggle" type="checkbox" />
-                <label for="admin-toggle">Modo admin</label>
+                <input id="adminSwitch" type="checkbox" />
+                <label for="adminSwitch">Modo admin</label>
               </div>
             </div>
             <div class="counters">
@@ -608,21 +608,21 @@
             <span id="prendas-page">Página 1</span>
             <button type="button" id="prendas-next">Siguiente</button>
           </div>
+          <div id="adminModal" class="modal hidden">
+            <div class="modal-card">
+              <h3>Activar modo admin</h3>
+              <p class="muted">Ingresa la contraseña para ver costos y márgenes.</p>
+              <label for="adminPassword">Contraseña</label>
+              <input id="adminPassword" type="password" placeholder="********" />
+              <p id="adminError" class="status error hidden"></p>
+              <div class="modal-actions">
+                <button type="button" id="adminCancelBtn">Cancelar</button>
+                <button type="button" id="adminConfirmBtn">Confirmar</button>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
-    </div>
-    <div id="admin-modal" class="modal hidden">
-      <div class="modal-card">
-        <h3>Activar modo admin</h3>
-        <p class="muted">Ingresa la contraseña para ver costos y márgenes.</p>
-        <label for="admin-password">Contraseña</label>
-        <input id="admin-password" type="password" placeholder="********" />
-        <p id="admin-error" class="status error hidden"></p>
-        <div class="modal-actions">
-          <button type="button" id="admin-cancel">Cancelar</button>
-          <button type="button" id="admin-confirm">Confirmar</button>
-        </div>
-      </div>
     </div>
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -685,13 +685,13 @@
       const prendasPage = document.getElementById("prendas-page");
       const prendasLoader = document.getElementById("prendas-loader");
       const prendasAlert = document.getElementById("prendas-alert");
-      const adminToggle = document.getElementById("admin-toggle");
-      const adminModal = document.getElementById("admin-modal");
-      const adminPassword = document.getElementById("admin-password");
-      const adminError = document.getElementById("admin-error");
-      const adminCancel = document.getElementById("admin-cancel");
-      const adminConfirm = document.getElementById("admin-confirm");
       const prendasPanel = document.getElementById("base-datos-codigos");
+      const adminSwitch = prendasPanel.querySelector("#adminSwitch");
+      const adminModal = prendasPanel.querySelector("#adminModal");
+      const adminPassword = prendasPanel.querySelector("#adminPassword");
+      const adminError = prendasPanel.querySelector("#adminError");
+      const adminCancel = prendasPanel.querySelector("#adminCancelBtn");
+      const adminConfirm = prendasPanel.querySelector("#adminConfirmBtn");
 
       const setRegistroStatus = (message, type = "") => {
         registroStatus.textContent = message;
@@ -788,7 +788,7 @@
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
       const PRENDAS_PAGE_SIZE = 50;
       const ADMIN_PASSWORD = "HARUJA_ADMIN";
-      const ADMIN_SESSION_KEY = "haruja_admin_mode";
+      const ADMIN_SESSION_KEY = "haruja_admin_ok";
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
@@ -1246,12 +1246,16 @@
         }
       });
 
-      const setAdminMode = (enabled) => {
+      const isAdminEnabled = () => sessionStorage.getItem(ADMIN_SESSION_KEY) === "1";
+
+      const applyAdminVisibility = (enabled) => {
         prendasState.isAdmin = enabled;
         prendasPanel.classList.toggle("admin-enabled", enabled);
-        adminToggle.checked = enabled;
+        if (adminSwitch) {
+          adminSwitch.checked = enabled;
+        }
         if (enabled) {
-          sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+          sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
         } else {
           sessionStorage.removeItem(ADMIN_SESSION_KEY);
         }
@@ -1269,34 +1273,61 @@
         adminModal.classList.add("hidden");
       };
 
-      adminToggle.addEventListener("change", () => {
-        if (adminToggle.checked) {
-          openAdminModal();
-        } else {
-          setAdminMode(false);
-        }
-      });
-
-      adminCancel.addEventListener("click", () => {
-        closeAdminModal();
-        setAdminMode(false);
-      });
-
-      adminConfirm.addEventListener("click", () => {
+      const confirmAdminPassword = () => {
         const value = adminPassword.value.trim();
         if (value === ADMIN_PASSWORD) {
-          setAdminMode(true);
+          applyAdminVisibility(true);
           closeAdminModal();
+          applyFiltersAndRender();
         } else {
           adminError.textContent = "Contraseña incorrecta. Intenta nuevamente.";
           adminError.classList.remove("hidden");
         }
+      };
+
+      const resetAdminSwitch = () => {
+        if (adminSwitch) {
+          adminSwitch.checked = false;
+        }
+        applyAdminVisibility(false);
+      };
+
+      prendasPanel.addEventListener("change", (event) => {
+        if (event.target?.id !== "adminSwitch") return;
+        if (event.target.checked) {
+          if (isAdminEnabled()) {
+            applyAdminVisibility(true);
+          } else {
+            event.target.checked = false;
+            openAdminModal();
+          }
+        } else {
+          applyAdminVisibility(false);
+        }
       });
 
-      adminModal.addEventListener("click", (event) => {
+      prendasPanel.addEventListener("click", (event) => {
+        if (event.target?.id === "adminConfirmBtn") {
+          event.preventDefault();
+          confirmAdminPassword();
+          return;
+        }
+        if (event.target?.id === "adminCancelBtn") {
+          event.preventDefault();
+          closeAdminModal();
+          resetAdminSwitch();
+          return;
+        }
         if (event.target === adminModal) {
           closeAdminModal();
-          setAdminMode(false);
+          resetAdminSwitch();
+        }
+      });
+
+      prendasPanel.addEventListener("keydown", (event) => {
+        if (event.target?.id === "adminPassword" && event.key === "Enter") {
+          event.preventDefault();
+          confirmAdminPassword();
         }
       });
 
@@ -1386,9 +1417,7 @@
           registroSubmit.disabled = true;
           console.error(error);
         } finally {
-          if (sessionStorage.getItem(ADMIN_SESSION_KEY) === "true") {
-            setAdminMode(true);
-          }
+          applyAdminVisibility(isAdminEnabled());
           await loadPrendas2025();
         }
       };
