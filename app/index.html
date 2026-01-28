@@ -371,42 +371,12 @@
         min-width: 120px;
       }
 
-      .admin-only {
-        display: none;
+      #dbCodigosSection .admin-only {
+        display: none !important;
       }
 
-      .admin-enabled .admin-only {
-        display: table-cell;
-      }
-
-      .modal {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        z-index: 999;
-      }
-
-      .modal-card {
-        background: var(--card);
-        border-radius: 16px;
-        padding: 20px;
-        width: min(420px, 100%);
-        box-shadow: var(--shadow);
-      }
-
-      .modal-card h3 {
-        margin: 0 0 8px;
-      }
-
-      .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        margin-top: 16px;
+      #dbCodigosSection.admin-enabled .admin-only {
+        display: revert !important;
       }
 
       @media (max-width: 600px) {
@@ -531,95 +501,84 @@
         </section>
 
         <section class="section" id="base-datos-codigos">
-          <h2>Base de datos códigos HarujaGdl</h2>
-          <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
-          <div class="panel-controls">
-            <div class="filters-grid">
-              <div>
-                <label for="prendas-search">Buscar por código o descripción</label>
-                <input id="prendas-search" type="text" placeholder="Ej: HA12A003 o sudadera" />
+          <div id="dbCodigosSection">
+            <h2>Base de datos códigos HarujaGdl</h2>
+            <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
+            <div class="panel-controls">
+              <div class="filters-grid">
+                <div>
+                  <label for="prendas-search">Buscar por código o descripción</label>
+                  <input id="prendas-search" type="text" placeholder="Ej: HA12A003 o sudadera" />
+                </div>
+                <div>
+                  <label for="prendas-status">Status</label>
+                  <select id="prendas-status">
+                    <option value="todos">Todos</option>
+                    <option value="disponible">Disponible</option>
+                    <option value="vendido">Vendido</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="prendas-proveedor">Proveedor</label>
+                  <select id="prendas-proveedor">
+                    <option value="todos">Todos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="prendas-tipo">Tipo</label>
+                  <select id="prendas-tipo">
+                    <option value="todos">Todos</option>
+                  </select>
+                </div>
+                <div class="inline-toggle">
+                  <input id="adminToggleDb" type="checkbox" />
+                  <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
+                </div>
               </div>
-              <div>
-                <label for="prendas-status">Status</label>
-                <select id="prendas-status">
-                  <option value="todos">Todos</option>
-                  <option value="disponible">Disponible</option>
-                  <option value="vendido">Vendido</option>
-                </select>
-              </div>
-              <div>
-                <label for="prendas-proveedor">Proveedor</label>
-                <select id="prendas-proveedor">
-                  <option value="todos">Todos</option>
-                </select>
-              </div>
-              <div>
-                <label for="prendas-tipo">Tipo</label>
-                <select id="prendas-tipo">
-                  <option value="todos">Todos</option>
-                </select>
-              </div>
-              <div class="inline-toggle">
-                <input id="adminSwitch" type="checkbox" />
-                <label for="adminSwitch">Modo admin</label>
+              <div class="counters">
+                <div class="counter-card">
+                  <span>Total</span>
+                  <strong id="prendas-total">0</strong>
+                </div>
+                <div class="counter-card">
+                  <span>Nuevos (7 días)</span>
+                  <strong id="prendas-nuevos">0</strong>
+                </div>
+                <div class="counter-card">
+                  <span>Existentes</span>
+                  <strong id="prendas-existentes">0</strong>
+                </div>
               </div>
             </div>
-            <div class="counters">
-              <div class="counter-card">
-                <span>Total</span>
-                <strong id="prendas-total">0</strong>
-              </div>
-              <div class="counter-card">
-                <span>Nuevos (7 días)</span>
-                <strong id="prendas-nuevos">0</strong>
-              </div>
-              <div class="counter-card">
-                <span>Existentes</span>
-                <strong id="prendas-existentes">0</strong>
-              </div>
+            <div id="prendas-alert" class="alert hidden"></div>
+            <div id="prendas-loader" class="loader hidden">
+              <span class="spinner"></span>
+              <span>Cargando base de datos...</span>
             </div>
-          </div>
-          <div id="prendas-alert" class="alert hidden"></div>
-          <div id="prendas-loader" class="loader hidden">
-            <span class="spinner"></span>
-            <span>Cargando base de datos...</span>
-          </div>
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Descripción</th>
-                  <th>Color</th>
-                  <th>Talla</th>
-                  <th>Proveedor</th>
-                  <th>Status</th>
-                  <th>Disponibilidad</th>
-                  <th>Fecha</th>
-                  <th class="admin-only">(Admin) Costo</th>
-                  <th class="admin-only">(Admin) Margen</th>
-                  <th class="admin-only">(Admin) Utilidad</th>
-                </tr>
-              </thead>
-              <tbody id="prendas-tbody"></tbody>
-            </table>
-          </div>
-          <div class="pagination">
-            <button type="button" id="prendas-prev">Anterior</button>
-            <span id="prendas-page">Página 1</span>
-            <button type="button" id="prendas-next">Siguiente</button>
-          </div>
-          <div id="adminModal" class="modal hidden">
-            <div class="modal-card">
-              <h3>Activar modo admin</h3>
-              <p class="muted">Ingresa la contraseña para ver costos y márgenes.</p>
-              <label for="adminPassword">Contraseña</label>
-              <input id="adminPassword" type="password" placeholder="********" />
-              <p id="adminError" class="status error hidden"></p>
-              <div class="modal-actions">
-                <button type="button" id="adminCancelBtn">Cancelar</button>
-                <button type="button" id="adminConfirmBtn">Confirmar</button>
-              </div>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Color</th>
+                    <th>Talla</th>
+                    <th>Proveedor</th>
+                    <th>Status</th>
+                    <th>Disponibilidad</th>
+                    <th>Fecha</th>
+                    <th class="admin-only">(Admin) Costo</th>
+                    <th class="admin-only">(Admin) Margen</th>
+                    <th class="admin-only">(Admin) Utilidad</th>
+                  </tr>
+                </thead>
+                <tbody id="prendas-tbody"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button type="button" id="prendas-prev">Anterior</button>
+              <span id="prendas-page">Página 1</span>
+              <button type="button" id="prendas-next">Siguiente</button>
             </div>
           </div>
         </section>
@@ -687,12 +646,8 @@
       const prendasLoader = document.getElementById("prendas-loader");
       const prendasAlert = document.getElementById("prendas-alert");
       const prendasPanel = document.getElementById("base-datos-codigos");
-      const adminSwitch = prendasPanel.querySelector("#adminSwitch");
-      const adminModal = prendasPanel.querySelector("#adminModal");
-      const adminPassword = prendasPanel.querySelector("#adminPassword");
-      const adminError = prendasPanel.querySelector("#adminError");
-      const adminCancel = prendasPanel.querySelector("#adminCancelBtn");
-      const adminConfirm = prendasPanel.querySelector("#adminConfirmBtn");
+      const dbCodigosSection = document.getElementById("dbCodigosSection");
+      const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
 
       const setRegistroStatus = (message, type = "") => {
         registroStatus.textContent = message;
@@ -788,7 +743,6 @@
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
       const PRENDAS_PAGE_SIZE = 50;
-      const ADMIN_PASSWORD = "HARUJA_ADMIN";
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
@@ -1250,134 +1204,47 @@
 
       // ADMIN DB MODE START
       const ADMIN_KEY = "haruja_admin_db";
-      const DB_ROOT_SELECTOR = "#base-datos-codigos";
       const DB_TAB_HASH = "#base-datos-codigos";
-      let currentTab = window.location.hash || "";
 
-      const isDbTabActive = () => currentTab === DB_TAB_HASH;
+      const getAdminEnabled = () => sessionStorage.getItem(ADMIN_KEY) === "1";
 
-      const applyDbAdminVisibility = (enabled) => {
-        const root = document.querySelector(DB_ROOT_SELECTOR);
-        if (!root) return;
-        root.querySelectorAll(".admin-only").forEach((el) => {
-          el.style.display = enabled ? "" : "none";
-        });
-        if (adminSwitch) {
-          adminSwitch.checked = enabled;
+      const setAdminEnabled = (enabled) => {
+        sessionStorage.setItem(ADMIN_KEY, enabled ? "1" : "0");
+      };
+
+      const applyAdminUI = () => {
+        const enabled = getAdminEnabled();
+        if (dbCodigosSection) {
+          dbCodigosSection.classList.toggle("admin-enabled", enabled);
+        }
+        if (adminToggleDb) {
+          adminToggleDb.checked = enabled;
         }
       };
 
-      const isAdminEnabled = () => sessionStorage.getItem(ADMIN_KEY) === "1";
-
-      const enableAdmin = () => {
-        sessionStorage.setItem(ADMIN_KEY, "1");
-        applyDbAdminVisibility(true);
+      const handleAdminToggle = (event) => {
+        setAdminEnabled(event.target.checked);
+        applyAdminUI();
       };
 
-      const disableAdmin = () => {
-        sessionStorage.removeItem(ADMIN_KEY);
-        applyDbAdminVisibility(false);
-      };
-
-      const resetAdminModalState = () => {
-        adminPassword.value = "";
-        adminError.textContent = "";
-        adminError.classList.add("hidden");
-      };
-
-      const openAdminModal = () => {
-        if (!isDbTabActive()) return;
-        resetAdminModalState();
-        adminModal.classList.remove("hidden");
-        adminPassword.focus();
-      };
-
-      const closeAdminModal = () => {
-        adminModal.classList.add("hidden");
-        resetAdminModalState();
-      };
-
-      const confirmAdminPassword = () => {
-        const value = adminPassword.value.trim();
-        if (value === ADMIN_PASSWORD) {
-          enableAdmin();
-          closeAdminModal();
-          applyFiltersAndRender();
-        } else {
-          adminError.textContent = "Contraseña incorrecta";
-          adminError.classList.remove("hidden");
+      const handleTabChange = (hash) => {
+        if (hash === DB_TAB_HASH) {
+          applyAdminUI();
         }
       };
 
-      const resetAdminSwitch = () => {
-        if (adminSwitch) {
-          adminSwitch.checked = false;
-        }
-        disableAdmin();
-      };
+      if (adminToggleDb) {
+        adminToggleDb.addEventListener("change", handleAdminToggle);
+      }
 
-      const setCurrentTab = (hash) => {
-        currentTab = hash || "";
-        if (!isDbTabActive()) {
-          closeAdminModal();
-          return;
-        }
-        applyDbAdminVisibility(isAdminEnabled());
-      };
-
-      prendasPanel.addEventListener("change", (event) => {
-        if (event.target?.id !== "adminSwitch") return;
-        if (!isDbTabActive()) {
-          event.target.checked = false;
-          return;
-        }
-        if (event.target.checked) {
-          if (isAdminEnabled()) {
-            applyDbAdminVisibility(true);
-          } else {
-            event.target.checked = false;
-            openAdminModal();
-          }
-        } else {
-          disableAdmin();
-        }
+      window.addEventListener("hashchange", () => {
+        handleTabChange(window.location.hash);
       });
-
-      adminConfirm.addEventListener("click", (event) => {
-        event.preventDefault();
-        confirmAdminPassword();
-      });
-
-      adminCancel.addEventListener("click", (event) => {
-        event.preventDefault();
-        closeAdminModal();
-        resetAdminSwitch();
-      });
-
-      prendasPanel.addEventListener("click", (event) => {
-        if (event.target === adminModal) {
-          closeAdminModal();
-          resetAdminSwitch();
-        }
-      });
-
-      prendasPanel.addEventListener("keydown", (event) => {
-        if (event.target?.id === "adminPassword" && event.key === "Enter") {
-          event.preventDefault();
-          confirmAdminPassword();
-        }
-      });
-
-      const handleTabChange = () => {
-        setCurrentTab(window.location.hash);
-      };
-
-      window.addEventListener("hashchange", handleTabChange);
 
       document.querySelectorAll('a.card[href^="#"]').forEach((link) => {
         link.addEventListener("click", (event) => {
           const hash = event.currentTarget.getAttribute("href") || "";
-          setCurrentTab(hash);
+          handleTabChange(hash);
         });
       });
       // ADMIN DB MODE END
@@ -1469,7 +1336,8 @@
           console.error(error);
         } finally {
           // ADMIN DB MODE START
-          setCurrentTab(window.location.hash);
+          applyAdminUI();
+          handleTabChange(window.location.hash);
           // ADMIN DB MODE END
           await loadPrendas2025();
         }
