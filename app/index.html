@@ -1248,11 +1248,18 @@
         }
       });
 
-      // ADMIN MODE LOGIC START
-      const isAdminEnabled = () => sessionStorage.getItem("haruja_admin") === "1";
+      // ADMIN DB MODE START
+      const ADMIN_KEY = "haruja_admin_db";
+      const DB_ROOT_SELECTOR = "#base-datos-codigos";
+      const DB_TAB_HASH = "#base-datos-codigos";
+      let currentTab = window.location.hash || "";
 
-      const applyAdminVisibility = (enabled) => {
-        document.querySelectorAll(".admin-only").forEach((el) => {
+      const isDbTabActive = () => currentTab === DB_TAB_HASH;
+
+      const applyDbAdminVisibility = (enabled) => {
+        const root = document.querySelector(DB_ROOT_SELECTOR);
+        if (!root) return;
+        root.querySelectorAll(".admin-only").forEach((el) => {
           el.style.display = enabled ? "" : "none";
         });
         if (adminSwitch) {
@@ -1260,27 +1267,34 @@
         }
       };
 
+      const isAdminEnabled = () => sessionStorage.getItem(ADMIN_KEY) === "1";
+
       const enableAdmin = () => {
-        sessionStorage.setItem("haruja_admin", "1");
-        applyAdminVisibility(true);
+        sessionStorage.setItem(ADMIN_KEY, "1");
+        applyDbAdminVisibility(true);
       };
 
       const disableAdmin = () => {
-        sessionStorage.removeItem("haruja_admin");
-        applyAdminVisibility(false);
+        sessionStorage.removeItem(ADMIN_KEY);
+        applyDbAdminVisibility(false);
       };
-      // ADMIN MODE LOGIC END
 
-      const openAdminModal = () => {
+      const resetAdminModalState = () => {
         adminPassword.value = "";
         adminError.textContent = "";
         adminError.classList.add("hidden");
+      };
+
+      const openAdminModal = () => {
+        if (!isDbTabActive()) return;
+        resetAdminModalState();
         adminModal.classList.remove("hidden");
         adminPassword.focus();
       };
 
       const closeAdminModal = () => {
         adminModal.classList.add("hidden");
+        resetAdminModalState();
       };
 
       const confirmAdminPassword = () => {
@@ -1302,11 +1316,24 @@
         disableAdmin();
       };
 
+      const setCurrentTab = (hash) => {
+        currentTab = hash || "";
+        if (!isDbTabActive()) {
+          closeAdminModal();
+          return;
+        }
+        applyDbAdminVisibility(isAdminEnabled());
+      };
+
       prendasPanel.addEventListener("change", (event) => {
         if (event.target?.id !== "adminSwitch") return;
+        if (!isDbTabActive()) {
+          event.target.checked = false;
+          return;
+        }
         if (event.target.checked) {
           if (isAdminEnabled()) {
-            applyAdminVisibility(true);
+            applyDbAdminVisibility(true);
           } else {
             event.target.checked = false;
             openAdminModal();
@@ -1341,13 +1368,19 @@
         }
       });
 
-      const handleDatabaseTab = () => {
-        if (window.location.hash === "#base-datos-codigos") {
-          applyAdminVisibility(isAdminEnabled());
-        }
+      const handleTabChange = () => {
+        setCurrentTab(window.location.hash);
       };
 
-      window.addEventListener("hashchange", handleDatabaseTab);
+      window.addEventListener("hashchange", handleTabChange);
+
+      document.querySelectorAll('a.card[href^="#"]').forEach((link) => {
+        link.addEventListener("click", (event) => {
+          const hash = event.currentTarget.getAttribute("href") || "";
+          setCurrentTab(hash);
+        });
+      });
+      // ADMIN DB MODE END
 
       [prendasSearch, prendasStatus, prendasProveedor, prendasTipo].forEach((element) => {
         element.addEventListener("input", () => {
@@ -1435,8 +1468,9 @@
           registroSubmit.disabled = true;
           console.error(error);
         } finally {
-          applyAdminVisibility(isAdminEnabled());
-          handleDatabaseTab();
+          // ADMIN DB MODE START
+          setCurrentTab(window.location.hash);
+          // ADMIN DB MODE END
           await loadPrendas2025();
         }
       };
