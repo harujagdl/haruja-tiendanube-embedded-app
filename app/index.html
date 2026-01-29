@@ -569,7 +569,7 @@
                 </div>
                 <div>
                   <label>&nbsp;</label>
-                  <button type="button" id="prendas-precio-apply">Aplicar precio</button>
+                  <button type="button" id="prendas-precio-apply">Aplicar filtros</button>
                 </div>
                 <div class="inline-toggle">
                   <input id="adminToggleDb" type="checkbox" />
@@ -628,6 +628,7 @@
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
       import {
         getFirestore,
+        initializeFirestore,
         collection,
         addDoc,
         doc,
@@ -639,7 +640,8 @@
         startAfter,
         where,
         limit,
-        getCountFromServer
+        getCountFromServer,
+        persistentLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
@@ -653,7 +655,15 @@
       };
 
       const app = initializeApp(firebaseConfig);
-      const db = getFirestore(app);
+      let db;
+      try {
+        db = initializeFirestore(app, {
+          localCache: persistentLocalCache()
+        });
+      } catch (error) {
+        console.warn("Firestore: no se pudo activar cache offline.", error);
+        db = getFirestore(app);
+      }
       const prendasRef = collection(db, "prendas");
       const registroForm = document.getElementById("registro-form");
       const registroStatus = document.getElementById("registro-status");
@@ -794,8 +804,11 @@
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
-      const PRENDAS_PAGE_SIZE = 250;
-      const PRENDAS_SEARCH_DEBOUNCE = 300;
+      const PRENDAS_PAGE_SIZE_FIRST = 80;
+      const PRENDAS_PAGE_SIZE_NEXT = 200;
+      const PRENDAS_RENDER_CHUNK = 40;
+      const PRENDAS_SEARCH_DEBOUNCE = 250;
+      const PRENDAS_COUNT_TTL = 180000;
       const PRENDAS_ORDER_FIELDS = ["createdAt", "fecha", "updatedAt"];
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
@@ -805,10 +818,15 @@
         isAdmin: false,
         lastDoc: null,
         hasMore: true,
-        loading: false,
+        isDone: false,
+        isLoading: false,
         totalCount: null,
         newCount: null,
-        orderField: null
+        orderField: null,
+        seenIds: new Set(),
+        countCache: new Map(),
+        activeFilters: null,
+        renderToken: 0
       };
 
       const loadCategoryEntries = async (category, collectionName) => {
@@ -878,8 +896,7 @@
         return Number.isFinite(parsed) ? parsed : null;
       };
 
-      const getPrendasFilters = () => ({
-        searchTerm: normalizeText(prendasSearch.value),
+      const getBaseFilters = () => ({
         status: prendasStatus.value,
         proveedor: prendasProveedor.value,
         tipo: prendasTipo.value,
@@ -889,6 +906,8 @@
         priceMax: toNumberOrNull(prendasPrecioMax.value),
         includeNoPrice: prendasPrecioSin?.checked ?? true
       });
+
+      const getSearchTerm = () => normalizeText(prendasSearch.value);
 
       const shouldApplyPriceFilterToQuery = (filters) => {
         const hasRange = filters.priceMin !== null || filters.priceMax !== null;
@@ -961,7 +980,117 @@
         buildFilterOptions(prendasTalla, Array.from(tallas).sort());
       };
 
-      const renderPrendasPanel = (data) => {
+      const renderRowsChunked = (
+        rowNodes,
+        tbody,
+        chunkSize = PRENDAS_RENDER_CHUNK,
+        token
+      ) =>
+        new Promise((resolve) => {
+          let index = 0;
+          const renderStart = performance.now();
+
+          const appendChunk = () => {
+            if (token && token !== prendasState.renderToken) {
+              resolve();
+              return;
+            }
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < chunkSize && index < rowNodes.length; i += 1) {
+              fragment.appendChild(rowNodes[index]);
+              index += 1;
+            }
+            tbody.appendChild(fragment);
+            if (index < rowNodes.length) {
+              requestAnimationFrame(appendChunk);
+              return;
+            }
+            const totalMs = performance.now() - renderStart;
+            console.info("[Prendas] Render DOM", {
+              rows: rowNodes.length,
+              totalInDom: tbody.children.length,
+              ms: Number(totalMs.toFixed(1))
+            });
+            resolve();
+          };
+
+          requestAnimationFrame(appendChunk);
+        });
+
+      const buildBadge = (text, className) => {
+        const badge = document.createElement("span");
+        badge.className = `badge ${className}`;
+        badge.textContent = text;
+        return badge;
+      };
+
+      const createPrendaRow = (item) => {
+        const codigo = safeString(item.code || item.codigo) || "--";
+        const descripcion = safeString(item.descripcion) || "--";
+        const color = safeString(item.color || item.colorNombre) || "--";
+        const talla = safeString(item.talla || item.tallaNombre) || "--";
+        const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
+        const status = safeString(item.status) || "--";
+        const disponibilidad = safeString(item.disponibilidad) || "--";
+        const fechaTexto = safeString(item.fechaTexto);
+        const dateValue = getPrendaDate(item);
+        const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
+        const costo = safeString(item.costo) || "--";
+        const margen = safeString(item.margen) || "--";
+        const utilidad = safeString(item.utilidad) || "--";
+        const isNewItem = isNew(dateValue);
+
+        const row = document.createElement("tr");
+        row.className = isNewItem ? "row-new" : "row-old";
+
+        const statusCell = document.createElement("td");
+        const statusLine = document.createElement("div");
+        statusLine.textContent = status;
+        const badgesLine = document.createElement("div");
+        badgesLine.appendChild(
+          isNewItem ? buildBadge("Nuevo", "badge-new") : buildBadge("Existente", "badge-old")
+        );
+        if (normalizeText(status) === "vendido") {
+          badgesLine.appendChild(buildBadge("Vendido", "badge-sold"));
+        }
+        statusCell.append(statusLine, badgesLine);
+
+        const cells = [
+          codigo,
+          descripcion,
+          color,
+          talla,
+          proveedor,
+          statusCell,
+          disponibilidad,
+          fecha,
+          costo,
+          margen,
+          utilidad
+        ];
+
+        cells.forEach((value, index) => {
+          if (value instanceof HTMLElement) {
+            if (index >= 8) {
+              value.classList.add("admin-only");
+            }
+            row.appendChild(value);
+            return;
+          }
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          if (index >= 8) {
+            cell.classList.add("admin-only");
+          }
+          row.appendChild(cell);
+        });
+
+        return row;
+      };
+
+      const renderPrendasPanel = async (data) => {
+        prendasState.renderToken += 1;
+        const token = prendasState.renderToken;
         const total = Number.isFinite(prendasState.totalCount)
           ? prendasState.totalCount
           : data.length;
@@ -975,9 +1104,9 @@
 
         const showingTotal = total || data.length;
         prendasShowing.textContent = `Mostrando ${data.length} de ${showingTotal}`;
-        prendasLoadMore.disabled = !prendasState.hasMore || prendasState.loading;
+        prendasLoadMore.disabled = prendasState.isDone || prendasState.isLoading;
 
-        prendasTbody.innerHTML = "";
+        prendasTbody.textContent = "";
         if (!data.length) {
           const emptyRow = document.createElement("tr");
           const cell = document.createElement("td");
@@ -988,53 +1117,15 @@
           return;
         }
 
-        data.forEach((item) => {
-          const codigo = safeString(item.code || item.codigo) || "--";
-          const descripcion = safeString(item.descripcion) || "--";
-          const color = safeString(item.color || item.colorNombre) || "--";
-          const talla = safeString(item.talla || item.tallaNombre) || "--";
-          const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
-          const status = safeString(item.status) || "--";
-          const disponibilidad = safeString(item.disponibilidad) || "--";
-          const fechaTexto = safeString(item.fechaTexto);
-          const dateValue = getPrendaDate(item);
-          const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
-          const costo = safeString(item.costo) || "--";
-          const margen = safeString(item.margen) || "--";
-          const utilidad = safeString(item.utilidad) || "--";
-          const isNewItem = isNew(dateValue);
-          const statusBadge =
-            normalizeText(status) === "vendido"
-              ? `<span class="badge badge-sold">Vendido</span>`
-              : "";
-          const newBadge = isNewItem
-            ? `<span class="badge badge-new">Nuevo</span>`
-            : `<span class="badge badge-old">Existente</span>`;
-
-          const row = document.createElement("tr");
-          row.className = isNewItem ? "row-new" : "row-old";
-          row.innerHTML = `
-            <td>${codigo}</td>
-            <td>${descripcion}</td>
-            <td>${color}</td>
-            <td>${talla}</td>
-            <td>${proveedor}</td>
-            <td>
-              <div>${status}</div>
-              <div>${newBadge} ${statusBadge}</div>
-            </td>
-            <td>${disponibilidad}</td>
-            <td>${fecha}</td>
-            <td class="admin-only">${costo}</td>
-            <td class="admin-only">${margen}</td>
-            <td class="admin-only">${utilidad}</td>
-          `;
-          prendasTbody.appendChild(row);
-        });
+        const rowNodes = data.map((item) => createPrendaRow(item));
+        await renderRowsChunked(rowNodes, prendasTbody, PRENDAS_RENDER_CHUNK, token);
       };
 
       const applyFiltersAndRender = () => {
-        const filters = getPrendasFilters();
+        const filters = {
+          ...(prendasState.activeFilters || getBaseFilters()),
+          searchTerm: getSearchTerm()
+        };
         const searchTerm = filters.searchTerm;
         const statusFilter = normalizeText(filters.status);
         const proveedorFilter = normalizeText(filters.proveedor);
@@ -1101,6 +1192,7 @@
         orderField,
         filters,
         cursor,
+        pageSize,
         forCount = false,
         forNew = false
       }) => {
@@ -1147,19 +1239,19 @@
           constraints.push(startAfter(cursor));
         }
         if (!forCount) {
-          constraints.push(limit(PRENDAS_PAGE_SIZE));
+          constraints.push(limit(pageSize));
         }
         return query(prendas2025Ref, ...constraints);
       };
 
-      const fetchPrendasPage = async ({ filters, cursor }) => {
+      const fetchPrendasPage = async ({ filters, cursor, pageSize }) => {
         const orderFields = prendasState.orderField
           ? [prendasState.orderField]
           : PRENDAS_ORDER_FIELDS;
         let lastError;
         for (const orderField of orderFields) {
           try {
-            const pageQuery = buildPrendasQuery({ orderField, filters, cursor });
+            const pageQuery = buildPrendasQuery({ orderField, filters, cursor, pageSize });
             const snapshot = await getDocs(pageQuery);
             prendasState.orderField = orderField;
             return snapshot;
@@ -1174,85 +1266,141 @@
         throw lastError;
       };
 
-      const updatePrendasCounts = async (filters) => {
+      const buildCountCacheKey = (filters) => {
+        const { searchTerm, ...rest } = filters;
+        return JSON.stringify(rest);
+      };
+
+      const fetchTotalCount = async (filters) => {
+        const cacheKey = buildCountCacheKey(filters);
+        const cached = prendasState.countCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          return cached.value;
+        }
+
         try {
           const orderField = prendasState.orderField || PRENDAS_ORDER_FIELDS[0];
           const totalQuery = buildPrendasQuery({
             orderField,
             filters,
-            forCount: true
+            forCount: true,
+            pageSize: PRENDAS_PAGE_SIZE_FIRST
           });
           const totalSnapshot = await getCountFromServer(totalQuery);
-          prendasState.totalCount = totalSnapshot.data().count ?? 0;
+          const totalCount = totalSnapshot.data().count ?? 0;
 
           const newQuery = buildPrendasQuery({
             orderField,
             filters,
             forCount: true,
-            forNew: true
+            forNew: true,
+            pageSize: PRENDAS_PAGE_SIZE_FIRST
           });
           const newSnapshot = await getCountFromServer(newQuery);
-          prendasState.newCount = newSnapshot.data().count ?? 0;
-          renderPrendasPanel(prendasState.filtered);
+          const newCount = newSnapshot.data().count ?? 0;
+
+          const value = { totalCount, newCount };
+          prendasState.countCache.set(cacheKey, {
+            value,
+            expiresAt: Date.now() + PRENDAS_COUNT_TTL
+          });
+          return value;
         } catch (error) {
           if (handleIndexError(error)) {
-            return;
+            return null;
           }
           console.error(error);
           setPrendasAlert("No se pudo obtener el total real de registros.");
+          return null;
         }
       };
 
-      const loadPrendasPage = async ({ reset = false } = {}) => {
-        if (prendasState.loading) return;
+      const resetPrendasState = () => {
+        prendasState.data = [];
+        prendasState.filtered = [];
+        prendasState.lastDoc = null;
+        prendasState.hasMore = true;
+        prendasState.isDone = false;
+        prendasState.seenIds.clear();
+        prendasState.totalCount = null;
+        prendasState.newCount = null;
+      };
+
+      const fetchNextPage = async (filters, { reset = false } = {}) => {
+        if (prendasState.isLoading || prendasState.isDone) return;
         setPrendasAlert("");
         setPrendasLoading(true);
-        prendasState.loading = true;
-        const filters = getPrendasFilters();
+        prendasState.isLoading = true;
+        prendasLoadMore.disabled = true;
+        const pageSize =
+          reset || prendasState.data.length === 0
+            ? PRENDAS_PAGE_SIZE_FIRST
+            : PRENDAS_PAGE_SIZE_NEXT;
 
-        if (reset) {
-          prendasState.data = [];
-          prendasState.filtered = [];
-          prendasState.lastDoc = null;
-          prendasState.hasMore = true;
-          prendasState.totalCount = null;
-          prendasState.newCount = null;
-        }
+        const queryStart = performance.now();
 
         try {
           const snapshot = await fetchPrendasPage({
             filters,
-            cursor: reset ? null : prendasState.lastDoc
+            cursor: reset ? null : prendasState.lastDoc,
+            pageSize
           });
-          const pageData = snapshot.docs.map((docSnap) => ({
-            id: docSnap.id,
-            ...docSnap.data()
-          }));
-          prendasState.lastDoc =
-            snapshot.docs[snapshot.docs.length - 1] || prendasState.lastDoc;
-          prendasState.hasMore = snapshot.docs.length === PRENDAS_PAGE_SIZE;
-          prendasState.data = reset
-            ? pageData
-            : prendasState.data.concat(pageData);
+          const lastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+          const pageData = snapshot.docs
+            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .filter((item) => {
+              if (prendasState.seenIds.has(item.id)) return false;
+              prendasState.seenIds.add(item.id);
+              return true;
+            });
+
+          const queryMs = performance.now() - queryStart;
+          console.info("[Prendas] Query Firestore", {
+            ms: Number(queryMs.toFixed(1)),
+            docs: snapshot.docs.length,
+            pageSize,
+            lastDocId: lastDoc?.id || null
+          });
+
+          if (lastDoc) {
+            prendasState.lastDoc = lastDoc;
+          }
+          if (snapshot.docs.length < pageSize) {
+            prendasState.isDone = true;
+            prendasState.hasMore = false;
+          }
+
+          if (reset) {
+            prendasState.data = pageData;
+          } else {
+            prendasState.data = prendasState.data.concat(pageData);
+          }
+
           updateFiltersFromData(prendasState.data);
           applyFiltersAndRender();
-          if (reset) {
-            await updatePrendasCounts(filters);
-          }
         } catch (error) {
           if (!handleIndexError(error)) {
             console.error(error);
             setPrendasAlert("No se pudo cargar la base de datos de códigos.");
           }
         } finally {
-          prendasState.loading = false;
+          prendasState.isLoading = false;
           setPrendasLoading(false);
-          prendasLoadMore.disabled = !prendasState.hasMore;
+          prendasLoadMore.disabled = prendasState.isDone;
         }
       };
 
       const loadPrendas2025 = async () => {
-        await loadPrendasPage({ reset: true });
+        resetPrendasState();
+        prendasState.activeFilters = getBaseFilters();
+        const filters = prendasState.activeFilters;
+        await fetchNextPage(filters, { reset: true });
+        const counts = await fetchTotalCount(filters);
+        if (counts) {
+          prendasState.totalCount = counts.totalCount;
+          prendasState.newCount = counts.newCount;
+          renderPrendasPanel(prendasState.filtered);
+        }
       };
 
       const ensureRequired = () => {
@@ -1521,31 +1669,34 @@
         }, PRENDAS_SEARCH_DEBOUNCE);
       };
 
-      const handleFilterReset = () => {
-        loadPrendasPage({ reset: true });
+      const handleFilterApply = async () => {
+        resetPrendasState();
+        prendasState.activeFilters = getBaseFilters();
+        const filters = prendasState.activeFilters;
+        await fetchNextPage(filters, { reset: true });
+        const counts = await fetchTotalCount(filters);
+        if (counts) {
+          prendasState.totalCount = counts.totalCount;
+          prendasState.newCount = counts.newCount;
+          renderPrendasPanel(prendasState.filtered);
+        }
       };
 
       prendasSearch.addEventListener("input", handleSearchInput);
-      [prendasStatus, prendasProveedor, prendasTipo, prendasColor, prendasTalla].forEach(
-        (element) => {
-          element.addEventListener("change", handleFilterReset);
-        }
-      );
-
-      prendasPrecioApply.addEventListener("click", handleFilterReset);
-      prendasPrecioSin.addEventListener("change", handleFilterReset);
+      prendasPrecioApply.addEventListener("click", handleFilterApply);
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
         input.addEventListener("keydown", (event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            handleFilterReset();
+            handleFilterApply();
           }
         });
       });
 
       prendasLoadMore.addEventListener("click", () => {
-        loadPrendasPage({ reset: false });
+        const filters = prendasState.activeFilters || getBaseFilters();
+        fetchNextPage(filters, { reset: false });
       });
 
       const init = async () => {
