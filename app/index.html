@@ -661,7 +661,10 @@
           localCache: persistentLocalCache()
         });
       } catch (error) {
-        console.warn("Firestore: no se pudo activar cache offline.", error);
+        console.warn(
+          "[Firestore] Persistencia no disponible, usando caché en memoria",
+          error?.code || error?.message
+        );
         db = getFirestore(app);
       }
       const prendasRef = collection(db, "prendas");
