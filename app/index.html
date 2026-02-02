@@ -759,16 +759,6 @@
           .replace(/\s+/g, " ")
           .replace(/\//g, "__");
 
-      const isSkuLike = (input) => {
-        const value = safeString(input).trim().toUpperCase();
-        if (!value) return false;
-        return (
-          (value.startsWith("HA") && /\d/.test(value)) ||
-          value.includes("/") ||
-          value.includes("__")
-        );
-      };
-
       const toNumberOrNull = (value) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
@@ -921,8 +911,19 @@
         };
       };
 
+      let loadingCount = 0;
       const setLoading = (isLoading) => {
         prendasLoader.classList.toggle("hidden", !isLoading);
+      };
+      const beginLoading = () => {
+        loadingCount += 1;
+        setLoading(true);
+      };
+      const endLoading = () => {
+        loadingCount = Math.max(0, loadingCount - 1);
+        if (loadingCount === 0) {
+          setLoading(false);
+        }
       };
 
       const setCounter = (shown, total) => {
@@ -947,6 +948,12 @@
           prendasAlert.textContent = "";
           prendasAlert.classList.add("hidden");
         }
+      };
+
+      const isFullSku = (input) => {
+        const value = safeString(input).trim().toUpperCase();
+        if (!value) return false;
+        return CODE_PATTERN.test(value);
       };
 
       const getPrendaDate = (data) =>
@@ -1352,37 +1359,53 @@
           enabled || prendasState.isDone || prendasState.isLoading;
       };
 
-      const fetchBySku = async (normalizedSku) => {
-        const docRef = doc(db, PRENDAS_2025_COLLECTION, normalizedSku);
-        const directSnap = await getDoc(docRef);
+      const fetchBySku = async (rawInput) => {
+        const rawUpper = safeString(rawInput).trim().toUpperCase();
+        const normalizedSku = normalizeSku(rawUpper);
+        if (!rawUpper) {
+          return null;
+        }
+
+        const directSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, normalizedSku));
         if (directSnap.exists()) {
           return normalizeDoc(directSnap);
         }
-        const fallbackQuery = query(
-          prendas2025Ref,
-          where("docId", "==", normalizedSku),
-          limit(1)
-        );
-        const fallbackSnap = await getDocs(fallbackQuery);
-        if (fallbackSnap.empty) {
-          return null;
+
+        const altSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, rawUpper));
+        if (altSnap.exists()) {
+          return normalizeDoc(altSnap);
         }
-        return normalizeDoc(fallbackSnap.docs[0]);
+
+        const fallbackFields = [
+          { field: "docId", value: normalizedSku },
+          { field: "codigo", value: rawUpper },
+          { field: "code", value: rawUpper }
+        ];
+
+        for (const { field, value } of fallbackFields) {
+          const fallbackQuery = query(prendas2025Ref, where(field, "==", value), limit(1));
+          const fallbackSnap = await getDocs(fallbackQuery);
+          if (!fallbackSnap.empty) {
+            return normalizeDoc(fallbackSnap.docs[0]);
+          }
+        }
+
+        return null;
       };
 
       const runSkuSearch = async (rawInput) => {
-        const normalizedSku = normalizeSku(rawInput);
-        if (!normalizedSku) {
+        const rawUpper = safeString(rawInput).trim().toUpperCase();
+        if (!rawUpper) {
           return;
         }
         const token = prendasState.searchToken + 1;
         prendasState.searchToken = token;
         setSkuSearchMode(true);
         setPrendasAlert("");
-        setLoading(true);
+        beginLoading();
         prendasState.isLoading = true;
         try {
-          const result = await fetchBySku(normalizedSku);
+          const result = await fetchBySku(rawUpper);
           if (token !== prendasState.searchToken) {
             return;
           }
@@ -1390,6 +1413,9 @@
           prendasState.filtered = items;
           prendasState.showingTotal = items.length;
           await renderDocs(items);
+          if (!items.length) {
+            setPrendasAlert("No se encontró ese código. Revisa formato.");
+          }
         } catch (error) {
           if (token !== prendasState.searchToken) {
             return;
@@ -1402,8 +1428,8 @@
         } finally {
           if (token === prendasState.searchToken) {
             prendasState.isLoading = false;
-            setLoading(false);
           }
+          endLoading();
         }
       };
 
@@ -1549,7 +1575,7 @@
         if (prendasState.isLoading || prendasState.isDone) return;
         setSkuSearchMode(false);
         setPrendasAlert("");
-        setLoading(true);
+        beginLoading();
         prendasState.isLoading = true;
         prendasLoadMore.disabled = true;
         const pageSize =
@@ -1621,35 +1647,45 @@
           }
         } finally {
           prendasState.isLoading = false;
-          setLoading(false);
+          endLoading();
           prendasLoadMore.disabled = prendasState.isDone || prendasState.isSkuSearch;
         }
       };
 
       const reloadPrendasList = async () => {
-        setSkuSearchMode(false);
-        resetPrendasState();
-        prendasState.activeFilters = getBaseFilters();
-        const filters = prendasState.activeFilters;
-        await fetchNextPage(filters, { reset: true });
-        const counts = await fetchTotalCount(filters);
-        if (counts) {
-          prendasState.totalCount = counts.totalCount;
-          prendasState.newCount = counts.newCount;
-          await renderDocs(prendasState.filtered);
+        beginLoading();
+        try {
+          setSkuSearchMode(false);
+          resetPrendasState();
+          prendasState.activeFilters = getBaseFilters();
+          const filters = prendasState.activeFilters;
+          await fetchNextPage(filters, { reset: true });
+          const counts = await fetchTotalCount(filters);
+          if (counts) {
+            prendasState.totalCount = counts.totalCount;
+            prendasState.newCount = counts.newCount;
+            await renderDocs(prendasState.filtered);
+          }
+        } finally {
+          endLoading();
         }
       };
 
       const loadPrendas2025 = async () => {
-        resetPrendasState();
-        prendasState.activeFilters = getBaseFilters();
-        const filters = prendasState.activeFilters;
-        await fetchNextPage(filters, { reset: true });
-        const counts = await fetchTotalCount(filters);
-        if (counts) {
-          prendasState.totalCount = counts.totalCount;
-          prendasState.newCount = counts.newCount;
-          await renderDocs(prendasState.filtered);
+        beginLoading();
+        try {
+          resetPrendasState();
+          prendasState.activeFilters = getBaseFilters();
+          const filters = prendasState.activeFilters;
+          await fetchNextPage(filters, { reset: true });
+          const counts = await fetchTotalCount(filters);
+          if (counts) {
+            prendasState.totalCount = counts.totalCount;
+            prendasState.newCount = counts.newCount;
+            await renderDocs(prendasState.filtered);
+          }
+        } finally {
+          endLoading();
         }
       };
 
@@ -1915,7 +1951,7 @@
           await reloadPrendasList();
           return;
         }
-        if (isSkuLike(rawInput)) {
+        if (isFullSku(rawInput)) {
           await runSkuSearch(rawInput);
           return;
         }
@@ -1925,7 +1961,7 @@
 
       const handleFilterApply = async () => {
         const rawInput = getSearchInput();
-        if (rawInput.trim() && isSkuLike(rawInput)) {
+        if (rawInput.trim() && isFullSku(rawInput)) {
           await runSkuSearch(rawInput);
           return;
         }
@@ -2017,6 +2053,9 @@
           applyAdminUI();
           handleTabChange(window.location.hash);
           // ADMIN DB MODE END
+          prendasSearch.value = "";
+          setSkuSearchMode(false);
+          resetPrendasState();
           await loadPrendas2025();
         }
       };
