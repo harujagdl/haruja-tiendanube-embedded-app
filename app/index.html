@@ -1333,19 +1333,56 @@
       };
 
       const applyFiltersAndRender = async () => {
+        const baseFilters = getBaseFilters();
         const filters = {
-          ...(prendasState.activeFilters || getBaseFilters()),
+          ...baseFilters,
           searchTerm: getSearchTerm()
         };
+        prendasState.activeFilters = filters;
         const mappedCountBeforeFilters = prendasState.data.length;
+        console.info("[Prendas] Filters in use", filters);
+        console.info("[Prendas] First item normalized", {
+          status: normalizeText(
+            prendasState.data[0]?.status || prendasState.data[0]?.disponibilidad
+          ),
+          proveedor: normalizeText(
+            prendasState.data[0]?.proveedor || prendasState.data[0]?.proveedorNombre
+          ),
+          tipo: normalizeText(prendasState.data[0]?.tipo || prendasState.data[0]?.tipoNombre),
+          color: normalizeText(prendasState.data[0]?.color || prendasState.data[0]?.colorNombre),
+          talla: normalizeText(prendasState.data[0]?.talla || prendasState.data[0]?.tallaNombre),
+          precio:
+            prendasState.data[0]?.precio ??
+            getPrendaPrice(prendasState.data[0])
+        });
         const { filtered, tFilter } = applyClientSideFilters(prendasState.data, filters);
+        const allUiIsTodos =
+          isAllFilter(filters.status) &&
+          isAllFilter(filters.proveedor) &&
+          isAllFilter(filters.tipo) &&
+          isAllFilter(filters.color) &&
+          isAllFilter(filters.talla);
+        const noSearch = !filters.searchTerm;
+        const noPriceRange = filters.priceMin === null && filters.priceMax === null;
+        const shouldApplyFailsafe =
+          prendasState.data.length > 0 &&
+          filtered.length === 0 &&
+          allUiIsTodos &&
+          noSearch &&
+          noPriceRange;
+        const finalFiltered = shouldApplyFailsafe ? prendasState.data : filtered;
+        if (shouldApplyFailsafe) {
+          console.warn("[Prendas] FAILSAFE applied", {
+            mapped: prendasState.data.length
+          });
+        }
         console.info("[Prendas] Filter counts", {
           mappedCountBeforeFilters,
-          filteredCountAfterFilters: filtered.length
+          filteredCountAfterFilters: finalFiltered.length
         });
 
-        prendasState.filtered = filtered;
-        const tRender = await renderDocs(filtered);
+        prendasState.filtered = finalFiltered;
+        const tRender = await renderDocs(finalFiltered);
         return { tFilter, tRender };
       };
 
