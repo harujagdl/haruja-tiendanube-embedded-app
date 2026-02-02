@@ -848,9 +848,8 @@
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
-      const PRENDAS_PAGE_SIZE_FIRST = 80;
-      const PRENDAS_PAGE_SIZE_NEXT = 200;
-      const PRENDAS_RENDER_CHUNK = 40;
+      const PRENDAS_PAGE_SIZE = 80;
+      const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const PRENDAS_COUNT_TTL = 180000;
       const PRENDAS_ORDER_FIELDS = ["createdAt", "fecha", "updatedAt"];
@@ -875,6 +874,7 @@
         isSkuSearch: false,
         showingTotal: null
       };
+      let isBooting = true;
 
       const loadCategoryEntries = async (category, collectionName) => {
         const snapshot = await getDocs(collection(db, collectionName));
@@ -1568,7 +1568,7 @@
             orderField,
             filters,
             forCount: true,
-            pageSize: PRENDAS_PAGE_SIZE_FIRST
+            pageSize: PRENDAS_PAGE_SIZE
           });
           const totalSnapshot = await getCountFromServer(totalQuery);
           const totalCount = totalSnapshot.data().count ?? 0;
@@ -1578,7 +1578,7 @@
             filters,
             forCount: true,
             forNew: true,
-            pageSize: PRENDAS_PAGE_SIZE_FIRST
+            pageSize: PRENDAS_PAGE_SIZE
           });
           const newSnapshot = await getCountFromServer(newQuery);
           const newCount = newSnapshot.data().count ?? 0;
@@ -1594,7 +1594,6 @@
             return null;
           }
           console.error(error);
-          setPrendasAlert("No se pudo obtener el total real de registros.");
           return null;
         }
       };
@@ -1610,6 +1609,18 @@
         prendasState.newCount = null;
       };
 
+      const renderLoadingPlaceholder = () => {
+        if (!prendasTbody) return;
+        prendasTbody.textContent = "";
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 11;
+        cell.textContent = "Cargando base de datos...";
+        row.appendChild(cell);
+        prendasTbody.appendChild(row);
+        setCounter(0, prendasState.showingTotal ?? 0);
+      };
+
       const fetchNextPage = async (filters, { reset = false } = {}) => {
         if (prendasState.isLoading || prendasState.isDone) return;
         setSkuSearchMode(false);
@@ -1617,10 +1628,7 @@
         beginLoading();
         prendasState.isLoading = true;
         prendasLoadMore.disabled = true;
-        const pageSize =
-          reset || prendasState.data.length === 0
-            ? PRENDAS_PAGE_SIZE_FIRST
-            : PRENDAS_PAGE_SIZE_NEXT;
+        const pageSize = PRENDAS_PAGE_SIZE;
 
         const queryStart = performance.now();
 
@@ -1671,14 +1679,6 @@
           }
 
           updateFiltersFromData(prendasState.data);
-          const { tFilter, tRender } = await applyFiltersAndRender();
-          console.log("[Perf]", {
-            tQuery,
-            tMap,
-            tFilter,
-            tRender,
-            docs: snapshot.size
-          });
         } catch (error) {
           if (!handleIndexError(error)) {
             console.error(error);
@@ -1691,38 +1691,36 @@
         }
       };
 
-      const reloadPrendasList = async () => {
+      const refreshPrendasCounts = async (filters) => {
+        try {
+          const counts = await fetchTotalCount(filters);
+          if (counts) {
+            prendasState.totalCount = counts.totalCount;
+            prendasState.newCount = counts.newCount;
+            await renderDocs(prendasState.filtered);
+          }
+        } catch (error) {
+          console.warn("No se pudo refrescar el total de prendas.", error);
+        }
+      };
+
+      const reloadPrendasList = async ({ reason = "manual" } = {}) => {
         beginLoading();
         try {
           setSkuSearchMode(false);
           resetPrendasState();
+          renderLoadingPlaceholder();
           prendasState.activeFilters = getBaseFilters();
           const filters = prendasState.activeFilters;
           await fetchNextPage(filters, { reset: true });
-          const counts = await fetchTotalCount(filters);
-          if (counts) {
-            prendasState.totalCount = counts.totalCount;
-            prendasState.newCount = counts.newCount;
-            await renderDocs(prendasState.filtered);
-          }
-        } finally {
-          endLoading();
-        }
-      };
-
-      const loadPrendas2025 = async () => {
-        beginLoading();
-        try {
-          resetPrendasState();
-          prendasState.activeFilters = getBaseFilters();
-          const filters = prendasState.activeFilters;
-          await fetchNextPage(filters, { reset: true });
-          const counts = await fetchTotalCount(filters);
-          if (counts) {
-            prendasState.totalCount = counts.totalCount;
-            prendasState.newCount = counts.newCount;
-            await renderDocs(prendasState.filtered);
-          }
+          const { tFilter, tRender } = await applyFiltersAndRender();
+          console.log("[Perf]", {
+            reason,
+            tFilter,
+            tRender,
+            docs: prendasState.filtered.length
+          });
+          await refreshPrendasCounts(filters);
         } finally {
           endLoading();
         }
@@ -1985,6 +1983,7 @@
       // ADMIN DB MODE END
 
       const handleSearchInput = debounce(async () => {
+        if (isBooting) return;
         const rawInput = getSearchInput();
         if (!rawInput.trim()) {
           await reloadPrendasList();
@@ -1999,6 +1998,7 @@
       }, PRENDAS_SEARCH_DEBOUNCE);
 
       const handleFilterApply = async () => {
+        if (isBooting) return;
         const rawInput = getSearchInput();
         if (rawInput.trim() && isFullSku(rawInput)) {
           await runSkuSearch(rawInput);
@@ -2012,6 +2012,7 @@
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
         input.addEventListener("keydown", (event) => {
+          if (isBooting) return;
           if (event.key === "Enter") {
             event.preventDefault();
             handleFilterApply();
@@ -2019,12 +2020,22 @@
         });
       });
 
-      prendasLoadMore.addEventListener("click", () => {
+      prendasLoadMore.addEventListener("click", async () => {
+        if (isBooting) return;
         const filters = prendasState.activeFilters || getBaseFilters();
-        fetchNextPage(filters, { reset: false });
+        await fetchNextPage(filters, { reset: false });
+        await applyFiltersAndRender();
       });
 
       const init = async () => {
+        isBooting = true;
+        resetPrendasState();
+        prendasSearch.value = "";
+        prendasStatus.value = "todos";
+        prendasProveedor.value = "todos";
+        prendasTipo.value = "todos";
+        prendasColor.value = "todos";
+        prendasTalla.value = "todos";
         try {
           setRegistroStatus("Cargando diccionario...");
           registroSubmit.disabled = true;
@@ -2092,10 +2103,12 @@
           applyAdminUI();
           handleTabChange(window.location.hash);
           // ADMIN DB MODE END
-          prendasSearch.value = "";
           setSkuSearchMode(false);
-          resetPrendasState();
-          await loadPrendas2025();
+          try {
+            await reloadPrendasList({ reason: "init" });
+          } finally {
+            isBooting = false;
+          }
         }
       };
 
