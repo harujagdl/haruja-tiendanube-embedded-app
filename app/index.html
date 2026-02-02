@@ -705,6 +705,7 @@
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
+      console.assert(prendasTbody, "No existe tbody de prendas");
 
       const setRegistroStatus = (message, type = "") => {
         registroStatus.textContent = message;
@@ -730,6 +731,16 @@
       const toNumberOrNull = (value) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
+      };
+
+      const debounce = (fn, wait = 200) => {
+        let timeoutId;
+        return (...args) => {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          timeoutId = setTimeout(() => fn(...args), wait);
+        };
       };
 
       const formatDateDDMMYYYY = (date) => {
@@ -896,6 +907,46 @@
         return Number.isFinite(parsed) ? parsed : null;
       };
 
+      const buildSearchKey = (data) => {
+        const codigo = safeString(data.codigo || data.code || data.Codigo || data.Code);
+        const descripcion = safeString(data.descripcion || data.Descripcion || data.detalles);
+        return normalizeText(`${codigo} ${descripcion}`.trim());
+      };
+
+      const normalizeDoc = (docSnap) => {
+        const data = docSnap.data() || {};
+        const codigo = safeString(
+          data.codigo ?? data.code ?? data.Codigo ?? data.Code ?? data.CODIGO
+        );
+        const descripcion = safeString(
+          data.descripcion ?? data.Descripcion ?? data.detalles ?? data.Detalles
+        );
+        const color = safeString(data.color ?? data.Color ?? data.colorNombre ?? data.ColorNombre);
+        const talla = safeString(data.talla ?? data.Talla ?? data.tallaNombre ?? data.TallaNombre);
+        const proveedor = safeString(
+          data.proveedor ?? data.Proveedor ?? data.proveedorNombre ?? data.ProveedorNombre
+        );
+        const tipo = safeString(data.tipo ?? data.Tipo ?? data.tipoNombre ?? data.TipoNombre);
+        const status = safeString(data.status ?? data.Status ?? data.disponibilidad);
+        const precio = getPrendaPrice(data);
+        const createdAt =
+          data.createdAt ?? data.CreatedAt ?? data.fecha ?? data.Fecha ?? data.updatedAt;
+
+        return {
+          id: docSnap.id,
+          codigo,
+          descripcion,
+          color,
+          talla,
+          proveedor,
+          tipo,
+          status,
+          precio,
+          createdAt,
+          _searchKey: buildSearchKey({ codigo, descripcion })
+        };
+      };
+
       const getBaseFilters = () => ({
         status: prendasStatus.value,
         proveedor: prendasProveedor.value,
@@ -981,7 +1032,7 @@
       };
 
       const renderRowsChunked = (
-        rowNodes,
+        rows,
         tbody,
         chunkSize = PRENDAS_RENDER_CHUNK,
         token
@@ -992,26 +1043,26 @@
 
           const appendChunk = () => {
             if (token && token !== prendasState.renderToken) {
-              resolve();
+              resolve(0);
               return;
             }
             const fragment = document.createDocumentFragment();
-            for (let i = 0; i < chunkSize && index < rowNodes.length; i += 1) {
-              fragment.appendChild(rowNodes[index]);
+            for (let i = 0; i < chunkSize && index < rows.length; i += 1) {
+              fragment.appendChild(createPrendaRow(rows[index]));
               index += 1;
             }
             tbody.appendChild(fragment);
-            if (index < rowNodes.length) {
+            if (index < rows.length) {
               requestAnimationFrame(appendChunk);
               return;
             }
             const totalMs = performance.now() - renderStart;
             console.info("[Prendas] Render DOM", {
-              rows: rowNodes.length,
+              rows: rows.length,
               totalInDom: tbody.children.length,
               ms: Number(totalMs.toFixed(1))
             });
-            resolve();
+            resolve(Number(totalMs.toFixed(1)));
           };
 
           requestAnimationFrame(appendChunk);
@@ -1025,7 +1076,7 @@
       };
 
       const createPrendaRow = (item) => {
-        const codigo = safeString(item.code || item.codigo) || "--";
+        const codigo = safeString(item.codigo || item.code) || "--";
         const descripcion = safeString(item.descripcion) || "--";
         const color = safeString(item.color || item.colorNombre) || "--";
         const talla = safeString(item.talla || item.tallaNombre) || "--";
@@ -1033,7 +1084,7 @@
         const status = safeString(item.status) || "--";
         const disponibilidad = safeString(item.disponibilidad) || "--";
         const fechaTexto = safeString(item.fechaTexto);
-        const dateValue = getPrendaDate(item);
+        const dateValue = getPrendaDate(item) || toDateValue(item.createdAt);
         const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
         const costo = safeString(item.costo) || "--";
         const margen = safeString(item.margen) || "--";
@@ -1089,6 +1140,7 @@
       };
 
       const renderPrendasPanel = async (data) => {
+        const renderStart = performance.now();
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
         const total = Number.isFinite(prendasState.totalCount)
@@ -1114,18 +1166,22 @@
           cell.textContent = "No hay resultados con los filtros actuales.";
           emptyRow.appendChild(cell);
           prendasTbody.appendChild(emptyRow);
-          return;
+          return Number((performance.now() - renderStart).toFixed(1));
         }
 
-        const rowNodes = data.map((item) => createPrendaRow(item));
-        await renderRowsChunked(rowNodes, prendasTbody, PRENDAS_RENDER_CHUNK, token);
+        await renderRowsChunked(
+          data,
+          prendasTbody,
+          PRENDAS_RENDER_CHUNK,
+          token
+        );
+        return Number((performance.now() - renderStart).toFixed(1));
       };
 
-      const applyFiltersAndRender = () => {
-        const filters = {
-          ...(prendasState.activeFilters || getBaseFilters()),
-          searchTerm: getSearchTerm()
-        };
+      const isAllFilter = (value) => !value || normalizeText(value) === "todos";
+
+      const applyClientSideFilters = (data, filters) => {
+        const filterStart = performance.now();
         const searchTerm = filters.searchTerm;
         const statusFilter = normalizeText(filters.status);
         const proveedorFilter = normalizeText(filters.proveedor);
@@ -1133,36 +1189,34 @@
         const colorFilter = normalizeText(filters.color);
         const tallaFilter = normalizeText(filters.talla);
 
-        const filtered = prendasState.data.filter((item) => {
-          const codigo = safeString(item.code || item.codigo);
-          const descripcion = safeString(item.descripcion);
-          const textMatch = normalizeText(`${codigo} ${descripcion}`);
-          if (searchTerm && !textMatch.includes(searchTerm)) {
+        const filtered = data.filter((item) => {
+          const searchKey = item._searchKey || buildSearchKey(item);
+          if (searchTerm && !searchKey.includes(searchTerm)) {
             return false;
           }
 
           const statusValue = normalizeText(item.status || item.disponibilidad);
-          if (statusFilter !== "todos" && statusValue !== statusFilter) {
+          if (!isAllFilter(statusFilter) && statusValue !== statusFilter) {
             return false;
           }
 
           const proveedorValue = normalizeText(item.proveedor || item.proveedorNombre);
-          if (proveedorFilter !== "todos" && proveedorValue !== proveedorFilter) {
+          if (!isAllFilter(proveedorFilter) && proveedorValue !== proveedorFilter) {
             return false;
           }
 
           const tipoValue = normalizeText(item.tipo || item.tipoNombre);
-          if (tipoFilter !== "todos" && tipoValue !== tipoFilter) {
+          if (!isAllFilter(tipoFilter) && tipoValue !== tipoFilter) {
             return false;
           }
 
           const colorValue = normalizeText(item.color || item.colorNombre);
-          if (colorFilter !== "todos" && colorValue !== colorFilter) {
+          if (!isAllFilter(colorFilter) && colorValue !== colorFilter) {
             return false;
           }
 
           const tallaValue = normalizeText(item.talla || item.tallaNombre);
-          if (tallaFilter !== "todos" && tallaValue !== tallaFilter) {
+          if (!isAllFilter(tallaFilter) && tallaValue !== tallaFilter) {
             return false;
           }
 
@@ -1184,8 +1238,22 @@
           return true;
         });
 
+        return {
+          filtered,
+          tFilter: Number((performance.now() - filterStart).toFixed(1))
+        };
+      };
+
+      const applyFiltersAndRender = async () => {
+        const filters = {
+          ...(prendasState.activeFilters || getBaseFilters()),
+          searchTerm: getSearchTerm()
+        };
+        const { filtered, tFilter } = applyClientSideFilters(prendasState.data, filters);
+
         prendasState.filtered = filtered;
-        renderPrendasPanel(filtered);
+        const tRender = await renderPrendasPanel(filtered);
+        return { tFilter, tRender };
       };
 
       const buildPrendasQuery = ({
@@ -1345,18 +1413,23 @@
             cursor: reset ? null : prendasState.lastDoc,
             pageSize
           });
+          const tQuery = Number((performance.now() - queryStart).toFixed(1));
           const lastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+          if (reset && snapshot.docs[0]) {
+            console.log("sample doc", snapshot.docs[0].id, snapshot.docs[0].data());
+          }
+          const mapStart = performance.now();
           const pageData = snapshot.docs
-            .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+            .map((docSnap) => normalizeDoc(docSnap))
             .filter((item) => {
               if (prendasState.seenIds.has(item.id)) return false;
               prendasState.seenIds.add(item.id);
               return true;
             });
+          const tMap = Number((performance.now() - mapStart).toFixed(1));
 
-          const queryMs = performance.now() - queryStart;
           console.info("[Prendas] Query Firestore", {
-            ms: Number(queryMs.toFixed(1)),
+            ms: tQuery,
             docs: snapshot.docs.length,
             pageSize,
             lastDocId: lastDoc?.id || null
@@ -1377,7 +1450,14 @@
           }
 
           updateFiltersFromData(prendasState.data);
-          applyFiltersAndRender();
+          const { tFilter, tRender } = await applyFiltersAndRender();
+          console.log("[Perf]", {
+            tQuery,
+            tMap,
+            tFilter,
+            tRender,
+            docs: snapshot.size
+          });
         } catch (error) {
           if (!handleIndexError(error)) {
             console.error(error);
@@ -1399,7 +1479,7 @@
         if (counts) {
           prendasState.totalCount = counts.totalCount;
           prendasState.newCount = counts.newCount;
-          renderPrendasPanel(prendasState.filtered);
+          await renderPrendasPanel(prendasState.filtered);
         }
       };
 
@@ -1659,15 +1739,9 @@
       });
       // ADMIN DB MODE END
 
-      let searchTimeout = null;
-      const handleSearchInput = () => {
-        if (searchTimeout) {
-          clearTimeout(searchTimeout);
-        }
-        searchTimeout = setTimeout(() => {
-          applyFiltersAndRender();
-        }, PRENDAS_SEARCH_DEBOUNCE);
-      };
+      const handleSearchInput = debounce(() => {
+        applyFiltersAndRender();
+      }, PRENDAS_SEARCH_DEBOUNCE);
 
       const handleFilterApply = async () => {
         resetPrendasState();
@@ -1678,7 +1752,7 @@
         if (counts) {
           prendasState.totalCount = counts.totalCount;
           prendasState.newCount = counts.newCount;
-          renderPrendasPanel(prendasState.filtered);
+          await renderPrendasPanel(prendasState.filtered);
         }
       };
 
