@@ -906,8 +906,7 @@
       const getPrendaPrice = (data) => {
         const price =
           data?.precio ?? data?.price ?? data?.precioConIva ?? data?.precioConIVA;
-        const parsed = Number(price);
-        return Number.isFinite(parsed) ? parsed : null;
+        return toNumberOrNull(price);
       };
 
       const buildSearchKey = (data) => {
@@ -919,21 +918,26 @@
       const normalizeDoc = (docSnap) => {
         const data = docSnap.data() || {};
         const codigo = safeString(
-          data.codigo ?? data.code ?? data.Codigo ?? data.Code ?? data.CODIGO
+          data.codigo ??
+            data.Codigo ??
+            data.CODIGO ??
+            data.SKU ??
+            data.code ??
+            data.Code ??
+            docSnap.id
         );
         const descripcion = safeString(
           data.descripcion ?? data.Descripcion ?? data.detalles ?? data.Detalles
         );
-        const color = safeString(data.color ?? data.Color ?? data.colorNombre ?? data.ColorNombre);
-        const talla = safeString(data.talla ?? data.Talla ?? data.tallaNombre ?? data.TallaNombre);
-        const proveedor = safeString(
-          data.proveedor ?? data.Proveedor ?? data.proveedorNombre ?? data.ProveedorNombre
-        );
-        const tipo = safeString(data.tipo ?? data.Tipo ?? data.tipoNombre ?? data.TipoNombre);
-        const status = safeString(data.status ?? data.Status ?? data.disponibilidad);
-        const precio = getPrendaPrice(data);
+        const color = safeString(data.color ?? data.Color ?? data.COLOR ?? "");
+        const talla = safeString(data.talla ?? data.Talla ?? data.TALLA ?? "");
+        const proveedor = safeString(data.proveedor ?? data.Proveedor ?? data.PROVEEDOR ?? "");
+        const tipo = safeString(data.tipo ?? data.Tipo ?? data.TIPO ?? "");
+        const status = safeString(data.status ?? data.Status ?? data.ESTATUS ?? "");
+        const precio = toNumberOrNull(data.precio);
         const createdAt =
           data.createdAt ?? data.CreatedAt ?? data.fecha ?? data.Fecha ?? data.updatedAt;
+        const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
 
         return {
           id: docSnap.id,
@@ -946,7 +950,7 @@
           status,
           precio,
           createdAt,
-          _searchKey: buildSearchKey({ codigo, descripcion })
+          _searchKey
         };
       };
 
@@ -1144,6 +1148,7 @@
 
       const renderPrendasPanel = async (data) => {
         const renderStart = performance.now();
+        console.assert(prendasTbody, "tbody no encontrado");
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
         const total = Number.isFinite(prendasState.totalCount)
@@ -1191,6 +1196,9 @@
         const tipoFilter = normalizeText(filters.tipo);
         const colorFilter = normalizeText(filters.color);
         const tallaFilter = normalizeText(filters.talla);
+        const priceMin = filters.priceMin;
+        const priceMax = filters.priceMax;
+        const hasPriceRange = priceMin !== null || priceMax !== null;
 
         const filtered = data.filter((item) => {
           const searchKey = item._searchKey || buildSearchKey(item);
@@ -1223,10 +1231,11 @@
             return false;
           }
 
-          const priceMin = filters.priceMin;
-          const priceMax = filters.priceMax;
-          if (priceMin !== null || priceMax !== null) {
-            const priceValue = getPrendaPrice(item);
+          const priceValue = item.precio ?? getPrendaPrice(item);
+          if (!filters.includeNoPrice && priceValue === null) {
+            return false;
+          }
+          if (hasPriceRange) {
             if (priceValue === null) {
               return filters.includeNoPrice;
             }
@@ -1252,7 +1261,12 @@
           ...(prendasState.activeFilters || getBaseFilters()),
           searchTerm: getSearchTerm()
         };
+        const mappedCountBeforeFilters = prendasState.data.length;
         const { filtered, tFilter } = applyClientSideFilters(prendasState.data, filters);
+        console.info("[Prendas] Filter counts", {
+          mappedCountBeforeFilters,
+          filteredCountAfterFilters: filtered.length
+        });
 
         prendasState.filtered = filtered;
         const tRender = await renderPrendasPanel(filtered);
@@ -1416,11 +1430,12 @@
             cursor: reset ? null : prendasState.lastDoc,
             pageSize
           });
+          console.info("[Prendas] Snapshot size", snapshot.size);
+          if (snapshot.docs[0]) {
+            console.info("[Prendas] First doc data", snapshot.docs[0].data());
+          }
           const tQuery = Number((performance.now() - queryStart).toFixed(1));
           const lastDoc = snapshot.docs[snapshot.docs.length - 1] || null;
-          if (reset && snapshot.docs[0]) {
-            console.log("sample doc", snapshot.docs[0].id, snapshot.docs[0].data());
-          }
           const mapStart = performance.now();
           const pageData = snapshot.docs
             .map((docSnap) => normalizeDoc(docSnap))
@@ -1430,6 +1445,9 @@
               return true;
             });
           const tMap = Number((performance.now() - mapStart).toFixed(1));
+          console.info("[Prendas] Mapped docs", {
+            mappedCountBeforeFilters: pageData.length
+          });
 
           console.info("[Prendas] Query Firestore", {
             ms: tQuery,
