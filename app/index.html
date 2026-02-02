@@ -632,6 +632,7 @@
         collection,
         addDoc,
         doc,
+        getDoc,
         getDocs,
         query,
         orderBy,
@@ -730,6 +731,23 @@
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
+
+      const normalizeSku = (input) =>
+        safeString(input)
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, " ")
+          .replace(/\//g, "__");
+
+      const isSkuLike = (input) => {
+        const value = safeString(input).trim().toUpperCase();
+        if (!value) return false;
+        return (
+          (value.startsWith("HA") && /\d/.test(value)) ||
+          value.includes("/") ||
+          value.includes("__")
+        );
+      };
 
       const toNumberOrNull = (value) => {
         const parsed = Number(value);
@@ -840,7 +858,10 @@
         seenIds: new Set(),
         countCache: new Map(),
         activeFilters: null,
-        renderToken: 0
+        renderToken: 0,
+        searchToken: 0,
+        isSkuSearch: false,
+        showingTotal: null
       };
 
       const loadCategoryEntries = async (category, collectionName) => {
@@ -965,6 +986,7 @@
         includeNoPrice: prendasPrecioSin?.checked ?? true
       });
 
+      const getSearchInput = () => safeString(prendasSearch.value);
       const getSearchTerm = () => normalizeText(prendasSearch.value);
 
       const shouldApplyPriceFilterToQuery = (filters) => {
@@ -1162,9 +1184,14 @@
         prendasNuevos.textContent = nuevos;
         prendasExistentes.textContent = existentes;
 
-        const showingTotal = total || data.length;
+        const showingTotal = Number.isFinite(prendasState.showingTotal)
+          ? prendasState.showingTotal
+          : total || data.length;
         prendasShowing.textContent = `Mostrando ${data.length} de ${showingTotal}`;
-        prendasLoadMore.disabled = prendasState.isDone || prendasState.isLoading;
+        const disableLoadMore =
+          prendasState.isSkuSearch || prendasState.isDone || prendasState.isLoading;
+        prendasLoadMore.disabled = disableLoadMore;
+        prendasLoadMore.classList.toggle("hidden", prendasState.isSkuSearch);
 
         prendasTbody.textContent = "";
         if (!data.length) {
@@ -1271,6 +1298,71 @@
         prendasState.filtered = filtered;
         const tRender = await renderPrendasPanel(filtered);
         return { tFilter, tRender };
+      };
+
+      const setSkuSearchMode = (enabled) => {
+        prendasState.isSkuSearch = enabled;
+        if (!enabled) {
+          prendasState.showingTotal = null;
+        }
+        prendasLoadMore.classList.toggle("hidden", enabled);
+        prendasLoadMore.disabled =
+          enabled || prendasState.isDone || prendasState.isLoading;
+      };
+
+      const fetchBySku = async (normalizedSku) => {
+        const docRef = doc(db, PRENDAS_2025_COLLECTION, normalizedSku);
+        const directSnap = await getDoc(docRef);
+        if (directSnap.exists()) {
+          return normalizeDoc(directSnap);
+        }
+        const fallbackQuery = query(
+          prendas2025Ref,
+          where("docId", "==", normalizedSku),
+          limit(1)
+        );
+        const fallbackSnap = await getDocs(fallbackQuery);
+        if (fallbackSnap.empty) {
+          return null;
+        }
+        return normalizeDoc(fallbackSnap.docs[0]);
+      };
+
+      const runSkuSearch = async (rawInput) => {
+        const normalizedSku = normalizeSku(rawInput);
+        if (!normalizedSku) {
+          return;
+        }
+        const token = prendasState.searchToken + 1;
+        prendasState.searchToken = token;
+        setSkuSearchMode(true);
+        setPrendasAlert("");
+        setPrendasLoading(true);
+        prendasState.isLoading = true;
+        try {
+          const result = await fetchBySku(normalizedSku);
+          if (token !== prendasState.searchToken) {
+            return;
+          }
+          const items = result ? [result] : [];
+          prendasState.filtered = items;
+          prendasState.showingTotal = items.length;
+          await renderPrendasPanel(items);
+        } catch (error) {
+          if (token !== prendasState.searchToken) {
+            return;
+          }
+          console.error(error);
+          setPrendasAlert("No se pudo buscar el código en Firestore.");
+          prendasState.filtered = [];
+          prendasState.showingTotal = 0;
+          await renderPrendasPanel([]);
+        } finally {
+          if (token === prendasState.searchToken) {
+            prendasState.isLoading = false;
+            setPrendasLoading(false);
+          }
+        }
       };
 
       const buildPrendasQuery = ({
@@ -1413,6 +1505,7 @@
 
       const fetchNextPage = async (filters, { reset = false } = {}) => {
         if (prendasState.isLoading || prendasState.isDone) return;
+        setSkuSearchMode(false);
         setPrendasAlert("");
         setPrendasLoading(true);
         prendasState.isLoading = true;
@@ -1487,7 +1580,21 @@
         } finally {
           prendasState.isLoading = false;
           setPrendasLoading(false);
-          prendasLoadMore.disabled = prendasState.isDone;
+          prendasLoadMore.disabled = prendasState.isDone || prendasState.isSkuSearch;
+        }
+      };
+
+      const reloadPrendasList = async () => {
+        setSkuSearchMode(false);
+        resetPrendasState();
+        prendasState.activeFilters = getBaseFilters();
+        const filters = prendasState.activeFilters;
+        await fetchNextPage(filters, { reset: true });
+        const counts = await fetchTotalCount(filters);
+        if (counts) {
+          prendasState.totalCount = counts.totalCount;
+          prendasState.newCount = counts.newCount;
+          await renderPrendasPanel(prendasState.filtered);
         }
       };
 
@@ -1760,21 +1867,27 @@
       });
       // ADMIN DB MODE END
 
-      const handleSearchInput = debounce(() => {
-        applyFiltersAndRender();
+      const handleSearchInput = debounce(async () => {
+        const rawInput = getSearchInput();
+        if (!rawInput.trim()) {
+          await reloadPrendasList();
+          return;
+        }
+        if (isSkuLike(rawInput)) {
+          await runSkuSearch(rawInput);
+          return;
+        }
+        setSkuSearchMode(false);
+        await applyFiltersAndRender();
       }, PRENDAS_SEARCH_DEBOUNCE);
 
       const handleFilterApply = async () => {
-        resetPrendasState();
-        prendasState.activeFilters = getBaseFilters();
-        const filters = prendasState.activeFilters;
-        await fetchNextPage(filters, { reset: true });
-        const counts = await fetchTotalCount(filters);
-        if (counts) {
-          prendasState.totalCount = counts.totalCount;
-          prendasState.newCount = counts.newCount;
-          await renderPrendasPanel(prendasState.filtered);
+        const rawInput = getSearchInput();
+        if (rawInput.trim() && isSkuLike(rawInput)) {
+          await runSkuSearch(rawInput);
+          return;
         }
+        await reloadPrendasList();
       };
 
       prendasSearch.addEventListener("input", handleSearchInput);
