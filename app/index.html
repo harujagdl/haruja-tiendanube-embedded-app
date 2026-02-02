@@ -848,7 +848,8 @@
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
-      const PRENDAS_PAGE_SIZE = 80;
+      const PRENDAS_PAGE_SIZE_FIRST = 60;
+      const PRENDAS_PAGE_SIZE_NEXT = 60;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const PRENDAS_COUNT_TTL = 180000;
@@ -1510,16 +1511,18 @@
           if (filters.priceMax !== null) {
             constraints.push(where("precio", "<=", filters.priceMax));
           }
-          constraints.push(orderBy("precio", "asc"));
+          if (!forCount) {
+            constraints.push(orderBy("precio", "asc"));
+          }
         }
         if (forNew) {
           const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           constraints.push(where(orderField, ">=", cutoff));
         }
-        if (orderField) {
+        if (orderField && !forCount) {
           constraints.push(orderBy(orderField, "desc"));
         }
-        if (cursor) {
+        if (cursor && !forCount) {
           constraints.push(startAfter(cursor));
         }
         if (!forCount) {
@@ -1563,22 +1566,19 @@
         }
 
         try {
-          const orderField = prendasState.orderField || PRENDAS_ORDER_FIELDS[0];
           const totalQuery = buildPrendasQuery({
-            orderField,
             filters,
-            forCount: true,
-            pageSize: PRENDAS_PAGE_SIZE
+            orderField: prendasState.orderField || PRENDAS_ORDER_FIELDS[0],
+            forCount: true
           });
           const totalSnapshot = await getCountFromServer(totalQuery);
           const totalCount = totalSnapshot.data().count ?? 0;
 
           const newQuery = buildPrendasQuery({
-            orderField,
             filters,
+            orderField: prendasState.orderField || PRENDAS_ORDER_FIELDS[0],
             forCount: true,
-            forNew: true,
-            pageSize: PRENDAS_PAGE_SIZE
+            forNew: true
           });
           const newSnapshot = await getCountFromServer(newQuery);
           const newCount = newSnapshot.data().count ?? 0;
@@ -1590,11 +1590,13 @@
           });
           return value;
         } catch (error) {
-          if (handleIndexError(error)) {
-            return null;
+          if (!handleIndexError(error)) {
+            console.error(error);
           }
-          console.error(error);
-          return null;
+          return {
+            totalCount: prendasState.totalCount ?? 0,
+            newCount: prendasState.newCount ?? 0
+          };
         }
       };
 
@@ -1628,7 +1630,7 @@
         beginLoading();
         prendasState.isLoading = true;
         prendasLoadMore.disabled = true;
-        const pageSize = PRENDAS_PAGE_SIZE;
+        const pageSize = reset ? PRENDAS_PAGE_SIZE_FIRST : PRENDAS_PAGE_SIZE_NEXT;
 
         const queryStart = performance.now();
 
