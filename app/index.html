@@ -710,7 +710,6 @@
         where,
         limit,
         endAt,
-        getCountFromServer,
         persistentLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
       import {
@@ -926,16 +925,13 @@
         allOption.value = "todos";
         allOption.textContent = "Todos";
         selectEl.appendChild(allOption);
-        const normalizedMap = new Map();
-        values.forEach((value) => {
-          const cleaned = normalizeDictionaryValue(value);
-          if (!cleaned) return;
-          const key = normalizeText(cleaned);
-          if (!normalizedMap.has(key)) {
-            normalizedMap.set(key, cleaned);
-          }
-        });
-        const uniqueValues = [...normalizedMap.values()].sort((a, b) =>
+        const uniqueValues = [
+          ...new Set(
+            values
+              .map((value) => safeString(value).trim())
+              .filter((value) => value)
+          )
+        ].sort((a, b) =>
           a.localeCompare(b)
         );
         uniqueValues.forEach((value) => {
@@ -969,10 +965,9 @@
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
       const PRENDAS_PAGE_SIZE_DEFAULT = 50;
+      const PRENDAS_SCAN_PAGE_SIZE = 200;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
-      const PRENDAS_STATS_COLLECTION = "HarujaPrendas_2025_stats";
-      const PRENDAS_STATS_DOC = "summary";
       const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -1015,7 +1010,6 @@
         isDone: false,
         isLoadingInitial: false,
         isLoadingMore: false,
-        globalStats: null,
         seenIds: new Set(),
         filters: null,
         filtersActive: false,
@@ -1025,12 +1019,10 @@
         showingTotal: null,
         queryKey: "",
         reqId: 0,
-        counts: {
-          total: null,
-          nuevos: null,
-          existentes: null,
-          countFailed: false
-        }
+        scanMode: false,
+        lastScanSnap: null,
+        hasMoreScan: true,
+        scanOrderField: "createdAt"
       };
       let isBooting = true;
 
@@ -1098,20 +1090,21 @@
         const results = await Promise.all(
           categories.map(async (category) => {
             const snapshot = await getDocs(collection(db, COLLECTIONS[category]));
-            const normalizedMap = new Map();
-            snapshot.docs.forEach((docSnap) => {
-              const data = docSnap.data() || {};
-              const raw = data.valor ?? data.nombre ?? data.clave ?? docSnap.id;
-              const cleaned = normalizeDictionaryValue(raw);
-              if (!cleaned) return;
-              const key = normalizeText(cleaned);
-              if (!normalizedMap.has(key)) {
-                normalizedMap.set(key, cleaned);
-              }
-            });
-            const values = [...normalizedMap.values()].sort((a, b) =>
-              a.localeCompare(b)
-            );
+            const values = snapshot.docs
+              .map((docSnap) => {
+                const data = docSnap.data() || {};
+                return (
+                  data.valor ??
+                  data.Valor ??
+                  data.nombre ??
+                  data.Nombre ??
+                  data.clave ??
+                  data.Clave ??
+                  docSnap.id
+                );
+              })
+              .map((value) => safeString(value).trim())
+              .filter((value) => value);
             return { category, values };
           })
         );
@@ -1203,16 +1196,24 @@
             data.code ??
             data.Code ??
             docSnap.id
-        );
+        ).trim();
         const descripcion = safeString(
-          data.descripcion ?? data.Descripcion ?? data.detalles ?? data.Detalles
-        );
-        const color = safeString(data.color ?? data.Color ?? data.COLOR ?? "");
-        const talla = safeString(data.talla ?? data.Talla ?? data.TALLA ?? "");
-        const proveedor = safeString(data.proveedor ?? data.Proveedor ?? data.PROVEEDOR ?? "");
-        const tipo = safeString(data.tipo ?? data.Tipo ?? data.TIPO ?? "");
-        const status = safeString(data.status ?? data.Status ?? data.ESTATUS ?? "");
-        const precio = toNumberOrNull(data.precio ?? data.price);
+          data.descripcion ??
+            data.Descripcion ??
+            data.detalles ??
+            data.Detalles ??
+            ""
+        ).trim();
+        const color = safeString(data.color ?? data.Color ?? data.COLOR ?? "").trim();
+        const talla = safeString(data.talla ?? data.Talla ?? data.TALLA ?? "").trim();
+        const proveedor = safeString(
+          data.proveedor ?? data.Proveedor ?? data.PROVEEDOR ?? ""
+        ).trim();
+        const tipo = safeString(data.tipo ?? data.Tipo ?? data.TIPO ?? "").trim();
+        const status = safeString(
+          data.status ?? data.Status ?? data.ESTATUS ?? ""
+        ).trim();
+        const precio = toNumberOrNull(data.precio ?? data.Precio ?? data.price);
         const precioConIva = toNumberOrNull(data.precioConIva ?? data.precioConIVA);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const costo = toNumberOrNull(data.costo);
@@ -1229,7 +1230,14 @@
               ? Number(((basePrice - (costo ?? 0)) / basePrice).toFixed(3))
               : null;
         const createdAt =
-          data.createdAt ?? data.CreatedAt ?? data.fecha ?? data.Fecha ?? data.updatedAt;
+          data.createdAt ??
+          data.CreatedAt ??
+          data.fecha ??
+          data.Fecha ??
+          data.updatedAt ??
+          null;
+        const descripcionLower = descripcion.toLowerCase();
+        const codigoUpper = codigo.toUpperCase();
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
 
         return {
@@ -1248,6 +1256,8 @@
           margen,
           utilidad,
           createdAt,
+          descripcionLower,
+          codigoUpper,
           _searchKey
         };
       };
@@ -1427,49 +1437,13 @@
         console.assert(prendasTbody, "tbody no encontrado");
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
-        const stats = prendasState.globalStats;
-        const hasGlobalTotals =
-          stats &&
-          Number.isFinite(stats.totalAll) &&
-          Number.isFinite(stats.nuevos7dAll) &&
-          Number.isFinite(stats.existentesAll);
-        const useGlobalStats = !prendasState.filtersActive && hasGlobalTotals;
-        const countState = prendasState.counts || {};
-        const nuevosFromRows = rows.filter((item) => isNew(getPrendaDate(item))).length;
-
-        let total = null;
-        let nuevos = null;
-        let existentes = null;
-
-        if (useGlobalStats) {
-          total = stats.totalAll;
-          nuevos = stats.nuevos7dAll;
-          existentes = stats.existentesAll;
-        } else if (countState.countFailed) {
-          total = null;
-          nuevos = null;
-          existentes = null;
-        } else if (Number.isFinite(countState.total)) {
-          total = countState.total;
-          nuevos = Number.isFinite(countState.nuevos) ? countState.nuevos : nuevosFromRows;
-          existentes = Number.isFinite(countState.existentes)
-            ? countState.existentes
-            : Math.max(0, total - nuevosFromRows);
-        } else {
-          total = rows.length;
-          nuevos = nuevosFromRows;
-          existentes = Math.max(0, total - nuevosFromRows);
-        }
-
-        prendasTotal.textContent = Number.isFinite(total) ? total : "—";
-        prendasNuevos.textContent = Number.isFinite(nuevos) ? nuevos : "—";
-        prendasExistentes.textContent = Number.isFinite(existentes) ? existentes : "—";
+        prendasTotal.textContent = "—";
+        prendasNuevos.textContent = "—";
+        prendasExistentes.textContent = "—";
 
         const showingTotal = Number.isFinite(prendasState.showingTotal)
           ? prendasState.showingTotal
-          : useGlobalStats
-            ? total
-            : null;
+          : null;
         setCounter(rows.length, showingTotal);
         const disableLoadMore =
           prendasState.isSkuSearch ||
@@ -1520,9 +1494,9 @@
         const hasTipo = Boolean(filters.tipo);
         const hasColor = Boolean(filters.color);
         const hasTalla = Boolean(filters.talla);
-        const hasSearch = Boolean(filters.searchTerm);
+        const hasSearch = Boolean(safeString(filters.searchRaw).trim());
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
-        const includeNoPrice = filters.includeNoPrice === false;
+        const includeNoPrice = filters.includeNoPrice === true;
         return (
           hasStatus ||
           hasProveedor ||
@@ -1676,11 +1650,7 @@
       const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
         const constraints = [];
         const searchConfig = getSearchConfig(filters);
-        const hasEqualityFilters = Boolean(filters.status || filters.proveedor || filters.tipo || filters.color || filters.talla);
         const hasRangeFilters = (filters.priceMin !== null || filters.priceMax !== null);
-        // Use scan fallback whenever equality/range filters are active and there is NO server-side search mode.
-        // This avoids empty results when Firestore field names differ (Proveedor vs proveedor, etc).
-        const useScanFallback = (searchConfig.mode === "none") && (hasEqualityFilters || hasRangeFilters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -1736,49 +1706,6 @@
         return query(prendas2025Ref, ...constraints);
       };
 
-      const buildCountQuery = ({ filters, extraConstraints = [], nullPriceOnly = false }) => {
-        const constraints = [];
-        const searchConfig = getSearchConfig(filters);
-        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
-        const hasPriceRange =
-          searchConfig.mode === "none" &&
-          (filters.priceMin !== null || filters.priceMax !== null);
-
-        if (filters.status) {
-          constraints.push(where("status", "==", filters.status));
-        }
-        if (filters.proveedor) {
-          constraints.push(where("proveedor", "==", filters.proveedor));
-        }
-        if (filters.tipo) {
-          constraints.push(where("tipo", "==", filters.tipo));
-        }
-        if (filters.color) {
-          constraints.push(where("color", "==", filters.color));
-        }
-        if (filters.talla) {
-          constraints.push(where("talla", "==", filters.talla));
-        }
-
-        if (nullPriceOnly) {
-          constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange) {
-          if (filters.priceMin !== null) {
-            constraints.push(where("precio", ">=", filters.priceMin));
-          }
-          if (filters.priceMax !== null) {
-            constraints.push(where("precio", "<=", filters.priceMax));
-          }
-        }
-
-        if (searchConfig.mode === "descripcion") {
-          constraints.push(where("searchTokens", "array-contains", searchConfig.token));
-        }
-
-        constraints.push(...extraConstraints);
-        return query(prendas2025Ref, ...constraints);
-      };
-
       const getPageSize = () => {
         const selected = Number(prendasPageSize?.value);
         if (Number.isFinite(selected) && selected > 0) {
@@ -1811,94 +1738,139 @@
       };
 
       
-      const normalizeComparable = (value) => normalizeText(safeString(value).trim());
+      const normalizeComparable = (value) => safeString(value).trim();
+      const normalizeStatus = (value) => {
+        const normalized = normalizeText(safeString(value).trim());
+        if (!normalized) return "";
+        if (["vendido", "vendida"].includes(normalized)) return "vendido";
+        if (["disponible", "activo", "activa"].includes(normalized)) return "disponible";
+        return normalized;
+      };
 
       const matchesFiltersLocal = (item, filters) => {
-        // Equality filters (case/accents/whitespace-insensitive compare)
-        if (filters.status && normalizeComparable(item.status) !== normalizeComparable(filters.status)) return false;
-        if (filters.proveedor && normalizeComparable(item.proveedor) !== normalizeComparable(filters.proveedor)) return false;
-        if (filters.tipo && normalizeComparable(item.tipo) !== normalizeComparable(filters.tipo)) return false;
-        if (filters.color && normalizeComparable(item.color) !== normalizeComparable(filters.color)) return false;
-        if (filters.talla && normalizeComparable(item.talla) !== normalizeComparable(filters.talla)) return false;
+        if (filters.status && normalizeStatus(item.status) !== normalizeStatus(filters.status)) {
+          return false;
+        }
+        if (filters.proveedor && normalizeComparable(item.proveedor) !== normalizeComparable(filters.proveedor)) {
+          return false;
+        }
+        if (filters.tipo && normalizeComparable(item.tipo) !== normalizeComparable(filters.tipo)) {
+          return false;
+        }
+        if (filters.color && normalizeComparable(item.color) !== normalizeComparable(filters.color)) {
+          return false;
+        }
+        if (filters.talla && normalizeComparable(item.talla) !== normalizeComparable(filters.talla)) {
+          return false;
+        }
 
-        // Price filters
-        const price = Number.isFinite(item.precio) ? item.precio
-          : Number.isFinite(item.precioConIva) ? item.precioConIva
-          : null;
-
+        const price = Number.isFinite(item.precio)
+          ? item.precio
+          : Number.isFinite(item.precioConIva)
+            ? item.precioConIva
+            : null;
         const hasMin = filters.priceMin !== null && Number.isFinite(filters.priceMin);
         const hasMax = filters.priceMax !== null && Number.isFinite(filters.priceMax);
+        const isNoPrice = price === null || price === 0;
 
-        if ((hasMin || hasMax) || !filters.includeNoPrice) {
-          if (price === null) {
-            // Include no price only if explicitly enabled AND there is no range constraint
-            if (!(filters.includeNoPrice && !hasMin && !hasMax)) return false;
+        if (isNoPrice) {
+          if (!filters.includeNoPrice) return false;
+        } else {
+          if (hasMin && price < filters.priceMin) return false;
+          if (hasMax && price > filters.priceMax) return false;
+        }
+
+        const searchRaw = safeString(filters.searchRaw).trim();
+        if (searchRaw) {
+          if (looksLikeCodeSearch(searchRaw)) {
+            const normalizedPrefix = normalizeSkuPrefix(searchRaw) || searchRaw.toUpperCase();
+            if (!item.codigoUpper?.startsWith(normalizedPrefix)) return false;
           } else {
-            if (hasMin && price < filters.priceMin) return false;
-            if (hasMax && price > filters.priceMax) return false;
+            const token = getPrimaryToken(filters.searchTerm || searchRaw);
+            if (token && !safeString(item.descripcionLower).includes(token)) return false;
           }
         }
+
         return true;
       };
 
-      // Progressive scan fallback:
-      // Firestore field names may be inconsistent (Proveedor vs proveedor, etc).
-      // Instead of relying on server-side where() for equality filters, we fetch in batches
-      // and apply filters client-side until we fill one UI page.
-      const fetchPrendasPageScan = async ({ filters, cursor, pageSize }) => {
-        const batchSize = Math.max(200, pageSize * 4);
-
-        let nextCursor = cursor || null;
-        let accumulated = [];
-        let lastSnap = null;
-        let exhausted = false;
-
-        while (accumulated.length < pageSize && !exhausted) {
-          let q = query(
-            collection(db, COLLECTIONS.prendas),
-            orderBy("createdAt", "desc"),
-            orderBy("__name__", "desc"),
-            limit(batchSize)
-          );
-
-          if (nextCursor) {
-            q = query(
-              collection(db, COLLECTIONS.prendas),
-              orderBy("createdAt", "desc"),
-              orderBy("__name__", "desc"),
-              startAfter(nextCursor),
-              limit(batchSize)
-            );
-          }
-
-          const snap = await getDocs(q);
-          if (snap.empty) {
-            exhausted = true;
-            break;
-          }
-
-          lastSnap = snap.docs[snap.docs.length - 1];
-          nextCursor = lastSnap;
-
-          const docs = snap.docs.map((docSnap) => normalizeDoc(docSnap));
-          for (const item of docs) {
-            if (prendasState.seenIds.has(item.id)) continue;
-            if (!matchesFiltersLocal(item, filters)) continue;
-            prendasState.seenIds.add(item.id);
-            accumulated.push(item);
-            if (accumulated.length >= pageSize) break;
-          }
-
-          if (snap.docs.length < batchSize) {
-            exhausted = true;
-            break;
-          }
+      const buildScanQuery = ({ cursor, orderField }) => {
+        const constraints = [];
+        if (orderField === "__name__") {
+          constraints.push(orderBy("__name__", "desc"));
+        } else {
+          constraints.push(orderBy("createdAt", "desc"));
+          constraints.push(orderBy("__name__", "desc"));
         }
-
-        return { items: accumulated, lastDocSnap: nextCursor, exhausted };
+        if (cursor) {
+          constraints.push(startAfter(cursor));
+        }
+        constraints.push(limit(PRENDAS_SCAN_PAGE_SIZE));
+        return query(prendas2025Ref, ...constraints);
       };
 
-const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) => {
+      const fetchScanBatch = async ({ cursor }) => {
+        let orderField = prendasState.scanOrderField || "createdAt";
+        try {
+          const snap = await getDocs(buildScanQuery({ cursor, orderField }));
+          return { snap, orderField };
+        } catch (error) {
+          if (orderField !== "__name__") {
+            prendasState.scanOrderField = "__name__";
+            orderField = "__name__";
+            const snap = await getDocs(buildScanQuery({ cursor, orderField }));
+            return { snap, orderField };
+          }
+          throw error;
+        }
+      };
+
+      const scanUntilFilled = async ({ filters, pageSize, reset }) => {
+        if (reset) {
+          prendasState.lastScanSnap = null;
+          prendasState.hasMoreScan = true;
+          prendasState.scanMode = true;
+        }
+        const results = [];
+        let cursor = prendasState.lastScanSnap;
+        let hasMore = prendasState.hasMoreScan;
+
+        while (results.length < pageSize && hasMore) {
+          const { snap } = await fetchScanBatch({ cursor });
+          const docsFetched = snap.docs.length;
+          if (!docsFetched) {
+            hasMore = false;
+            break;
+          }
+
+          const normalized = snap.docs.map((docSnap) => normalizeDoc(docSnap));
+          let matches = 0;
+          normalized.forEach((item) => {
+            if (prendasState.seenIds.has(item.id)) return;
+            if (!matchesFiltersLocal(item, filters)) return;
+            prendasState.seenIds.add(item.id);
+            results.push(item);
+            matches += 1;
+          });
+
+          cursor = snap.docs[docsFetched - 1];
+          if (docsFetched < PRENDAS_SCAN_PAGE_SIZE) {
+            hasMore = false;
+          }
+
+          console.log("[Prendas] Scan page fetched", {
+            docs: docsFetched,
+            matches,
+            total: results.length
+          });
+        }
+
+        prendasState.lastScanSnap = cursor;
+        prendasState.hasMoreScan = hasMore;
+        return results;
+      };
+
+      const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) => {
         const pageQuery = buildListQuery({ filters, cursor, pageSize, nullPriceOnly });
         return getDocs(pageQuery);
       };
@@ -1915,12 +1887,10 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
         prendasState.filtersActive = false;
         prendasState.showingTotal = null;
         prendasState.queryKey = "";
-        prendasState.counts = {
-          total: null,
-          nuevos: null,
-          existentes: null,
-          countFailed: false
-        };
+        prendasState.scanMode = false;
+        prendasState.lastScanSnap = null;
+        prendasState.hasMoreScan = true;
+        prendasState.scanOrderField = "createdAt";
       };
 
       const renderLoadingPlaceholder = () => {
@@ -1948,7 +1918,7 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
         prendasLoadMore.disabled = true;
         const pageSize = getPageSize();
         const searchConfig = getSearchConfig(filters);
-        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
+        const useScanFallback = hasActiveFilters(filters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -1961,22 +1931,21 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
         try {
 
           let combined = [];
-          let scanResult = null;
 
           if (useScanFallback) {
-            // Progressive scan mode for equality filters (works even if Firestore field names are inconsistent)
-            scanResult = await fetchPrendasPageScan({
+            if (reset || !prendasState.scanMode) {
+              console.log("[Prendas] Using SCAN fallback (no where)", { filters });
+            }
+            const scanItems = await scanUntilFilled({
               filters,
-              cursor: reset ? null : prendasState.lastDocs.main,
-              pageSize
+              pageSize,
+              reset
             });
             if (rid !== prendasState.reqId) {
               return;
             }
-            combined = scanResult.items;
-            // Store cursor in "main" slot for loadMore continuity
-            prendasState.lastDocs.main = scanResult.lastDocSnap;
-            if (scanResult.exhausted) {
+            combined = scanItems;
+            if (!prendasState.hasMoreScan) {
               prendasState.isDone = true;
             }
           } else {
@@ -2002,6 +1971,7 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
             if (rid !== prendasState.reqId) {
               return;
             }
+            const tQuery = Number((performance.now() - queryStart).toFixed(1));
 
             const mapStart = performance.now();
             const mainDocs = mainSnapshot
@@ -2039,15 +2009,6 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
             }
           }
 
-          // If we are in scan mode, provide the same logging fields for visibility
-          if (useScanFallback) {
-            console.info("[Prendas] Scan fallback", {
-              docs: combined.length,
-              pageSize,
-              cursor: prendasState.lastDocs.main ? prendasState.lastDocs.main.id : null
-            });
-          }
-
           if (reset) {
             prendasState.data = combined;
           } else {
@@ -2064,116 +2025,6 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
           }
           setLoadingState(reset ? "initial" : "more", false);
           prendasLoadMore.disabled = prendasState.isDone || prendasState.isSkuSearch;
-        }
-      };
-
-      const fetchGlobalStats = async () => {
-        try {
-          const statsRef = doc(db, PRENDAS_STATS_COLLECTION, PRENDAS_STATS_DOC);
-          const statsSnap = await getDoc(statsRef);
-          if (!statsSnap.exists()) {
-            return null;
-          }
-          const data = statsSnap.data() || {};
-          const totalAll = toNumberOrNull(data.totalAll ?? data.total);
-          const nuevos7dAll = toNumberOrNull(data.nuevos7dAll ?? data.nuevos7d);
-          const existentesAll = toNumberOrNull(data.existentesAll);
-          const computedExistentes =
-            Number.isFinite(existentesAll) ||
-            !Number.isFinite(totalAll) ||
-            !Number.isFinite(nuevos7dAll)
-              ? existentesAll
-              : Math.max(0, totalAll - nuevos7dAll);
-          return {
-            totalAll: Number.isFinite(totalAll) ? totalAll : null,
-            nuevos7dAll: Number.isFinite(nuevos7dAll) ? nuevos7dAll : null,
-            existentesAll: Number.isFinite(computedExistentes) ? computedExistentes : null
-          };
-        } catch (error) {
-          console.warn("No se pudo cargar el resumen global de prendas.", error);
-          return null;
-        }
-      };
-
-      const refreshPrendasCounts = async (filters) => {
-        try {
-          if (!hasActiveFilters(filters)) {
-            if (!prendasState.globalStats) {
-              const stats = await fetchGlobalStats();
-              if (stats) {
-                prendasState.globalStats = stats;
-              }
-            }
-          }
-          if (hasActiveFilters(filters)) {
-            const searchConfig = getSearchConfig(filters);
-        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
-            if (searchConfig.mode === "codigo") {
-              prendasState.counts = {
-                total: null,
-                nuevos: null,
-                existentes: null,
-                countFailed: false
-              };
-              await renderDocs(prendasState.filtered);
-              return;
-            }
-            const now = Date.now();
-            const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-            const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
-
-            const runCount = async (nullPriceOnly = false, extraConstraints = []) => {
-              const countQuery = buildCountQuery({
-                filters,
-                nullPriceOnly,
-                extraConstraints
-              });
-              const snapshot = await getCountFromServer(countQuery);
-              return toNumberOrNull(snapshot?.data()?.count) ?? 0;
-            };
-
-            let totalCount = 0;
-            let nuevosCount = 0;
-            if (filters.includeNoPrice) {
-              const [totalMain, totalNull, nuevosMain, nuevosNull] = await Promise.all([
-                runCount(false),
-                runCount(true),
-                runCount(false, [extraNewConstraint]),
-                runCount(true, [extraNewConstraint])
-              ]);
-              totalCount = totalMain + totalNull;
-              nuevosCount = nuevosMain + nuevosNull;
-            } else {
-              totalCount = await runCount(false);
-              nuevosCount = await runCount(false, [extraNewConstraint]);
-            }
-
-            prendasState.counts = {
-              total: Number.isFinite(totalCount) ? totalCount : null,
-              nuevos: Number.isFinite(nuevosCount) ? nuevosCount : null,
-              existentes: Number.isFinite(totalCount)
-                ? Math.max(0, totalCount - (Number.isFinite(nuevosCount) ? nuevosCount : 0))
-                : null,
-              countFailed: false
-            };
-          } else {
-            prendasState.counts = {
-              total: null,
-              nuevos: null,
-              existentes: null,
-              countFailed: false
-            };
-          }
-          await renderDocs(prendasState.filtered);
-        } catch (error) {
-          console.warn("No se pudieron refrescar las estadísticas.", error);
-          prendasState.counts = {
-            total: null,
-            nuevos: null,
-            existentes: null,
-            countFailed: false
-          };
-          await renderDocs(prendasState.filtered);
         }
       };
 
@@ -2199,9 +2050,6 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
             tFilter,
             tRender,
             docs: prendasState.filtered.length
-          });
-          refreshPrendasCounts(filters).catch((error) => {
-            console.warn("Conteo en segundo plano falló.", error);
           });
         } finally {
           if (rid !== prendasState.reqId) {
