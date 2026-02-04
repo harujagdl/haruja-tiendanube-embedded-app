@@ -1422,43 +1422,6 @@
         return row;
       };
 
-const renderCountsOnly = (rows = prendasState.filtered || []) => {
-  const stats = prendasState.globalStats;
-  const hasGlobalTotals =
-    stats &&
-    Number.isFinite(stats.totalAll) &&
-    Number.isFinite(stats.nuevos7dAll) &&
-    Number.isFinite(stats.existentesAll);
-  const useGlobalStats = !prendasState.filtersActive && hasGlobalTotals;
-  const countState = prendasState.counts || {};
-  const nuevosFromRows = rows.filter((item) => isNew(getPrendaDate(item))).length;
-
-  let total = null;
-  let nuevos = null;
-  let existentes = null;
-
-  if (useGlobalStats) {
-    total = stats.totalAll;
-    nuevos = stats.nuevos7dAll;
-    existentes = stats.existentesAll;
-  } else if (Number.isFinite(countState.total)) {
-    total = countState.total;
-    nuevos = Number.isFinite(countState.nuevos) ? countState.nuevos : nuevosFromRows;
-    existentes = Number.isFinite(countState.existentes)
-      ? countState.existentes
-      : Math.max(0, total - nuevosFromRows);
-  } else {
-    // fallback: mostrar conteos aproximados por lo cargado
-    total = rows.length;
-    nuevos = nuevosFromRows;
-    existentes = Math.max(0, total - nuevosFromRows);
-  }
-
-  prendasTotal.textContent = Number.isFinite(total) ? total : "—";
-  prendasNuevos.textContent = Number.isFinite(nuevos) ? nuevos : "—";
-  prendasExistentes.textContent = Number.isFinite(existentes) ? existentes : "—";
-};
-
       const renderDocs = async (rows) => {
         const renderStart = performance.now();
         console.assert(prendasTbody, "tbody no encontrado");
@@ -1713,6 +1676,7 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
       const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
         const constraints = [];
         const searchConfig = getSearchConfig(filters);
+        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -1771,6 +1735,7 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
       const buildCountQuery = ({ filters, extraConstraints = [], nullPriceOnly = false }) => {
         const constraints = [];
         const searchConfig = getSearchConfig(filters);
+        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -1841,7 +1806,95 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
         return safeString(b.id).localeCompare(safeString(a.id));
       };
 
-      const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) => {
+      
+      const normalizeComparable = (value) => normalizeText(safeString(value).trim());
+
+      const matchesFiltersLocal = (item, filters) => {
+        // Equality filters (case/accents/whitespace-insensitive compare)
+        if (filters.status && normalizeComparable(item.status) !== normalizeComparable(filters.status)) return false;
+        if (filters.proveedor && normalizeComparable(item.proveedor) !== normalizeComparable(filters.proveedor)) return false;
+        if (filters.tipo && normalizeComparable(item.tipo) !== normalizeComparable(filters.tipo)) return false;
+        if (filters.color && normalizeComparable(item.color) !== normalizeComparable(filters.color)) return false;
+        if (filters.talla && normalizeComparable(item.talla) !== normalizeComparable(filters.talla)) return false;
+
+        // Price filters
+        const price = Number.isFinite(item.precio) ? item.precio
+          : Number.isFinite(item.precioConIva) ? item.precioConIva
+          : null;
+
+        const hasMin = filters.priceMin !== null && Number.isFinite(filters.priceMin);
+        const hasMax = filters.priceMax !== null && Number.isFinite(filters.priceMax);
+
+        if ((hasMin || hasMax) || !filters.includeNoPrice) {
+          if (price === null) {
+            // Include no price only if explicitly enabled AND there is no range constraint
+            if (!(filters.includeNoPrice && !hasMin && !hasMax)) return false;
+          } else {
+            if (hasMin && price < filters.priceMin) return false;
+            if (hasMax && price > filters.priceMax) return false;
+          }
+        }
+        return true;
+      };
+
+      // Progressive scan fallback:
+      // Firestore field names may be inconsistent (Proveedor vs proveedor, etc).
+      // Instead of relying on server-side where() for equality filters, we fetch in batches
+      // and apply filters client-side until we fill one UI page.
+      const fetchPrendasPageScan = async ({ filters, cursor, pageSize }) => {
+        const batchSize = Math.max(200, pageSize * 4);
+
+        let nextCursor = cursor || null;
+        let accumulated = [];
+        let lastSnap = null;
+        let exhausted = false;
+
+        while (accumulated.length < pageSize && !exhausted) {
+          let q = query(
+            collection(db, COLLECTIONS.prendas),
+            orderBy("createdAt", "desc"),
+            orderBy("__name__", "desc"),
+            limit(batchSize)
+          );
+
+          if (nextCursor) {
+            q = query(
+              collection(db, COLLECTIONS.prendas),
+              orderBy("createdAt", "desc"),
+              orderBy("__name__", "desc"),
+              startAfter(nextCursor),
+              limit(batchSize)
+            );
+          }
+
+          const snap = await getDocs(q);
+          if (snap.empty) {
+            exhausted = true;
+            break;
+          }
+
+          lastSnap = snap.docs[snap.docs.length - 1];
+          nextCursor = lastSnap;
+
+          const docs = snap.docs.map((docSnap) => normalizeDoc(docSnap));
+          for (const item of docs) {
+            if (prendasState.seenIds.has(item.id)) continue;
+            if (!matchesFiltersLocal(item, filters)) continue;
+            prendasState.seenIds.add(item.id);
+            accumulated.push(item);
+            if (accumulated.length >= pageSize) break;
+          }
+
+          if (snap.docs.length < batchSize) {
+            exhausted = true;
+            break;
+          }
+        }
+
+        return { items: accumulated, lastDocSnap: nextCursor, exhausted };
+      };
+
+const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) => {
         const pageQuery = buildListQuery({ filters, cursor, pageSize, nullPriceOnly });
         return getDocs(pageQuery);
       };
@@ -1891,6 +1944,7 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
         prendasLoadMore.disabled = true;
         const pageSize = getPageSize();
         const searchConfig = getSearchConfig(filters);
+        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -1901,71 +1955,93 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
         const rid = ++prendasState.reqId;
 
         try {
-          const mainPromise = fetchPrendasPage({
-            filters,
-            cursor: reset ? null : prendasState.lastDocs.main,
-            pageSize,
-            nullPriceOnly: false
-          });
-          const noPricePromise = needsNullPriceQuery
-            ? fetchPrendasPage({
-                filters,
-                cursor: reset ? null : prendasState.lastDocs.noPrice,
-                pageSize,
-                nullPriceOnly: true
+
+          let combined = [];
+          let scanResult = null;
+
+          if (useScanFallback) {
+            // Progressive scan mode for equality filters (works even if Firestore field names are inconsistent)
+            scanResult = await fetchPrendasPageScan({
+              filters,
+              cursor: reset ? null : prendasState.lastDocs.main,
+              pageSize
+            });
+            if (rid !== prendasState.reqId) {
+              return;
+            }
+            combined = scanResult.items;
+            // Store cursor in "main" slot for loadMore continuity
+            prendasState.lastDocs.main = scanResult.lastDocSnap;
+            if (scanResult.exhausted) {
+              prendasState.isDone = true;
+            }
+          } else {
+            const mainPromise = fetchPrendasPage({
+              filters,
+              cursor: reset ? null : prendasState.lastDocs.main,
+              pageSize,
+              nullPriceOnly: false
+            });
+            const noPricePromise = needsNullPriceQuery
+              ? fetchPrendasPage({
+                  filters,
+                  cursor: reset ? null : prendasState.lastDocs.noPrice,
+                  pageSize,
+                  nullPriceOnly: true
+                })
+              : Promise.resolve(null);
+
+            const [mainSnapshot, noPriceSnapshot] = await Promise.all([
+              mainPromise,
+              noPricePromise
+            ]);
+            if (rid !== prendasState.reqId) {
+              return;
+            }
+
+            const mapStart = performance.now();
+            const mainDocs = mainSnapshot
+              ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
+              : [];
+            const noPriceDocs = noPriceSnapshot
+              ? noPriceSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
+              : [];
+
+            combined = [...mainDocs, ...noPriceDocs]
+              .filter((item) => {
+                if (prendasState.seenIds.has(item.id)) return false;
+                prendasState.seenIds.add(item.id);
+                return true;
               })
-            : Promise.resolve(null);
+              .sort((a, b) => comparePrendas(a, b, { hasPriceRange, searchConfig }));
 
-          const [mainSnapshot, noPriceSnapshot] = await Promise.all([
-            mainPromise,
-            noPricePromise
-          ]);
-          if (rid !== prendasState.reqId) {
-            return;
-          }
-          const tQuery = Number((performance.now() - queryStart).toFixed(1));
+            const tMap = Number((performance.now() - mapStart).toFixed(1));
+            console.info("[Prendas] Query Firestore", {
+              ms: tQuery,
+              docs: combined.length,
+              pageSize,
+              tMap
+            });
 
-          const mapStart = performance.now();
-          const mainDocs = mainSnapshot
-            ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-            : [];
-          const noPriceDocs = noPriceSnapshot
-            ? noPriceSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-            : [];
-
-          const combined = [...mainDocs, ...noPriceDocs]
-            .filter((item) => {
-              if (prendasState.seenIds.has(item.id)) return false;
-              prendasState.seenIds.add(item.id);
-              return true;
-            })
-            .sort((a, b) => comparePrendas(a, b, { hasPriceRange, searchConfig }));
-
-          const tMap = Number((performance.now() - mapStart).toFixed(1));
-          console.info("[Prendas] Query Firestore", {
-            ms: tQuery,
-            docs: combined.length,
-            pageSize,
-            mainDocs: mainSnapshot?.docs?.length ?? 0,
-            noPriceDocs: noPriceSnapshot?.docs?.length ?? 0
-          });
-
-          if (mainSnapshot?.docs?.length) {
-            prendasState.lastDocs.main =
-              mainSnapshot.docs[mainSnapshot.docs.length - 1] || null;
-          }
-          if (noPriceSnapshot?.docs?.length) {
-            prendasState.lastDocs.noPrice =
-              noPriceSnapshot.docs[noPriceSnapshot.docs.length - 1] || null;
+            // Update cursors for the normal mode
+            if (mainSnapshot && mainSnapshot.docs.length) {
+              prendasState.lastDocs.main = mainSnapshot.docs[mainSnapshot.docs.length - 1];
+            }
+            if (noPriceSnapshot && noPriceSnapshot.docs.length) {
+              prendasState.lastDocs.noPrice = noPriceSnapshot.docs[noPriceSnapshot.docs.length - 1];
+            }
+            if (!mainSnapshot || mainSnapshot.docs.length < pageSize) {
+              prendasState.isDone = true;
+            }
           }
 
-          prendasState.hasMoreMain = (mainSnapshot?.docs?.length ?? 0) === pageSize;
-          prendasState.hasMoreNoPrice = needsNullPriceQuery
-            ? (noPriceSnapshot?.docs?.length ?? 0) === pageSize
-            : false;
-          prendasState.hasMore = prendasState.hasMoreMain || prendasState.hasMoreNoPrice;
-          if (!prendasState.hasMore) {
-            prendasState.isDone = true;
+          // If we are in scan mode, provide the same logging fields for visibility
+          if (useScanFallback) {
+            console.info("[Prendas] Scan fallback", {
+              docs: combined.length,
+              pageSize,
+              cursor: prendasState.lastDocs.main ? prendasState.lastDocs.main.id : null
+            });
           }
 
           if (reset) {
@@ -2015,76 +2091,87 @@ const renderCountsOnly = (rows = prendasState.filtered || []) => {
         }
       };
 
-      
-const refreshPrendasCounts = async (filters) => {
-  try {
-    // 1) Guardar/resolver totales globales solo cuando NO hay filtros.
-    if (!hasActiveFilters(filters)) {
-      if (!prendasState.globalStats) {
-        const stats = await fetchGlobalStats();
-        if (stats) {
-          prendasState.globalStats = stats;
+      const refreshPrendasCounts = async (filters) => {
+        try {
+          if (!hasActiveFilters(filters)) {
+            if (!prendasState.globalStats) {
+              const stats = await fetchGlobalStats();
+              if (stats) {
+                prendasState.globalStats = stats;
+              }
+            }
+          }
+          if (hasActiveFilters(filters)) {
+            const searchConfig = getSearchConfig(filters);
+        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
+            if (searchConfig.mode === "codigo") {
+              prendasState.counts = {
+                total: null,
+                nuevos: null,
+                existentes: null,
+                countFailed: false
+              };
+              await renderDocs(prendasState.filtered);
+              return;
+            }
+            const now = Date.now();
+            const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
+
+            const runCount = async (nullPriceOnly = false, extraConstraints = []) => {
+              const countQuery = buildCountQuery({
+                filters,
+                nullPriceOnly,
+                extraConstraints
+              });
+              const snapshot = await getCountFromServer(countQuery);
+              return toNumberOrNull(snapshot?.data()?.count) ?? 0;
+            };
+
+            let totalCount = 0;
+            let nuevosCount = 0;
+            if (filters.includeNoPrice) {
+              const [totalMain, totalNull, nuevosMain, nuevosNull] = await Promise.all([
+                runCount(false),
+                runCount(true),
+                runCount(false, [extraNewConstraint]),
+                runCount(true, [extraNewConstraint])
+              ]);
+              totalCount = totalMain + totalNull;
+              nuevosCount = nuevosMain + nuevosNull;
+            } else {
+              totalCount = await runCount(false);
+              nuevosCount = await runCount(false, [extraNewConstraint]);
+            }
+
+            prendasState.counts = {
+              total: Number.isFinite(totalCount) ? totalCount : null,
+              nuevos: Number.isFinite(nuevosCount) ? nuevosCount : null,
+              existentes: Number.isFinite(totalCount)
+                ? Math.max(0, totalCount - (Number.isFinite(nuevosCount) ? nuevosCount : 0))
+                : null,
+              countFailed: false
+            };
+          } else {
+            prendasState.counts = {
+              total: null,
+              nuevos: null,
+              existentes: null,
+              countFailed: false
+            };
+          }
+          await renderDocs(prendasState.filtered);
+        } catch (error) {
+          console.warn("No se pudieron refrescar las estadísticas.", error);
+          prendasState.counts = {
+            total: null,
+            nuevos: null,
+            existentes: null,
+            countFailed: true
+          };
+          await renderDocs(prendasState.filtered);
         }
-      }
-      // Para vista sin filtros, renderizamos conteos desde globalStats (si existe)
-      renderCountsOnly(prendasState.filtered);
-      return;
-    }
-
-    // 2) Con filtros: el conteo es "best effort". Si falla, NO afecta la lista (FAIL-OPEN).
-    const searchConfig = getSearchConfig(filters);
-    if (searchConfig.mode === "codigo") {
-      // En modo búsqueda por código no tiene sentido contar.
-      prendasState.counts = { total: null, nuevos: null, existentes: null, countFailed: false };
-      renderCountsOnly(prendasState.filtered);
-      return;
-    }
-
-    const now = Date.now();
-    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-    const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
-
-    const runCount = async (nullPriceOnly = false, extraConstraints = []) => {
-      const countQuery = buildCountQuery({ filters, nullPriceOnly, extraConstraints });
-      const snapshot = await getCountFromServer(countQuery);
-      return toNumberOrNull(snapshot?.data()?.count) ?? 0;
-    };
-
-    let totalCount = 0;
-    let nuevosCount = 0;
-
-    if (filters.includeNoPrice) {
-      const [totalMain, totalNull, nuevosMain, nuevosNull] = await Promise.all([
-        runCount(false),
-        runCount(true),
-        runCount(false, [extraNewConstraint]),
-        runCount(true, [extraNewConstraint])
-      ]);
-      totalCount = totalMain + totalNull;
-      nuevosCount = nuevosMain + nuevosNull;
-    } else {
-      totalCount = await runCount(false);
-      nuevosCount = await runCount(false, [extraNewConstraint]);
-    }
-
-    prendasState.counts = {
-      total: Number.isFinite(totalCount) ? totalCount : null,
-      nuevos: Number.isFinite(nuevosCount) ? nuevosCount : null,
-      existentes: Number.isFinite(totalCount)
-        ? Math.max(0, totalCount - (Number.isFinite(nuevosCount) ? nuevosCount : 0))
-        : null,
-      countFailed: false
-    };
-
-    // Actualizar SOLO UI de conteos (no tocar la tabla)
-    renderCountsOnly(prendasState.filtered);
-  } catch (error) {
-    // FAIL-OPEN: si el conteo falla (índices/limitaciones), NO mostrar error global ni vaciar la lista.
-    console.warn("Conteo falló (FAIL-OPEN): se ignora para no bloquear la lista.", error);
-    prendasState.counts = { total: null, nuevos: null, existentes: null, countFailed: false };
-    renderCountsOnly(prendasState.filtered);
-  }
-};
+      };
 
       const reloadPrendasList = async ({ reason = "manual" } = {}) => {
         setLoadingState("initial", true);
