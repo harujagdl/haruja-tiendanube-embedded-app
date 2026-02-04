@@ -823,13 +823,37 @@
         selectEl.disabled = true;
       };
 
-      const fillSelect = (selectEl, entries) => {
+      const fillDictionarySelect = (selectEl, entries) => {
         selectEl.innerHTML = "";
         const placeholder = document.createElement("option");
         placeholder.value = "";
         placeholder.textContent = "Seleccionar";
         selectEl.appendChild(placeholder);
         entries.forEach((item) => selectEl.appendChild(buildOption(item)));
+        selectEl.disabled = false;
+      };
+
+      const fillSelect = (selectEl, values) => {
+        const current = selectEl.value;
+        selectEl.innerHTML = "";
+        const allOption = document.createElement("option");
+        allOption.value = "todos";
+        allOption.textContent = "Todos";
+        selectEl.appendChild(allOption);
+        const uniqueValues = [...new Set(values.filter(Boolean))].sort((a, b) =>
+          a.localeCompare(b)
+        );
+        uniqueValues.forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          selectEl.appendChild(option);
+        });
+        if (current && uniqueValues.includes(current)) {
+          selectEl.value = current;
+        } else {
+          selectEl.value = "todos";
+        }
         selectEl.disabled = false;
       };
 
@@ -857,17 +881,17 @@
       const PRENDAS_STATS_DOC = "summary";
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
-      const DICTS = {
-        proveedores: [],
-        tipos: [],
-        colores: [],
-        tallas: []
-      };
-
       const prendasState = {
         data: [],
         filtered: [],
         isAdmin: false,
+        dicts: {
+          proveedores: [],
+          tipos: [],
+          colores: [],
+          tallas: []
+        },
+        dictsLoaded: false,
         lastDocs: {
           main: null,
           noPrice: null
@@ -934,7 +958,10 @@
         };
       };
 
-      const loadDictionaries = async () => {
+      const loadDictionariesOnce = async () => {
+        if (prendasState.dictsLoaded) {
+          return prendasState.dicts;
+        }
         const categories = Object.keys(COLLECTIONS);
         const results = await Promise.all(
           categories.map(async (category) => {
@@ -947,13 +974,16 @@
           })
         );
 
-        DICTS.proveedores =
+        prendasState.dicts.proveedores =
           results.find((result) => result.category === "proveedores")?.values ?? [];
-        DICTS.tipos = results.find((result) => result.category === "tipos")?.values ?? [];
-        DICTS.colores = results.find((result) => result.category === "colores")?.values ?? [];
-        DICTS.tallas = results.find((result) => result.category === "tallas")?.values ?? [];
-
-        return DICTS;
+        prendasState.dicts.tipos =
+          results.find((result) => result.category === "tipos")?.values ?? [];
+        prendasState.dicts.colores =
+          results.find((result) => result.category === "colores")?.values ?? [];
+        prendasState.dicts.tallas =
+          results.find((result) => result.category === "tallas")?.values ?? [];
+        prendasState.dictsLoaded = true;
+        return prendasState.dicts;
       };
 
       const updateLoadingUi = () => {
@@ -1072,7 +1102,17 @@
 
       const getSearchInput = () => safeString(prendasSearch.value);
       const getSearchTerm = () => normalizeText(prendasSearch.value);
+      const getSearchRaw = () => safeString(prendasSearch.value).trim();
       const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
+      const getPrimaryToken = (value) =>
+        normalizeText(value)
+          .split(/[^a-z0-9]+/i)
+          .filter(Boolean)[0] || "";
+      const looksLikeCodeSearch = (value) => {
+        const raw = safeString(value).trim().toUpperCase();
+        if (!raw) return false;
+        return raw.startsWith("HA") || raw.includes("/") || raw.includes("-");
+      };
 
       const getCurrentFilters = () => ({
         status: normalizeSelectValue(prendasStatus.value),
@@ -1083,7 +1123,8 @@
         priceMin: toNumberOrNull(prendasPrecioMin.value),
         priceMax: toNumberOrNull(prendasPrecioMax.value),
         includeNoPrice: prendasPrecioSin?.checked ?? true,
-        searchTerm: getSearchTerm()
+        searchTerm: getSearchTerm(),
+        searchRaw: getSearchRaw()
       });
 
       const handleIndexError = (error) => {
@@ -1097,25 +1138,6 @@
         }
         console.warn("[Prendas] Index error", error);
         return true;
-      };
-
-      const buildFilterOptions = (selectEl, values) => {
-        const current = selectEl.value;
-        selectEl.innerHTML = "";
-        const allOption = document.createElement("option");
-        allOption.value = "todos";
-        allOption.textContent = "Todos";
-        selectEl.appendChild(allOption);
-        values.forEach((value) => {
-          const option = document.createElement("option");
-          option.value = value;
-          option.textContent = value;
-          selectEl.appendChild(option);
-        });
-        if (current) {
-          selectEl.value = current;
-        }
-        selectEl.disabled = false;
       };
 
       const setFilterSelectLoading = (selectEl, message) => {
@@ -1132,11 +1154,11 @@
         setFilterSelectLoading(prendasTipo, "Cargando opciones...");
         setFilterSelectLoading(prendasColor, "Cargando opciones...");
         setFilterSelectLoading(prendasTalla, "Cargando opciones...");
-        const dicts = await loadDictionaries();
-        buildFilterOptions(prendasProveedor, dicts.proveedores);
-        buildFilterOptions(prendasTipo, dicts.tipos);
-        buildFilterOptions(prendasColor, dicts.colores);
-        buildFilterOptions(prendasTalla, dicts.tallas);
+        const dicts = await loadDictionariesOnce();
+        fillSelect(prendasProveedor, dicts.proveedores);
+        fillSelect(prendasTipo, dicts.tipos);
+        fillSelect(prendasColor, dicts.colores);
+        fillSelect(prendasTalla, dicts.tallas);
       };
 
       const renderRowsChunked = (
@@ -1360,24 +1382,6 @@
         );
       };
 
-      const applyClientSideFilters = (data, filters) => {
-        const filterStart = performance.now();
-        const searchTerm = filters.searchTerm;
-
-        const filtered = data.filter((item) => {
-          const searchKey = item._searchKey || buildSearchKey(item);
-          if (searchTerm && !searchKey.includes(searchTerm)) {
-            return false;
-          }
-          return true;
-        });
-
-        return {
-          filtered,
-          tFilter: Number((performance.now() - filterStart).toFixed(1))
-        };
-      };
-
       const applyFiltersAndRender = async () => {
         const filters = prendasState.filters || getCurrentFilters();
         prendasState.filters = filters;
@@ -1386,18 +1390,8 @@
         if (!prendasState.isSkuSearch) {
           prendasState.showingTotal = null;
         }
-        const mappedCountBeforeFilters = prendasState.data.length;
         console.info("[Prendas] Filters in use", filters);
-        const { filtered, tFilter } = applyClientSideFilters(prendasState.data, filters);
-        const noSearch = !filters.searchTerm;
-        const shouldApplyFailsafe =
-          prendasState.data.length > 0 && filtered.length === 0 && noSearch;
-        const finalFiltered = shouldApplyFailsafe ? prendasState.data : filtered;
-        console.info("[Prendas] Filter counts", {
-          mappedCountBeforeFilters,
-          filteredCountAfterFilters: finalFiltered.length
-        });
-
+        const finalFiltered = prendasState.data;
         prendasState.filtered = finalFiltered;
         const tRender = await renderDocs(finalFiltered);
         if (!prendasState.isSkuSearch) {
@@ -1409,7 +1403,7 @@
             setPrendasAlert("");
           }
         }
-        return { tFilter, tRender };
+        return { tFilter: 0, tRender };
       };
 
       const setSkuSearchMode = (enabled) => {
@@ -1507,14 +1501,27 @@
           priceMin: filters.priceMin ?? null,
           priceMax: filters.priceMax ?? null,
           includeNoPrice: Boolean(filters.includeNoPrice),
+          search: filters.searchRaw ?? null,
           sortMode: hasPriceRange ? "precio" : "createdAt",
           pageSize
         });
       };
 
+      const getSearchConfig = (filters) => {
+        const raw = safeString(filters.searchRaw).trim();
+        if (!raw) return { mode: "none" };
+        if (looksLikeCodeSearch(raw)) {
+          return { mode: "codigo", raw: raw.toUpperCase() };
+        }
+        const token = getPrimaryToken(filters.searchTerm || raw);
+        if (!token) return { mode: "none" };
+        return { mode: "descripcion", token };
+      };
+
       const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
         const constraints = [];
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
+        const searchConfig = getSearchConfig(filters);
 
         if (filters.status) {
           constraints.push(where("status", "==", filters.status));
@@ -1534,7 +1541,7 @@
 
         if (nullPriceOnly) {
           constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange) {
+        } else if (hasPriceRange && searchConfig.mode === "none") {
           if (filters.priceMin !== null) {
             constraints.push(where("precio", ">=", filters.priceMin));
           }
@@ -1544,8 +1551,17 @@
           constraints.push(orderBy("precio", "asc"));
         }
 
-        constraints.push(orderBy("createdAt", "desc"));
-        constraints.push(orderBy(documentId(), "desc"));
+        if (searchConfig.mode === "codigo") {
+          constraints.push(orderBy("codigo"));
+          constraints.push(startAt(searchConfig.raw));
+          constraints.push(endAt(`${searchConfig.raw}\uf8ff`));
+        } else {
+          if (searchConfig.mode === "descripcion") {
+            constraints.push(where("searchTokens", "array-contains", searchConfig.token));
+          }
+          constraints.push(orderBy("createdAt", "desc"));
+          constraints.push(orderBy(documentId(), "desc"));
+        }
 
         if (cursor) {
           constraints.push(startAfter(cursor));
@@ -1557,6 +1573,7 @@
       const buildCountQuery = ({ filters, extraConstraints = [], nullPriceOnly = false }) => {
         const constraints = [];
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
+        const searchConfig = getSearchConfig(filters);
 
         if (filters.status) {
           constraints.push(where("status", "==", filters.status));
@@ -1576,7 +1593,7 @@
 
         if (nullPriceOnly) {
           constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange) {
+        } else if (hasPriceRange && searchConfig.mode === "none") {
           if (filters.priceMin !== null) {
             constraints.push(where("precio", ">=", filters.priceMin));
           }
@@ -1584,6 +1601,14 @@
             constraints.push(where("precio", "<=", filters.priceMax));
           }
           constraints.push(orderBy("precio", "asc"));
+        }
+
+        if (searchConfig.mode === "codigo") {
+          constraints.push(orderBy("codigo"));
+          constraints.push(startAt(searchConfig.raw));
+          constraints.push(endAt(`${searchConfig.raw}\uf8ff`));
+        } else if (searchConfig.mode === "descripcion") {
+          constraints.push(where("searchTokens", "array-contains", searchConfig.token));
         }
 
         constraints.push(...extraConstraints);
@@ -1595,7 +1620,10 @@
           ? PRENDAS_PAGE_SIZE_SMALL
           : PRENDAS_PAGE_SIZE_DEFAULT;
 
-      const comparePrendas = (a, b, { hasPriceRange }) => {
+      const comparePrendas = (a, b, { hasPriceRange, searchConfig }) => {
+        if (searchConfig?.mode === "codigo") {
+          return safeString(a.codigo).localeCompare(safeString(b.codigo));
+        }
         if (hasPriceRange) {
           const priceA = toNumberOrNull(a.precio ?? a.precioConIva);
           const priceB = toNumberOrNull(b.precio ?? b.precioConIva);
@@ -1666,6 +1694,7 @@
         const pageSize = getPageSize();
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
         const shouldIncludeNoPrice = Boolean(filters.includeNoPrice);
+        const searchConfig = getSearchConfig(filters);
 
         const queryStart = performance.now();
         const rid = ++prendasState.reqId;
@@ -1713,7 +1742,7 @@
               prendasState.seenIds.add(item.id);
               return true;
             })
-            .sort((a, b) => comparePrendas(a, b, { hasPriceRange }));
+            .sort((a, b) => comparePrendas(a, b, { hasPriceRange, searchConfig }));
 
           const tMap = Number((performance.now() - mapStart).toFixed(1));
           console.info("[Prendas] Query Firestore", {
@@ -2183,8 +2212,7 @@
           return;
         }
         setSkuSearchMode(false);
-        prendasState.filters = getCurrentFilters();
-        await applyFiltersAndRender();
+        await applyFilters();
       }, PRENDAS_SEARCH_DEBOUNCE);
 
       const handleFilterApply = async () => {
@@ -2253,7 +2281,7 @@
           }
 
           if (dictionary.tipos.length) {
-            fillSelect(
+            fillDictionarySelect(
               registroProducto,
               dictionary.tipos.sort((a, b) => a.clave.localeCompare(b.clave))
             );
@@ -2262,7 +2290,7 @@
           }
 
           if (dictionary.proveedores.length) {
-            fillSelect(
+            fillDictionarySelect(
               registroProveedor,
               dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave))
             );
@@ -2271,7 +2299,7 @@
           }
 
           if (dictionary.colores.length) {
-            fillSelect(
+            fillDictionarySelect(
               registroColor,
               dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave))
             );
@@ -2280,7 +2308,7 @@
           }
 
           if (dictionary.tallas.length) {
-            fillSelect(
+            fillDictionarySelect(
               registroTalla,
               dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave))
             );
@@ -2300,9 +2328,10 @@
           // ADMIN DB MODE END
           setSkuSearchMode(false);
           try {
-            loadFilterDictionaries().catch((error) => {
-              console.warn("No se pudieron cargar los filtros completos.", error);
-            });
+            await loadFilterDictionaries();
+            await reloadPrendasList({ reason: "init" });
+          } catch (error) {
+            console.warn("No se pudieron cargar los filtros completos.", error);
             await reloadPrendasList({ reason: "init" });
           } finally {
             isBooting = false;
