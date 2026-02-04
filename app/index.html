@@ -640,15 +640,15 @@
               <div class="counters">
                 <div class="counter-card">
                   <span>Total</span>
-                  <strong id="prendas-total" data-count-total>0</strong>
+                  <strong id="prendas-total" data-count-total>—</strong>
                 </div>
                 <div class="counter-card">
                   <span>Nuevos (7 días)</span>
-                  <strong id="prendas-nuevos">0</strong>
+                  <strong id="prendas-nuevos">—</strong>
                 </div>
                 <div class="counter-card">
                   <span>Existentes</span>
-                  <strong id="prendas-existentes">0</strong>
+                  <strong id="prendas-existentes">—</strong>
                 </div>
               </div>
             </div>
@@ -1783,8 +1783,9 @@
         const searchRaw = safeString(filters.searchRaw).trim();
         if (searchRaw) {
           if (looksLikeCodeSearch(searchRaw)) {
-            const normalizedPrefix = normalizeSkuPrefix(searchRaw) || searchRaw.toUpperCase();
-            if (!item.codigoUpper?.startsWith(normalizedPrefix)) return false;
+            const normalizedPrefix = normalizeSkuPrefix(searchRaw);
+            const codigoComparable = normalizeSkuPrefix(item.codigoUpper || "");
+            if (normalizedPrefix && !codigoComparable.startsWith(normalizedPrefix)) return false;
           } else {
             const token = getPrimaryToken(filters.searchTerm || searchRaw);
             if (token && !safeString(item.descripcionLower).includes(token)) return false;
@@ -1800,7 +1801,6 @@
           constraints.push(orderBy("__name__", "desc"));
         } else {
           constraints.push(orderBy("createdAt", "desc"));
-          constraints.push(orderBy("__name__", "desc"));
         }
         if (cursor) {
           constraints.push(startAfter(cursor));
