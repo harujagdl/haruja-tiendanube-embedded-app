@@ -1247,18 +1247,26 @@
         return raw.startsWith("HA") || raw.includes("/") || raw.includes("-");
       };
 
-      const getCurrentFilters = () => ({
-        status: normalizeSelectValue(prendasStatus.value),
-        proveedor: normalizeSelectValue(prendasProveedor.value),
-        tipo: normalizeSelectValue(prendasTipo.value),
-        color: normalizeSelectValue(prendasColor.value),
-        talla: normalizeSelectValue(prendasTalla.value),
-        priceMin: toNumberOrNull(prendasPrecioMin.value),
-        priceMax: toNumberOrNull(prendasPrecioMax.value),
-        includeNoPrice: prendasPrecioSin?.checked ?? true,
-        searchTerm: getSearchTerm(),
-        searchRaw: getSearchRaw()
-      });
+      const getCurrentFilters = () => {
+        const priceMin = toNumberOrNull(prendasPrecioMin.value);
+        const priceMax = toNumberOrNull(prendasPrecioMax.value);
+        const searchRaw = getSearchRaw();
+        return {
+          status: normalizeSelectValue(prendasStatus.value),
+          proveedor: normalizeSelectValue(prendasProveedor.value),
+          tipo: normalizeSelectValue(prendasTipo.value),
+          color: normalizeSelectValue(prendasColor.value),
+          talla: normalizeSelectValue(prendasTalla.value),
+          priceMin,
+          priceMax,
+          minPrice: priceMin,
+          maxPrice: priceMax,
+          includeNoPrice: prendasPrecioSin?.checked ?? true,
+          searchTerm: getSearchTerm(),
+          searchRaw,
+          query: searchRaw
+        };
+      };
 
       const handleIndexError = (error) => {
         const message = error?.message || "";
@@ -1464,8 +1472,10 @@
         const hasTipo = Boolean(filters.tipo);
         const hasColor = Boolean(filters.color);
         const hasTalla = Boolean(filters.talla);
-        const hasSearch = Boolean(safeString(filters.searchRaw).trim());
-        const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
+        const hasSearch = Boolean(
+          safeString(filters.query || filters.searchRaw).trim()
+        );
+        const hasPriceRange = filters.minPrice !== null || filters.maxPrice !== null;
         const excludeNoPrice = filters.includeNoPrice === false;
         return (
           hasStatus ||
@@ -1629,61 +1639,51 @@
       };
 
       
-      const normalizeComparable = (value) => safeString(value).trim();
-      const normalizeStatus = (value) => {
-        const normalized = normalizeText(safeString(value).trim());
-        if (!normalized) return "";
-        if (["vendido", "vendida"].includes(normalized)) return "vendido";
-        if (["disponible", "activo", "activa"].includes(normalized)) return "disponible";
-        return normalized;
+      const norm = (value) => (value ?? "").toString().trim();
+      const toNum = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
       };
 
       const matchFilters = (item, filters) => {
-        if (filters.status && normalizeStatus(item.status) !== normalizeStatus(filters.status)) {
+        if (filters.status && norm(item.status) !== norm(filters.status)) return false;
+        if (filters.proveedor && norm(item.proveedor) !== norm(filters.proveedor)) return false;
+        if (filters.tipo && norm(item.tipo) !== norm(filters.tipo)) return false;
+        if (filters.color && norm(item.color) !== norm(filters.color)) return false;
+        if (filters.talla && norm(item.talla) !== norm(filters.talla)) return false;
+
+        const precio = toNum(item.precio);
+        if (
+          !filters.includeNoPrice &&
+          (precio === null || precio === 0) &&
+          (filters.minPrice || filters.maxPrice)
+        ) {
           return false;
         }
-        if (filters.proveedor && normalizeComparable(item.proveedor) !== normalizeComparable(filters.proveedor)) {
-          return false;
-        }
-        if (filters.tipo && normalizeComparable(item.tipo) !== normalizeComparable(filters.tipo)) {
-          return false;
-        }
-        if (filters.color && normalizeComparable(item.color) !== normalizeComparable(filters.color)) {
-          return false;
-        }
-        if (filters.talla && normalizeComparable(item.talla) !== normalizeComparable(filters.talla)) {
-          return false;
+        if (filters.includeNoPrice !== true) {
+          if (filters.minPrice != null && precio != null && precio < filters.minPrice) {
+            return false;
+          }
+          if (filters.maxPrice != null && precio != null && precio > filters.maxPrice) {
+            return false;
+          }
+        } else if (precio != null) {
+          if (filters.minPrice != null && precio < filters.minPrice) return false;
+          if (filters.maxPrice != null && precio > filters.maxPrice) return false;
         }
 
-        const price = Number.isFinite(item.precio)
-          ? item.precio
-          : Number.isFinite(item.precioConIva)
-            ? item.precioConIva
-            : null;
-        const hasMin = filters.priceMin !== null && Number.isFinite(filters.priceMin);
-        const hasMax = filters.priceMax !== null && Number.isFinite(filters.priceMax);
-        const isNoPrice = price === null || price === 0;
-
-        if (isNoPrice) {
-          if (!filters.includeNoPrice) return false;
-        } else {
-          if (hasMin && price < filters.priceMin) return false;
-          if (hasMax && price > filters.priceMax) return false;
-        }
-
-        const searchRaw = safeString(filters.searchRaw).trim();
-        if (searchRaw) {
-          if (looksLikeCodeSearch(searchRaw)) {
-            const normalizedPrefix = normalizeSkuPrefix(searchRaw);
-            const codigoComparable = normalizeSkuPrefix(item.codigo || "");
-            if (normalizedPrefix && !codigoComparable.startsWith(normalizedPrefix)) return false;
-          } else {
-            const normalizedSearch = normalizeText(searchRaw);
-            const descripcionComparable = normalizeText(item.descripcion || "");
-            if (normalizedSearch && !descripcionComparable.includes(normalizedSearch)) return false;
+        const q = norm(filters.query);
+        if (q) {
+          const code = norm(item.codigo);
+          const desc = norm(item.descripcion).toLowerCase();
+          const ql = q.toLowerCase();
+          const looksSku = /^[A-Z]{2}\d/i.test(q) || q.includes("/") || q.includes("-");
+          if (looksSku) {
+            if (!code.toLowerCase().startsWith(ql)) return false;
+          } else if (!desc.includes(ql)) {
+            return false;
           }
         }
-
         return true;
       };
 
@@ -1710,12 +1710,12 @@
           prendasState.hasMoreScan = true;
           prendasState.scanMode = true;
         }
-        const results = [];
         let cursor = prendasState.lastScanSnap;
         let hasMore = prendasState.hasMoreScan;
         let pagesScanned = 0;
+        let filteredCount = prendasState.filtered.length;
 
-        while (results.length < pageSize && hasMore && pagesScanned < 10) {
+        while (filteredCount < pageSize && hasMore && pagesScanned < 10) {
           const { snap } = await fetchScanBatch({ cursor });
           const docsFetched = snap.docs.length;
           pagesScanned += 1;
@@ -1725,13 +1725,10 @@
           }
 
           const normalized = snap.docs.map((docSnap) => normalizeDoc(docSnap));
-          let matches = 0;
           normalized.forEach((item) => {
             if (prendasState.seenIds.has(item.id)) return;
-            if (!matchFilters(item, filters)) return;
             prendasState.seenIds.add(item.id);
-            results.push(item);
-            matches += 1;
+            prendasState.data.push(item);
           });
 
           cursor = snap.docs[docsFetched - 1];
@@ -1739,16 +1736,17 @@
             hasMore = false;
           }
 
+          await applyFiltersAndRender();
+          filteredCount = prendasState.filtered.length;
           console.log("[Prendas] Scan progress", {
             fetched: docsFetched,
-            matches,
-            showing: results.length
+            showing: filteredCount
           });
         }
 
         prendasState.lastScanSnap = cursor;
         prendasState.hasMoreScan = hasMore;
-        return results;
+        return { filteredCount, pagesScanned };
       };
 
       const fetchPrendasPage = async ({ cursor, pageSize }) => {
@@ -1804,14 +1802,12 @@
 
         try {
 
-          let combined = [];
-
           if (useScanFallback) {
             console.log("[Prendas] SCAN mode", {
               filters,
               lastDocId: prendasState.lastScanSnap?.id ?? null
             });
-            const scanItems = await scanUntilFilled({
+            await scanUntilFilled({
               filters,
               pageSize,
               reset
@@ -1819,7 +1815,6 @@
             if (rid !== prendasState.reqId) {
               return;
             }
-            combined = scanItems;
             if (!prendasState.hasMoreScan) {
               prendasState.isDone = true;
             }
@@ -1838,7 +1833,7 @@
             const mainDocs = mainSnapshot
               ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
               : [];
-            combined = [...mainDocs]
+            const combined = [...mainDocs]
               .filter((item) => {
                 if (prendasState.seenIds.has(item.id)) return false;
                 prendasState.seenIds.add(item.id);
@@ -1861,12 +1856,11 @@
             if (!mainSnapshot || mainSnapshot.docs.length < pageSize) {
               prendasState.isDone = true;
             }
-          }
-
-          if (reset) {
-            prendasState.data = combined;
-          } else {
-            prendasState.data = prendasState.data.concat(combined);
+            if (reset) {
+              prendasState.data = combined;
+            } else {
+              prendasState.data = prendasState.data.concat(combined);
+            }
           }
         } catch (error) {
           if (!handleIndexError(error)) {
