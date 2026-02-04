@@ -1,10 +1,10 @@
-name: Deploy to Firebase (Hosting Only)
+name: Deploy Firebase Hosting
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: firebase-deploy-${{ github.ref }}
+  group: firebase-hosting-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,9 +21,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Dependencies
-        run: npm ci
-
       - name: Auth to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
@@ -36,35 +33,5 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
-          npx firebase-tools@latest deploy --only hosting --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
-
-  functionsDeploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Dependencies
-        working-directory: functions
-        run: npm ci
-
-      - name: Auth to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          create_credentials_file: true
-          export_environment_variables: true
-
-      - name: Deploy Functions
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-        run: |
-          npx firebase-tools@latest deploy --only functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+          npx -y firebase-tools@latest --version
+          npx -y firebase-tools@latest deploy --only hosting --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
