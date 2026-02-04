@@ -1676,7 +1676,11 @@
       const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
         const constraints = [];
         const searchConfig = getSearchConfig(filters);
-        const useScanFallback = searchConfig.mode === "none" && hasActiveFilters(filters);
+        const hasEqualityFilters = Boolean(filters.status || filters.proveedor || filters.tipo || filters.color || filters.talla);
+        const hasRangeFilters = (filters.priceMin !== null || filters.priceMax !== null);
+        // Use scan fallback whenever equality/range filters are active and there is NO server-side search mode.
+        // This avoids empty results when Firestore field names differ (Proveedor vs proveedor, etc).
+        const useScanFallback = (searchConfig.mode === "none") && (hasEqualityFilters || hasRangeFilters);
         const hasPriceRange =
           searchConfig.mode === "none" &&
           (filters.priceMin !== null || filters.priceMax !== null);
@@ -2167,7 +2171,7 @@ const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) =>
             total: null,
             nuevos: null,
             existentes: null,
-            countFailed: true
+            countFailed: false
           };
           await renderDocs(prendasState.filtered);
         }
