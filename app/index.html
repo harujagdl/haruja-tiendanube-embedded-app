@@ -647,6 +647,7 @@
         startAfter,
         where,
         limit,
+        getCountFromServer,
         persistentLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
@@ -854,6 +855,7 @@
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const PRENDAS_STATS_COLLECTION = "HarujaPrendas_2025_stats";
       const PRENDAS_STATS_DOC = "summary";
+      const PRENDAS_FACETS_PAGE_SIZE = 500;
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
@@ -863,7 +865,8 @@
         lastDoc: null,
         hasMore: true,
         isDone: false,
-        isLoading: false,
+        isLoadingInitial: false,
+        isLoadingMore: false,
         globalStats: null,
         seenIds: new Set(),
         activeFilters: null,
@@ -871,7 +874,23 @@
         renderToken: 0,
         searchToken: 0,
         isSkuSearch: false,
-        showingTotal: null
+        showingTotal: null,
+        currentFiltersHash: "",
+        counts: {
+          total: null,
+          nuevos: null,
+          existentes: null,
+          countFailed: false
+        },
+        facets: {
+          loading: false,
+          loaded: false,
+          proveedores: [],
+          tipos: [],
+          colores: [],
+          tallas: [],
+          status: []
+        }
       };
       let isBooting = true;
 
@@ -912,19 +931,18 @@
         };
       };
 
-      let loadingCount = 0;
-      const setLoading = (isLoading) => {
+      const updateLoadingUi = () => {
+        const isLoading = prendasState.isLoadingInitial || prendasState.isLoadingMore;
         prendasLoader.classList.toggle("hidden", !isLoading);
       };
-      const beginLoading = () => {
-        loadingCount += 1;
-        setLoading(true);
-      };
-      const endLoading = () => {
-        loadingCount = Math.max(0, loadingCount - 1);
-        if (loadingCount === 0) {
-          setLoading(false);
+
+      const setLoadingState = (mode, isLoading) => {
+        if (mode === "initial") {
+          prendasState.isLoadingInitial = isLoading;
+        } else if (mode === "more") {
+          prendasState.isLoadingMore = isLoading;
         }
+        updateLoadingUi();
       };
 
       const setCounter = (shown, total) => {
@@ -993,7 +1011,12 @@
         const proveedor = safeString(data.proveedor ?? data.Proveedor ?? data.PROVEEDOR ?? "");
         const tipo = safeString(data.tipo ?? data.Tipo ?? data.TIPO ?? "");
         const status = safeString(data.status ?? data.Status ?? data.ESTATUS ?? "");
-        const precio = toNumberOrNull(data.precio);
+        const precio = toNumberOrNull(
+          data.precio ?? data.precioConIva ?? data.precioConIVA ?? data.price
+        );
+        const costo = toNumberOrNull(data.costo);
+        const margen = toNumberOrNull(data.margen);
+        const utilidad = toNumberOrNull(data.utilidad);
         const createdAt =
           data.createdAt ?? data.CreatedAt ?? data.fecha ?? data.Fecha ?? data.updatedAt;
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
@@ -1008,6 +1031,9 @@
           tipo,
           status,
           precio,
+          costo,
+          margen,
+          utilidad,
           createdAt,
           _searchKey
         };
@@ -1061,27 +1087,77 @@
         if (current) {
           selectEl.value = current;
         }
+        selectEl.disabled = false;
       };
 
-      const updateFiltersFromData = (data) => {
+      const setFilterSelectLoading = (selectEl, message) => {
+        selectEl.innerHTML = "";
+        const option = document.createElement("option");
+        option.value = "todos";
+        option.textContent = message;
+        selectEl.appendChild(option);
+        selectEl.disabled = true;
+      };
+
+      const loadFacetsAllDocsOnce = async () => {
+        if (prendasState.facets.loaded || prendasState.facets.loading) {
+          return;
+        }
+        prendasState.facets.loading = true;
+        setFilterSelectLoading(prendasProveedor, "Cargando opciones...");
+        setFilterSelectLoading(prendasTipo, "Cargando opciones...");
+        setFilterSelectLoading(prendasColor, "Cargando opciones...");
+        setFilterSelectLoading(prendasTalla, "Cargando opciones...");
+        setFilterSelectLoading(prendasStatus, "Cargando opciones...");
+
         const proveedores = new Set();
         const tipos = new Set();
         const colores = new Set();
         const tallas = new Set();
-        data.forEach((item) => {
-          const proveedor = safeString(item.proveedor || item.proveedorNombre);
-          const tipo = safeString(item.tipo || item.tipoNombre);
-          const color = safeString(item.color || item.colorNombre);
-          const talla = safeString(item.talla || item.tallaNombre);
-          if (proveedor) proveedores.add(proveedor);
-          if (tipo) tipos.add(tipo);
-          if (color) colores.add(color);
-          if (talla) tallas.add(talla);
-        });
-        buildFilterOptions(prendasProveedor, Array.from(proveedores).sort());
-        buildFilterOptions(prendasTipo, Array.from(tipos).sort());
-        buildFilterOptions(prendasColor, Array.from(colores).sort());
-        buildFilterOptions(prendasTalla, Array.from(tallas).sort());
+        const status = new Set();
+
+        let cursor = null;
+        let hasMore = true;
+
+        while (hasMore) {
+          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_FACETS_PAGE_SIZE)];
+          if (cursor) {
+            constraints.splice(1, 0, startAfter(cursor));
+          }
+          const facetsQuery = query(prendas2025Ref, ...constraints);
+          const snapshot = await getDocs(facetsQuery);
+          snapshot.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            const proveedorValue = safeString(data.proveedor ?? data.proveedorNombre);
+            const tipoValue = safeString(data.tipo ?? data.tipoNombre);
+            const colorValue = safeString(data.color ?? data.colorNombre);
+            const tallaValue = safeString(data.talla ?? data.tallaNombre);
+            const statusValue = safeString(data.status ?? data.disponibilidad);
+            if (proveedorValue) proveedores.add(proveedorValue);
+            if (tipoValue) tipos.add(tipoValue);
+            if (colorValue) colores.add(colorValue);
+            if (tallaValue) tallas.add(tallaValue);
+            if (statusValue) status.add(statusValue);
+          });
+          cursor = snapshot.docs[snapshot.docs.length - 1] || null;
+          hasMore = snapshot.size === PRENDAS_FACETS_PAGE_SIZE;
+        }
+
+        prendasState.facets = {
+          loading: false,
+          loaded: true,
+          proveedores: Array.from(proveedores).sort(),
+          tipos: Array.from(tipos).sort(),
+          colores: Array.from(colores).sort(),
+          tallas: Array.from(tallas).sort(),
+          status: Array.from(status).sort()
+        };
+
+        buildFilterOptions(prendasProveedor, prendasState.facets.proveedores);
+        buildFilterOptions(prendasTipo, prendasState.facets.tipos);
+        buildFilterOptions(prendasColor, prendasState.facets.colores);
+        buildFilterOptions(prendasTalla, prendasState.facets.tallas);
+        buildFilterOptions(prendasStatus, prendasState.facets.status);
       };
 
       const renderRowsChunked = (
@@ -1204,18 +1280,36 @@
           Number.isFinite(stats.nuevos7dAll) &&
           Number.isFinite(stats.existentesAll);
         const useGlobalStats = !prendasState.filtersActive && hasGlobalTotals;
-        const total = useGlobalStats ? stats.totalAll : rows.length;
-        const nuevos = useGlobalStats
-          ? stats.nuevos7dAll
-          : rows.filter((item) => isNew(getPrendaDate(item))).length;
-        const existentes = useGlobalStats
-          ? stats.existentesAll
-          : Math.max(0, total - nuevos);
-        prendasTotal.textContent = Number.isFinite(total) ? total : rows.length;
-        prendasNuevos.textContent = Number.isFinite(nuevos) ? nuevos : 0;
-        prendasExistentes.textContent = Number.isFinite(existentes)
-          ? existentes
-          : Math.max(0, rows.length - (Number.isFinite(nuevos) ? nuevos : 0));
+        const countState = prendasState.counts || {};
+        const nuevosFromRows = rows.filter((item) => isNew(getPrendaDate(item))).length;
+
+        let total = null;
+        let nuevos = null;
+        let existentes = null;
+
+        if (useGlobalStats) {
+          total = stats.totalAll;
+          nuevos = stats.nuevos7dAll;
+          existentes = stats.existentesAll;
+        } else if (countState.countFailed) {
+          total = null;
+          nuevos = null;
+          existentes = null;
+        } else if (Number.isFinite(countState.total)) {
+          total = countState.total;
+          nuevos = Number.isFinite(countState.nuevos) ? countState.nuevos : nuevosFromRows;
+          existentes = Number.isFinite(countState.existentes)
+            ? countState.existentes
+            : Math.max(0, total - nuevosFromRows);
+        } else {
+          total = rows.length;
+          nuevos = nuevosFromRows;
+          existentes = Math.max(0, total - nuevosFromRows);
+        }
+
+        prendasTotal.textContent = Number.isFinite(total) ? total : "—";
+        prendasNuevos.textContent = Number.isFinite(nuevos) ? nuevos : "—";
+        prendasExistentes.textContent = Number.isFinite(existentes) ? existentes : "—";
 
         const showingTotal = Number.isFinite(prendasState.showingTotal)
           ? prendasState.showingTotal
@@ -1224,7 +1318,10 @@
             : null;
         setCounter(rows.length, showingTotal);
         const disableLoadMore =
-          prendasState.isSkuSearch || prendasState.isDone || prendasState.isLoading;
+          prendasState.isSkuSearch ||
+          prendasState.isDone ||
+          prendasState.isLoadingInitial ||
+          prendasState.isLoadingMore;
         prendasLoadMore.disabled = disableLoadMore;
         prendasLoadMore.classList.toggle("hidden", prendasState.isSkuSearch);
 
@@ -1271,7 +1368,7 @@
         const hasTalla = !isAllFilter(filters.talla);
         const hasSearch = Boolean(filters.searchTerm);
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
-        const includeNoPrice = filters.includeNoPrice === true;
+        const includeNoPrice = filters.includeNoPrice === false;
         return (
           hasStatus ||
           hasProveedor ||
@@ -1427,7 +1524,10 @@
         }
         prendasLoadMore.classList.toggle("hidden", enabled);
         prendasLoadMore.disabled =
-          enabled || prendasState.isDone || prendasState.isLoading;
+          enabled ||
+          prendasState.isDone ||
+          prendasState.isLoadingInitial ||
+          prendasState.isLoadingMore;
       };
 
       const fetchBySku = async (rawInput) => {
@@ -1474,8 +1574,7 @@
         setSkuSearchMode(true);
         prendasState.filtersActive = true;
         setPrendasAlert("");
-        beginLoading();
-        prendasState.isLoading = true;
+        setLoadingState("initial", true);
         try {
           const result = await fetchBySku(rawUpper);
           if (token !== prendasState.searchToken) {
@@ -1498,12 +1597,21 @@
           prendasState.showingTotal = 0;
           await renderDocs([]);
         } finally {
-          if (token === prendasState.searchToken) {
-            prendasState.isLoading = false;
-          }
-          endLoading();
+          setLoadingState("initial", false);
         }
       };
+
+      const buildFiltersHash = (filters) =>
+        JSON.stringify({
+          status: normalizeText(filters.status),
+          proveedor: normalizeText(filters.proveedor),
+          tipo: normalizeText(filters.tipo),
+          color: normalizeText(filters.color),
+          talla: normalizeText(filters.talla),
+          priceMin: filters.priceMin ?? null,
+          priceMax: filters.priceMax ?? null,
+          includeNoPrice: Boolean(filters.includeNoPrice)
+        });
 
       const buildPrendasQuery = ({
         filters,
@@ -1543,9 +1651,10 @@
         }
         const mode = hasActiveFilters(filters) ? "filter" : "browse";
         if (mode === "browse") {
-          constraints.push(orderBy("createdAt", "desc"));
+          constraints.push(orderBy(documentId(), "asc"));
         } else if (applyPriceFilter) {
           constraints.push(orderBy("precio", "asc"));
+          constraints.push(orderBy(documentId(), "asc"));
         } else {
           constraints.push(orderBy(documentId(), "asc"));
         }
@@ -1553,6 +1662,46 @@
           constraints.push(startAfter(cursor));
         }
         constraints.push(limit(pageSize));
+        return query(prendas2025Ref, ...constraints);
+      };
+
+      const buildPrendasCountQuery = ({ filters }) => {
+        const constraints = [];
+        const statusFilter = normalizeText(filters.status);
+        const proveedorFilter = normalizeText(filters.proveedor);
+        const tipoFilter = normalizeText(filters.tipo);
+        const colorFilter = normalizeText(filters.color);
+        const tallaFilter = normalizeText(filters.talla);
+        const applyPriceFilter = shouldApplyPriceFilterToQuery(filters);
+
+        if (statusFilter !== "todos") {
+          constraints.push(where("status", "==", filters.status));
+        }
+        if (proveedorFilter !== "todos") {
+          constraints.push(where("proveedor", "==", filters.proveedor));
+        }
+        if (tipoFilter !== "todos") {
+          constraints.push(where("tipo", "==", filters.tipo));
+        }
+        if (colorFilter !== "todos") {
+          constraints.push(where("color", "==", filters.color));
+        }
+        if (tallaFilter !== "todos") {
+          constraints.push(where("talla", "==", filters.talla));
+        }
+        if (applyPriceFilter) {
+          if (filters.priceMin !== null) {
+            constraints.push(where("precio", ">=", filters.priceMin));
+          }
+          if (filters.priceMax !== null) {
+            constraints.push(where("precio", "<=", filters.priceMax));
+          }
+          constraints.push(orderBy("precio", "asc"));
+          constraints.push(orderBy(documentId(), "asc"));
+        } else {
+          constraints.push(orderBy(documentId(), "asc"));
+        }
+
         return query(prendas2025Ref, ...constraints);
       };
 
@@ -1574,6 +1723,13 @@
         prendasState.seenIds.clear();
         prendasState.filtersActive = false;
         prendasState.showingTotal = null;
+        prendasState.currentFiltersHash = "";
+        prendasState.counts = {
+          total: null,
+          nuevos: null,
+          existentes: null,
+          countFailed: false
+        };
       };
 
       const renderLoadingPlaceholder = () => {
@@ -1589,11 +1745,15 @@
       };
 
       const fetchNextPage = async (filters, { reset = false } = {}) => {
-        if (prendasState.isLoading || prendasState.isDone) return;
+        if (
+          prendasState.isLoadingInitial ||
+          prendasState.isLoadingMore ||
+          prendasState.isDone
+        )
+          return;
         setSkuSearchMode(false);
         setPrendasAlert("");
-        beginLoading();
-        prendasState.isLoading = true;
+        setLoadingState(reset ? "initial" : "more", true);
         prendasLoadMore.disabled = true;
         const pageSize = reset ? PRENDAS_PAGE_SIZE_FIRST : PRENDAS_PAGE_SIZE_NEXT;
 
@@ -1644,16 +1804,13 @@
           } else {
             prendasState.data = prendasState.data.concat(pageData);
           }
-
-          updateFiltersFromData(prendasState.data);
         } catch (error) {
           if (!handleIndexError(error)) {
             console.error(error);
             setPrendasAlert("No se pudo cargar la base de datos de códigos.");
           }
         } finally {
-          prendasState.isLoading = false;
-          endLoading();
+          setLoadingState(reset ? "initial" : "more", false);
           prendasLoadMore.disabled = prendasState.isDone || prendasState.isSkuSearch;
         }
       };
@@ -1696,15 +1853,46 @@
               }
             }
           }
+          if (hasActiveFilters(filters)) {
+            const countQuery = buildPrendasCountQuery({ filters });
+            const countSnapshot = await getCountFromServer(countQuery);
+            const totalCount = toNumberOrNull(countSnapshot?.data()?.count);
+            prendasState.counts = {
+              total: Number.isFinite(totalCount) ? totalCount : null,
+              nuevos: null,
+              existentes: null,
+              countFailed: false
+            };
+          } else {
+            prendasState.counts = {
+              total: null,
+              nuevos: null,
+              existentes: null,
+              countFailed: false
+            };
+          }
           await renderDocs(prendasState.filtered);
         } catch (error) {
           console.warn("No se pudieron refrescar las estadísticas.", error);
+          prendasState.counts = {
+            total: null,
+            nuevos: null,
+            existentes: null,
+            countFailed: true
+          };
+          const warning = "Totales no disponibles por índices faltantes.";
+          const existingAlert = prendasAlert?.textContent?.trim();
+          if (existingAlert) {
+            setPrendasAlert(`${existingAlert}<br>${warning}`, { isHtml: true });
+          } else {
+            setPrendasAlert(warning);
+          }
           await renderDocs(prendasState.filtered);
         }
       };
 
       const reloadPrendasList = async ({ reason = "manual" } = {}) => {
-        beginLoading();
+        setLoadingState("initial", true);
         try {
           setSkuSearchMode(false);
           resetPrendasState();
@@ -1715,6 +1903,7 @@
           };
           const filters = prendasState.activeFilters;
           prendasState.filtersActive = hasActiveFilters(filters);
+          prendasState.currentFiltersHash = buildFiltersHash(filters);
           await fetchNextPage(filters, { reset: true });
           const { tFilter, tRender } = await applyFiltersAndRender();
           console.log("[Perf]", {
@@ -1723,9 +1912,11 @@
             tRender,
             docs: prendasState.filtered.length
           });
-          await refreshPrendasCounts(filters);
+          refreshPrendasCounts(filters).catch((error) => {
+            console.warn("Conteo en segundo plano falló.", error);
+          });
         } finally {
-          endLoading();
+          setLoadingState("initial", false);
         }
       };
 
@@ -2026,6 +2217,11 @@
       prendasLoadMore.addEventListener("click", async () => {
         if (isBooting) return;
         const filters = prendasState.activeFilters || getBaseFilters();
+        const nextHash = buildFiltersHash(filters);
+        if (prendasState.currentFiltersHash && nextHash !== prendasState.currentFiltersHash) {
+          await reloadPrendasList({ reason: "filters-changed" });
+          return;
+        }
         await fetchNextPage(filters, { reset: false });
         await applyFiltersAndRender();
       });
@@ -2108,6 +2304,9 @@
           // ADMIN DB MODE END
           setSkuSearchMode(false);
           try {
+            loadFacetsAllDocsOnce().catch((error) => {
+              console.warn("No se pudieron cargar los filtros completos.", error);
+            });
             await reloadPrendasList({ reason: "init" });
           } finally {
             isBooting = false;
