@@ -393,6 +393,37 @@
         display: revert !important;
       }
 
+      #dbCodigosSection .admin-panel {
+        display: grid;
+        gap: 12px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+        margin-top: 12px;
+      }
+
+      #dbCodigosSection .admin-login-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      #dbCodigosSection .admin-login-row input {
+        flex: 1;
+        min-width: 180px;
+      }
+
+      #dbCodigosSection .admin-actions {
+        display: grid;
+        gap: 8px;
+      }
+
+      #dbCodigosSection .admin-actions.hidden {
+        display: none;
+      }
+
       @media (max-width: 600px) {
         header,
         main {
@@ -571,9 +602,39 @@
                   <label>&nbsp;</label>
                   <button type="button" id="prendas-precio-apply">Aplicar filtros</button>
                 </div>
-                <div class="inline-toggle">
-                  <input id="adminToggleDb" type="checkbox" />
-                  <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
+                <div>
+                  <label for="prendas-page-size">Registros por página</label>
+                  <select id="prendas-page-size">
+                    <option value="30">30</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+              </div>
+              <div class="admin-panel" id="admin-panel">
+                <div>
+                  <label for="admin-password">Admin</label>
+                  <div class="admin-login-row">
+                    <input
+                      id="admin-password"
+                      type="password"
+                      placeholder="Contraseña admin"
+                      autocomplete="current-password"
+                    />
+                    <button type="button" id="admin-login">Ingresar</button>
+                    <button type="button" id="admin-logout" class="secondary hidden">Salir</button>
+                  </div>
+                  <div id="admin-login-status" class="status"></div>
+                </div>
+                <div class="admin-actions hidden" id="admin-actions">
+                  <div class="inline-toggle">
+                    <input id="adminToggleDb" type="checkbox" />
+                    <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
+                  </div>
+                  <button type="button" id="admin-backfill">
+                    Preparar buscador (1 vez)
+                  </button>
+                  <div id="admin-backfill-status" class="status"></div>
                 </div>
               </div>
               <div class="counters">
@@ -645,11 +706,17 @@
         runTransaction,
         serverTimestamp,
         startAfter,
+        startAt,
         where,
         limit,
+        endAt,
         getCountFromServer,
         persistentLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+      import {
+        getFunctions,
+        httpsCallable
+      } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-functions.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
       const firebaseConfig = {
@@ -662,6 +729,7 @@
       };
 
       const app = initializeApp(firebaseConfig);
+      const functions = getFunctions(app);
       let db;
       try {
         db = initializeFirestore(app, {
@@ -704,6 +772,7 @@
       const prendasPrecioMax = document.getElementById("prendas-precio-max");
       const prendasPrecioSin = document.getElementById("prendas-precio-sin");
       const prendasPrecioApply = document.getElementById("prendas-precio-apply");
+      const prendasPageSize = document.getElementById("prendas-page-size");
       const prendasTotal = document.querySelector("[data-count-total]") || document.getElementById("prendas-total");
       const prendasNuevos = document.getElementById("prendas-nuevos");
       const prendasExistentes = document.getElementById("prendas-existentes");
@@ -725,6 +794,13 @@
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
+      const adminPasswordInput = document.getElementById("admin-password");
+      const adminLoginButton = document.getElementById("admin-login");
+      const adminLogoutButton = document.getElementById("admin-logout");
+      const adminLoginStatus = document.getElementById("admin-login-status");
+      const adminActions = document.getElementById("admin-actions");
+      const adminBackfillButton = document.getElementById("admin-backfill");
+      const adminBackfillStatus = document.getElementById("admin-backfill-status");
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
       console.assert(prendasLoader, "No existe loader de prendas");
@@ -750,8 +826,12 @@
       const normalizeText = (value) =>
         safeString(value)
           .toLowerCase()
+          .trim()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
+
+      const normalizeDictionaryValue = (value) =>
+        safeString(value).trim().replace(/\s+/g, " ");
 
       const normalizeSku = (input) =>
         safeString(input)
@@ -759,6 +839,12 @@
           .toUpperCase()
           .replace(/\s+/g, " ")
           .replace(/\//g, "__");
+
+      const normalizeSkuPrefix = (input) =>
+        safeString(input)
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "");
 
       const toNumberOrNull = (value) => {
         if (value === null || value === undefined) return null;
@@ -840,7 +926,16 @@
         allOption.value = "todos";
         allOption.textContent = "Todos";
         selectEl.appendChild(allOption);
-        const uniqueValues = [...new Set(values.filter(Boolean))].sort((a, b) =>
+        const normalizedMap = new Map();
+        values.forEach((value) => {
+          const cleaned = normalizeDictionaryValue(value);
+          if (!cleaned) return;
+          const key = normalizeText(cleaned);
+          if (!normalizedMap.has(key)) {
+            normalizedMap.set(key, cleaned);
+          }
+        });
+        const uniqueValues = [...normalizedMap.values()].sort((a, b) =>
           a.localeCompare(b)
         );
         uniqueValues.forEach((value) => {
@@ -874,11 +969,29 @@
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
       const PRENDAS_PAGE_SIZE_DEFAULT = 50;
-      const PRENDAS_PAGE_SIZE_SMALL = 30;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const PRENDAS_STATS_COLLECTION = "HarujaPrendas_2025_stats";
       const PRENDAS_STATS_DOC = "summary";
+      const ADMIN_SESSION_KEY = "haruja_admin_session";
+      const ADMIN_VIEW_KEY = "haruja_admin_view";
+      const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
+      const DICTS_CACHE_KEY = "haruja_dicts_cache_v1";
+      const SEARCH_STOPWORDS = new Set([
+        "de",
+        "la",
+        "el",
+        "los",
+        "las",
+        "y",
+        "o",
+        "en",
+        "para",
+        "con",
+        "sin",
+        "un",
+        "una"
+      ]);
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
@@ -962,14 +1075,42 @@
         if (prendasState.dictsLoaded) {
           return prendasState.dicts;
         }
+        const cached = localStorage.getItem(DICTS_CACHE_KEY);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (
+              parsed?.version === "1" &&
+              parsed?.dicts &&
+              ["proveedores", "tipos", "colores", "tallas"].every((key) =>
+                Array.isArray(parsed.dicts[key])
+              )
+            ) {
+              prendasState.dicts = parsed.dicts;
+              prendasState.dictsLoaded = true;
+              return prendasState.dicts;
+            }
+          } catch (error) {
+            console.warn("Cache de diccionarios inválida, recargando.", error);
+          }
+        }
         const categories = Object.keys(COLLECTIONS);
         const results = await Promise.all(
           categories.map(async (category) => {
             const snapshot = await getDocs(collection(db, COLLECTIONS[category]));
-            const values = snapshot.docs
-              .map((docSnap) => safeString(docSnap.data()?.valor))
-              .filter(Boolean);
-            values.sort((a, b) => a.localeCompare(b));
+            const normalizedMap = new Map();
+            snapshot.docs.forEach((docSnap) => {
+              const raw = docSnap.data()?.valor;
+              const cleaned = normalizeDictionaryValue(raw);
+              if (!cleaned) return;
+              const key = normalizeText(cleaned);
+              if (!normalizedMap.has(key)) {
+                normalizedMap.set(key, cleaned);
+              }
+            });
+            const values = [...normalizedMap.values()].sort((a, b) =>
+              a.localeCompare(b)
+            );
             return { category, values };
           })
         );
@@ -983,6 +1124,10 @@
         prendasState.dicts.tallas =
           results.find((result) => result.category === "tallas")?.values ?? [];
         prendasState.dictsLoaded = true;
+        localStorage.setItem(
+          DICTS_CACHE_KEY,
+          JSON.stringify({ version: "1", dicts: prendasState.dicts })
+        );
         return prendasState.dicts;
       };
 
@@ -1070,12 +1215,18 @@
         const precioConIva = toNumberOrNull(data.precioConIva ?? data.precioConIVA);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const costo = toNumberOrNull(data.costo);
-        const margen = toNumberOrNull(data.margen);
         const basePrice = precio ?? precioConIva;
         const utilidad =
           Number.isFinite(basePrice) || Number.isFinite(costo)
             ? Number((basePrice ?? 0) - (costo ?? 0))
             : null;
+        const margenRaw = toNumberOrNull(data.margen);
+        const margen =
+          Number.isFinite(margenRaw)
+            ? margenRaw
+            : Number.isFinite(basePrice) && basePrice !== 0
+              ? Number(((basePrice - (costo ?? 0)) / basePrice).toFixed(3))
+              : null;
         const createdAt =
           data.createdAt ?? data.CreatedAt ?? data.fecha ?? data.Fecha ?? data.updatedAt;
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
@@ -1107,7 +1258,8 @@
       const getPrimaryToken = (value) =>
         normalizeText(value)
           .split(/[^a-z0-9]+/i)
-          .filter(Boolean)[0] || "";
+          .map((token) => token.trim())
+          .filter((token) => token && !SEARCH_STOPWORDS.has(token))[0] || "";
       const looksLikeCodeSearch = (value) => {
         const raw = safeString(value).trim().toUpperCase();
         if (!raw) return false;
@@ -1511,7 +1663,9 @@
         const raw = safeString(filters.searchRaw).trim();
         if (!raw) return { mode: "none" };
         if (looksLikeCodeSearch(raw)) {
-          return { mode: "codigo", raw: raw.toUpperCase() };
+          const normalized = normalizeSkuPrefix(raw);
+          if (!normalized) return { mode: "none" };
+          return { mode: "codigo", raw: normalized };
         }
         const token = getPrimaryToken(filters.searchTerm || raw);
         if (!token) return { mode: "none" };
@@ -1520,8 +1674,10 @@
 
       const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
         const constraints = [];
-        const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
         const searchConfig = getSearchConfig(filters);
+        const hasPriceRange =
+          searchConfig.mode === "none" &&
+          (filters.priceMin !== null || filters.priceMax !== null);
 
         if (filters.status) {
           constraints.push(where("status", "==", filters.status));
@@ -1541,26 +1697,30 @@
 
         if (nullPriceOnly) {
           constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange && searchConfig.mode === "none") {
+        } else if (hasPriceRange) {
           if (filters.priceMin !== null) {
             constraints.push(where("precio", ">=", filters.priceMin));
           }
           if (filters.priceMax !== null) {
             constraints.push(where("precio", "<=", filters.priceMax));
           }
-          constraints.push(orderBy("precio", "asc"));
         }
 
         if (searchConfig.mode === "codigo") {
-          constraints.push(orderBy("codigo"));
+          constraints.push(orderBy("codigoLower"));
           constraints.push(startAt(searchConfig.raw));
           constraints.push(endAt(`${searchConfig.raw}\uf8ff`));
         } else {
           if (searchConfig.mode === "descripcion") {
             constraints.push(where("searchTokens", "array-contains", searchConfig.token));
           }
-          constraints.push(orderBy("createdAt", "desc"));
-          constraints.push(orderBy(documentId(), "desc"));
+          if (hasPriceRange) {
+            constraints.push(orderBy("precio", "asc"));
+            constraints.push(orderBy(documentId(), "desc"));
+          } else {
+            constraints.push(orderBy("createdAt", "desc"));
+            constraints.push(orderBy(documentId(), "desc"));
+          }
         }
 
         if (cursor) {
@@ -1572,8 +1732,10 @@
 
       const buildCountQuery = ({ filters, extraConstraints = [], nullPriceOnly = false }) => {
         const constraints = [];
-        const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
         const searchConfig = getSearchConfig(filters);
+        const hasPriceRange =
+          searchConfig.mode === "none" &&
+          (filters.priceMin !== null || filters.priceMax !== null);
 
         if (filters.status) {
           constraints.push(where("status", "==", filters.status));
@@ -1593,21 +1755,16 @@
 
         if (nullPriceOnly) {
           constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange && searchConfig.mode === "none") {
+        } else if (hasPriceRange) {
           if (filters.priceMin !== null) {
             constraints.push(where("precio", ">=", filters.priceMin));
           }
           if (filters.priceMax !== null) {
             constraints.push(where("precio", "<=", filters.priceMax));
           }
-          constraints.push(orderBy("precio", "asc"));
         }
 
-        if (searchConfig.mode === "codigo") {
-          constraints.push(orderBy("codigo"));
-          constraints.push(startAt(searchConfig.raw));
-          constraints.push(endAt(`${searchConfig.raw}\uf8ff`));
-        } else if (searchConfig.mode === "descripcion") {
+        if (searchConfig.mode === "descripcion") {
           constraints.push(where("searchTokens", "array-contains", searchConfig.token));
         }
 
@@ -1615,10 +1772,13 @@
         return query(prendas2025Ref, ...constraints);
       };
 
-      const getPageSize = () =>
-        prendasState.isAdmin || window.innerWidth < 640
-          ? PRENDAS_PAGE_SIZE_SMALL
-          : PRENDAS_PAGE_SIZE_DEFAULT;
+      const getPageSize = () => {
+        const selected = Number(prendasPageSize?.value);
+        if (Number.isFinite(selected) && selected > 0) {
+          return selected;
+        }
+        return PRENDAS_PAGE_SIZE_DEFAULT;
+      };
 
       const comparePrendas = (a, b, { hasPriceRange, searchConfig }) => {
         if (searchConfig?.mode === "codigo") {
@@ -1692,9 +1852,12 @@
         setLoadingState(reset ? "initial" : "more", true);
         prendasLoadMore.disabled = true;
         const pageSize = getPageSize();
-        const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
-        const shouldIncludeNoPrice = Boolean(filters.includeNoPrice);
         const searchConfig = getSearchConfig(filters);
+        const hasPriceRange =
+          searchConfig.mode === "none" &&
+          (filters.priceMin !== null || filters.priceMax !== null);
+        const shouldIncludeNoPrice = Boolean(filters.includeNoPrice);
+        const needsNullPriceQuery = hasPriceRange && shouldIncludeNoPrice;
 
         const queryStart = performance.now();
         const rid = ++prendasState.reqId;
@@ -1706,7 +1869,7 @@
             pageSize,
             nullPriceOnly: false
           });
-          const noPricePromise = shouldIncludeNoPrice
+          const noPricePromise = needsNullPriceQuery
             ? fetchPrendasPage({
                 filters,
                 cursor: reset ? null : prendasState.lastDocs.noPrice,
@@ -1726,11 +1889,7 @@
 
           const mapStart = performance.now();
           const mainDocs = mainSnapshot
-            ? mainSnapshot.docs
-                .map((docSnap) => normalizeDoc(docSnap))
-                .filter((item) =>
-                  shouldIncludeNoPrice ? item.precio !== null : true
-                )
+            ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
             : [];
           const noPriceDocs = noPriceSnapshot
             ? noPriceSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
@@ -1762,16 +1921,10 @@
               noPriceSnapshot.docs[noPriceSnapshot.docs.length - 1] || null;
           }
 
-          prendasState.hasMoreMain =
-            mainSnapshot?.docs?.length === pageSize && !shouldIncludeNoPrice;
-          if (shouldIncludeNoPrice) {
-            prendasState.hasMoreMain =
-              (mainSnapshot?.docs?.length ?? 0) === pageSize;
-            prendasState.hasMoreNoPrice =
-              (noPriceSnapshot?.docs?.length ?? 0) === pageSize;
-          } else {
-            prendasState.hasMoreNoPrice = false;
-          }
+          prendasState.hasMoreMain = (mainSnapshot?.docs?.length ?? 0) === pageSize;
+          prendasState.hasMoreNoPrice = needsNullPriceQuery
+            ? (noPriceSnapshot?.docs?.length ?? 0) === pageSize
+            : false;
           prendasState.hasMore = prendasState.hasMoreMain || prendasState.hasMoreNoPrice;
           if (!prendasState.hasMore) {
             prendasState.isDone = true;
@@ -1835,6 +1988,17 @@
             }
           }
           if (hasActiveFilters(filters)) {
+            const searchConfig = getSearchConfig(filters);
+            if (searchConfig.mode === "codigo") {
+              prendasState.counts = {
+                total: null,
+                nuevos: null,
+                existentes: null,
+                countFailed: false
+              };
+              await renderDocs(prendasState.filtered);
+              return;
+            }
             const now = Date.now();
             const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
             const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
@@ -1890,13 +2054,6 @@
             existentes: null,
             countFailed: true
           };
-          const warning = "Totales no disponibles por índices faltantes.";
-          const existingAlert = prendasAlert?.textContent?.trim();
-          if (existingAlert) {
-            setPrendasAlert(`${existingAlert}<br>${warning}`, { isHtml: true });
-          } else {
-            setPrendasAlert(warning);
-          }
           await renderDocs(prendasState.filtered);
         }
       };
@@ -2150,23 +2307,81 @@
       });
 
       // ADMIN DB MODE START
-      const ADMIN_KEY = "haruja_admin_db";
       const DB_TAB_HASH = "#base-datos-codigos";
+      const verifyAdminPassword = httpsCallable(functions, "verifyAdminPassword");
+      const backfillSearchTokens = httpsCallable(functions, "backfillSearchTokens");
 
-      const getAdminEnabled = () => sessionStorage.getItem(ADMIN_KEY) === "1";
+      const getAdminSession = () => {
+        const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+        if (!raw) return null;
+        try {
+          const session = JSON.parse(raw);
+          if (!session?.sessionId || !session?.expiresAt) return null;
+          if (Date.now() > session.expiresAt) {
+            sessionStorage.removeItem(ADMIN_SESSION_KEY);
+            return null;
+          }
+          return session;
+        } catch (error) {
+          console.warn("Sesión admin inválida, limpiando.", error);
+          sessionStorage.removeItem(ADMIN_SESSION_KEY);
+          return null;
+        }
+      };
 
-      const setAdminEnabled = (enabled) => {
-        sessionStorage.setItem(ADMIN_KEY, enabled ? "1" : "0");
+      const setAdminSession = ({ sessionId, expiresAt }) => {
+        sessionStorage.setItem(
+          ADMIN_SESSION_KEY,
+          JSON.stringify({ sessionId, expiresAt })
+        );
+      };
+
+      const clearAdminSession = () => {
+        sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      };
+
+      const getAdminViewEnabled = () =>
+        sessionStorage.getItem(ADMIN_VIEW_KEY) === "1";
+
+      const setAdminViewEnabled = (enabled) => {
+        sessionStorage.setItem(ADMIN_VIEW_KEY, enabled ? "1" : "0");
+      };
+
+      const setAdminLoginStatus = (message, type = "") => {
+        if (!adminLoginStatus) return;
+        adminLoginStatus.textContent = message;
+        adminLoginStatus.className = `status ${type}`.trim();
+      };
+
+      const setAdminBackfillStatus = (message, type = "") => {
+        if (!adminBackfillStatus) return;
+        adminBackfillStatus.textContent = message;
+        adminBackfillStatus.className = `status ${type}`.trim();
       };
 
       const applyAdminUI = () => {
-        const enabled = getAdminEnabled();
+        const session = getAdminSession();
+        const sessionActive = Boolean(session);
+        if (!sessionActive) {
+          setAdminViewEnabled(false);
+        }
+        const enabled = sessionActive && getAdminViewEnabled();
         prendasState.isAdmin = enabled;
         if (dbCodigosSection) {
           dbCodigosSection.classList.toggle("admin-enabled", enabled);
         }
         if (adminToggleDb) {
           adminToggleDb.checked = enabled;
+          adminToggleDb.disabled = !sessionActive;
+        }
+        if (adminActions) {
+          adminActions.classList.toggle("hidden", !sessionActive);
+        }
+        if (adminLoginButton) {
+          adminLoginButton.classList.toggle("hidden", sessionActive);
+        }
+        if (adminLogoutButton) {
+          adminLogoutButton.classList.toggle("hidden", !sessionActive);
         }
         if (prendasState.filtered.length) {
           renderDocs(prendasState.filtered);
@@ -2174,8 +2389,99 @@
       };
 
       const handleAdminToggle = (event) => {
-        setAdminEnabled(event.target.checked);
+        if (!getAdminSession()) return;
+        setAdminViewEnabled(event.target.checked);
         applyAdminUI();
+      };
+
+      const handleAdminLogin = async () => {
+        const password = safeString(adminPasswordInput?.value).trim();
+        if (!password) {
+          setAdminLoginStatus("Ingresa la contraseña admin.", "error");
+          return;
+        }
+        if (adminLoginButton) {
+          adminLoginButton.disabled = true;
+        }
+        setAdminLoginStatus("Verificando...", "");
+        try {
+          const response = await verifyAdminPassword({ password });
+          const data = response?.data || {};
+          if (!data?.sessionId || !data?.expiresAt) {
+            throw new Error("Respuesta inválida del servidor.");
+          }
+          setAdminSession({ sessionId: data.sessionId, expiresAt: data.expiresAt });
+          setAdminViewEnabled(true);
+          if (adminPasswordInput) {
+            adminPasswordInput.value = "";
+          }
+          setAdminLoginStatus("Modo admin habilitado.", "success");
+          applyAdminUI();
+        } catch (error) {
+          console.error(error);
+          setAdminLoginStatus("Contraseña inválida o servicio no disponible.", "error");
+        } finally {
+          if (adminLoginButton) {
+            adminLoginButton.disabled = false;
+          }
+        }
+      };
+
+      const handleAdminLogout = () => {
+        clearAdminSession();
+        setAdminViewEnabled(false);
+        setAdminLoginStatus("Sesión cerrada.", "");
+        setAdminBackfillStatus("");
+        applyAdminUI();
+      };
+
+      const handleBackfill = async () => {
+        const session = getAdminSession();
+        if (!session) {
+          setAdminBackfillStatus("Inicia sesión admin para continuar.", "error");
+          return;
+        }
+        if (adminBackfillButton) {
+          adminBackfillButton.disabled = true;
+        }
+        setAdminBackfillStatus("Preparando buscador...", "");
+        let cursor = null;
+        let processed = 0;
+        let updated = 0;
+        let skipped = 0;
+        try {
+          let loops = 0;
+          while (loops < 200) {
+            const response = await backfillSearchTokens({
+              sessionId: session.sessionId,
+              cursor
+            });
+            const data = response?.data || {};
+            processed += Number(data.processed || 0);
+            updated += Number(data.updated || 0);
+            skipped += Number(data.skipped || 0);
+            cursor = data.lastDocId || null;
+            setAdminBackfillStatus(
+              `Procesados: ${processed} · Actualizados: ${updated} · Omitidos: ${skipped}`,
+              ""
+            );
+            if (!data.hasMore) {
+              break;
+            }
+            loops += 1;
+          }
+          setAdminBackfillStatus(
+            `Listo: ${updated} actualizados, ${skipped} omitidos.`,
+            "success"
+          );
+        } catch (error) {
+          console.error(error);
+          setAdminBackfillStatus("Error al preparar el buscador.", "error");
+        } finally {
+          if (adminBackfillButton) {
+            adminBackfillButton.disabled = false;
+          }
+        }
       };
 
       const handleTabChange = (hash) => {
@@ -2186,6 +2492,23 @@
 
       if (adminToggleDb) {
         adminToggleDb.addEventListener("change", handleAdminToggle);
+      }
+      if (adminLoginButton) {
+        adminLoginButton.addEventListener("click", handleAdminLogin);
+      }
+      if (adminLogoutButton) {
+        adminLogoutButton.addEventListener("click", handleAdminLogout);
+      }
+      if (adminBackfillButton) {
+        adminBackfillButton.addEventListener("click", handleBackfill);
+      }
+      if (adminPasswordInput) {
+        adminPasswordInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            handleAdminLogin();
+          }
+        });
       }
 
       window.addEventListener("hashchange", () => {
@@ -2227,6 +2550,12 @@
 
       prendasSearch.addEventListener("input", handleSearchInput);
       prendasPrecioApply.addEventListener("click", handleFilterApply);
+      if (prendasPageSize) {
+        prendasPageSize.addEventListener("change", async () => {
+          if (isBooting) return;
+          await reloadPrendasList({ reason: "page-size" });
+        });
+      }
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
         input.addEventListener("keydown", (event) => {

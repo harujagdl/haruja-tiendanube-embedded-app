@@ -46,6 +46,40 @@
   //     ]
   //   },
   // ]
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "HarujaPrendas_2025",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "proveedor", "mode": "ASCENDING" },
+        { "fieldPath": "tipo", "mode": "ASCENDING" },
+        { "fieldPath": "color", "mode": "ASCENDING" },
+        { "fieldPath": "talla", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "HarujaPrendas_2025",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "proveedor", "mode": "ASCENDING" },
+        { "fieldPath": "tipo", "mode": "ASCENDING" },
+        { "fieldPath": "color", "mode": "ASCENDING" },
+        { "fieldPath": "talla", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "precio", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "HarujaPrendas_2025",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchTokens", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
