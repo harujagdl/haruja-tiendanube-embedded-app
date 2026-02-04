@@ -1794,8 +1794,10 @@
         setPrendasAlert("");
         setLoadingState(reset ? "initial" : "more", true);
         prendasLoadMore.disabled = true;
-        const pageSize = PRENDAS_PAGE_SIZE_DEFAULT;
         const useScanFallback = hasActiveFilters(filters);
+        const pageSize = useScanFallback
+          ? PRENDAS_PAGE_SIZE_DEFAULT
+          : getPageSize();
 
         const queryStart = performance.now();
         const rid = ++prendasState.reqId;
