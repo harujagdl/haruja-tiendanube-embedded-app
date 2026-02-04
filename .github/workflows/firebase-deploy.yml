@@ -1,16 +1,19 @@
-name: Deploy to Firebase (Hosting + Firestore)
+name: Deploy to Firebase (Hosting Only)
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node
@@ -18,13 +21,10 @@ jobs:
         with:
           node-version: 20
 
-      - name: Auth to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Install Firebase Tools
+        run: npm i -g firebase-tools
 
-      - name: Deploy Hosting + Firestore
-        run: |
-          npx firebase-tools@latest deploy \
-            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
-            --only hosting,firestore:rules,firestore:indexes
+      - name: Deploy Hosting
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase deploy --only hosting
