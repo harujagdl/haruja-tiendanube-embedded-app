@@ -559,8 +559,8 @@
                   <label for="prendas-status">Status</label>
                   <select id="prendas-status">
                     <option value="todos">Todos</option>
-                    <option value="disponible">Disponible</option>
-                    <option value="vendido">Vendido</option>
+                    <option value="Disponible">Disponible</option>
+                    <option value="Vendido">Vendido</option>
                   </select>
                 </div>
                 <div>
@@ -1043,8 +1043,8 @@
         const entries = snapshot.docs
           .map((docSnap) => {
             const data = docSnap.data() || {};
-            const clave = data.clave || docSnap.id;
-            const valor = data.valor || data.nombre || clave;
+            const clave = data.clave || data.Clave || docSnap.id;
+            const valor = data.valor || data.Valor || data.nombre || data.Nombre || clave;
             return { clave, valor };
           })
           .filter((entry) => entry.clave && entry.valor);
@@ -1101,7 +1101,7 @@
             const normalizedMap = new Map();
             snapshot.docs.forEach((docSnap) => {
               const data = docSnap.data() || {};
-              const raw = data.valor ?? data.nombre ?? data.clave ?? docSnap.id;
+              const raw = data.valor ?? data.Valor ?? data.nombre ?? data.Nombre ?? data.clave ?? data.Clave ?? docSnap.id;
               const cleaned = normalizeDictionaryValue(raw);
               if (!cleaned) return;
               const key = normalizeText(cleaned);
@@ -1255,7 +1255,7 @@
       const getSearchInput = () => safeString(prendasSearch.value);
       const getSearchTerm = () => normalizeText(prendasSearch.value);
       const getSearchRaw = () => safeString(prendasSearch.value).trim();
-      const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
+      const normalizeSelectValue = (value) => (isAllFilter(value) ? null : normalizeDictionaryValue(value));
       const getPrimaryToken = (value) =>
         normalizeText(value)
           .split(/[^a-z0-9]+/i)
