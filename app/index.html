@@ -987,7 +987,8 @@
         dictsLoaded: false,
         lastDocs: {
           main: null,
-          noPrice: null
+          noPrice: null,
+          noPriceZero: null
         },
         hasMoreMain: true,
         hasMoreNoPrice: true,
@@ -1604,14 +1605,42 @@
       const buildQueryKey = (filters, pageSize) =>
         JSON.stringify({
           filtersActive: hasActiveFilters(filters),
+          status: filters?.status ?? null,
+          proveedor: filters?.proveedor ?? null,
+          tipo: filters?.tipo ?? null,
+          color: filters?.color ?? null,
+          talla: filters?.talla ?? null,
+          minPrice: filters?.minPrice ?? null,
+          maxPrice: filters?.maxPrice ?? null,
+          includeNoPrice: filters?.includeNoPrice ?? null,
+          query: safeString(filters?.query ?? filters?.searchRaw ?? "").trim(),
           pageSize
         });
 
-      const buildListQuery = ({ cursor, pageSize }) => {
-        const constraints = [
-          orderBy("createdAt", "desc"),
-          orderBy(documentId(), "desc")
-        ];
+      const buildBaseConstraints = (filters) => {
+        const constraints = [];
+        if (filters?.status) constraints.push(where("status", "==", filters.status));
+        if (filters?.proveedor) constraints.push(where("proveedor", "==", filters.proveedor));
+        if (filters?.tipo) constraints.push(where("tipo", "==", filters.tipo));
+        if (filters?.color) constraints.push(where("color", "==", filters.color));
+        if (filters?.talla) constraints.push(where("talla", "==", filters.talla));
+        return constraints;
+      };
+
+      const buildListQuery = ({ cursor, pageSize, filters }) => {
+        const hasPriceRange = filters?.minPrice !== null || filters?.maxPrice !== null;
+        const constraints = buildBaseConstraints(filters);
+        if (hasPriceRange) {
+          if (filters?.minPrice !== null) {
+            constraints.push(where("precio", ">=", filters.minPrice));
+          }
+          if (filters?.maxPrice !== null) {
+            constraints.push(where("precio", "<=", filters.maxPrice));
+          }
+          constraints.push(orderBy("precio"), orderBy("createdAt"));
+        } else {
+          constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
+        }
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -1638,49 +1667,51 @@
         return safeString(b.id).localeCompare(safeString(a.id));
       };
 
-      
-      const norm = (value) => (value ?? "").toString().trim();
+      const normalizeExact = (value) => safeString(value).trim();
       const toNum = (value) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
       };
 
       const matchFilters = (item, filters) => {
-        if (filters.status && norm(item.status) !== norm(filters.status)) return false;
-        if (filters.proveedor && norm(item.proveedor) !== norm(filters.proveedor)) return false;
-        if (filters.tipo && norm(item.tipo) !== norm(filters.tipo)) return false;
-        if (filters.color && norm(item.color) !== norm(filters.color)) return false;
-        if (filters.talla && norm(item.talla) !== norm(filters.talla)) return false;
-
-        const precio = toNum(item.precio);
+        if (filters.status && normalizeExact(item.status) !== normalizeExact(filters.status)) {
+          return false;
+        }
         if (
-          !filters.includeNoPrice &&
-          (precio === null || precio === 0) &&
-          (filters.minPrice || filters.maxPrice)
+          filters.proveedor &&
+          normalizeExact(item.proveedor) !== normalizeExact(filters.proveedor)
         ) {
           return false;
         }
-        if (filters.includeNoPrice !== true) {
-          if (filters.minPrice != null && precio != null && precio < filters.minPrice) {
-            return false;
-          }
-          if (filters.maxPrice != null && precio != null && precio > filters.maxPrice) {
-            return false;
-          }
-        } else if (precio != null) {
+        if (filters.tipo && normalizeExact(item.tipo) !== normalizeExact(filters.tipo)) {
+          return false;
+        }
+        if (filters.color && normalizeExact(item.color) !== normalizeExact(filters.color)) {
+          return false;
+        }
+        if (filters.talla && normalizeExact(item.talla) !== normalizeExact(filters.talla)) {
+          return false;
+        }
+
+        const precio = toNum(item.precio);
+        const isNoPrice = precio === null || precio === 0;
+        if (isNoPrice) {
+          if (!filters.includeNoPrice) return false;
+        } else {
           if (filters.minPrice != null && precio < filters.minPrice) return false;
           if (filters.maxPrice != null && precio > filters.maxPrice) return false;
         }
 
-        const q = norm(filters.query);
+        const q = normalizeExact(filters.query || filters.searchRaw);
         if (q) {
-          const code = norm(item.codigo);
-          const desc = norm(item.descripcion).toLowerCase();
-          const ql = q.toLowerCase();
-          const looksSku = /^[A-Z]{2}\d/i.test(q) || q.includes("/") || q.includes("-");
-          if (looksSku) {
-            if (!code.toLowerCase().startsWith(ql)) return false;
-          } else if (!desc.includes(ql)) {
+          const codigo = normalizeExact(item.codigo).toUpperCase();
+          const descripcion = normalizeExact(item.descripcion).toLowerCase();
+          const qTrim = q.trim();
+          const qUpper = qTrim.toUpperCase();
+          const qLower = qTrim.toLowerCase();
+          if (looksLikeCodeSearch(qTrim)) {
+            if (!codigo.startsWith(qUpper)) return false;
+          } else if (!descripcion.includes(qLower)) {
             return false;
           }
         }
@@ -1749,15 +1780,47 @@
         return { filteredCount, pagesScanned };
       };
 
-      const fetchPrendasPage = async ({ cursor, pageSize }) => {
-        const pageQuery = buildListQuery({ cursor, pageSize });
-        return getDocs(pageQuery);
+      const fetchPrendasPage = async ({ cursor, pageSize, filters, mode = "main" }) => {
+        console.log("[Prendas] Query ejecutada", {
+          filters,
+          mode,
+          cursorId: cursor?.id ?? null,
+          pageSize
+        });
+        const pageQuery = buildListQuery({ cursor, pageSize, filters });
+        const snapshot = await getDocs(pageQuery);
+        console.log("[Prendas] Docs recibidos", snapshot.docs.length);
+        return snapshot;
+      };
+
+      const buildNoPriceQuery = ({ cursor, pageSize, filters, priceValue }) => {
+        const constraints = buildBaseConstraints(filters);
+        constraints.push(where("precio", "==", priceValue));
+        constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
+        if (cursor) {
+          constraints.push(startAfter(cursor));
+        }
+        constraints.push(limit(pageSize));
+        return query(prendas2025Ref, ...constraints);
+      };
+
+      const fetchNoPricePage = async ({ cursor, pageSize, filters, priceValue }) => {
+        console.log("[Prendas] Query ejecutada", {
+          filters,
+          mode: priceValue === null ? "no-price-null" : "no-price-zero",
+          cursorId: cursor?.id ?? null,
+          pageSize
+        });
+        const pageQuery = buildNoPriceQuery({ cursor, pageSize, filters, priceValue });
+        const snapshot = await getDocs(pageQuery);
+        console.log("[Prendas] Docs recibidos", snapshot.docs.length);
+        return snapshot;
       };
 
       const resetPrendasState = () => {
         prendasState.data = [];
         prendasState.filtered = [];
-        prendasState.lastDocs = { main: null, noPrice: null };
+        prendasState.lastDocs = { main: null, noPrice: null, noPriceZero: null };
         prendasState.hasMore = true;
         prendasState.hasMoreMain = true;
         prendasState.hasMoreNoPrice = true;
@@ -1794,75 +1857,95 @@
         setPrendasAlert("");
         setLoadingState(reset ? "initial" : "more", true);
         prendasLoadMore.disabled = true;
-        const useScanFallback = hasActiveFilters(filters);
-        const pageSize = useScanFallback
-          ? PRENDAS_PAGE_SIZE_DEFAULT
-          : getPageSize();
+        const pageSize = getPageSize();
+        const hasPriceRange = filters.minPrice !== null || filters.maxPrice !== null;
+        const includeNoPrice = Boolean(filters.includeNoPrice && hasPriceRange);
 
         const queryStart = performance.now();
         const rid = ++prendasState.reqId;
 
         try {
 
-          if (useScanFallback) {
-            console.log("[Prendas] SCAN mode", {
-              filters,
-              lastDocId: prendasState.lastScanSnap?.id ?? null
-            });
-            await scanUntilFilled({
-              filters,
-              pageSize,
-              reset
-            });
-            if (rid !== prendasState.reqId) {
-              return;
-            }
-            if (!prendasState.hasMoreScan) {
-              prendasState.isDone = true;
-            }
-          } else {
-            const mainPromise = fetchPrendasPage({
-              cursor: reset ? null : prendasState.lastDocs.main,
-              pageSize
-            });
-            const mainSnapshot = await mainPromise;
-            if (rid !== prendasState.reqId) {
-              return;
-            }
-            const tQuery = Number((performance.now() - queryStart).toFixed(1));
+          const mainSnapshot = await fetchPrendasPage({
+            cursor: reset ? null : prendasState.lastDocs.main,
+            pageSize,
+            filters,
+            mode: hasPriceRange ? "price-range" : "list"
+          });
+          if (rid !== prendasState.reqId) {
+            return;
+          }
+          const tQuery = Number((performance.now() - queryStart).toFixed(1));
 
-            const mapStart = performance.now();
-            const mainDocs = mainSnapshot
-              ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-              : [];
-            const combined = [...mainDocs]
-              .filter((item) => {
-                if (prendasState.seenIds.has(item.id)) return false;
-                prendasState.seenIds.add(item.id);
-                return true;
+          const mapStart = performance.now();
+          const mainDocs = mainSnapshot
+            ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
+            : [];
+          let combinedDocs = [...mainDocs];
+
+          if (includeNoPrice) {
+            const [nullSnapshot, zeroSnapshot] = await Promise.all([
+              fetchNoPricePage({
+                cursor: reset ? null : prendasState.lastDocs.noPrice,
+                pageSize,
+                filters,
+                priceValue: null
+              }),
+              fetchNoPricePage({
+                cursor: reset ? null : prendasState.lastDocs.noPriceZero,
+                pageSize,
+                filters,
+                priceValue: 0
               })
-              .sort((a, b) => comparePrendas(a, b));
+            ]);
+            if (rid !== prendasState.reqId) {
+              return;
+            }
+            const nullDocs = nullSnapshot
+              ? nullSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
+              : [];
+            const zeroDocs = zeroSnapshot
+              ? zeroSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
+              : [];
+            combinedDocs = combinedDocs.concat(nullDocs, zeroDocs);
 
-            const tMap = Number((performance.now() - mapStart).toFixed(1));
-            console.info("[Prendas] Query Firestore", {
-              ms: tQuery,
-              docs: combined.length,
-              pageSize,
-              tMap
-            });
+            if (nullSnapshot && nullSnapshot.docs.length) {
+              prendasState.lastDocs.noPrice = nullSnapshot.docs[nullSnapshot.docs.length - 1];
+            }
+            if (zeroSnapshot && zeroSnapshot.docs.length) {
+              prendasState.lastDocs.noPriceZero = zeroSnapshot.docs[zeroSnapshot.docs.length - 1];
+            }
+            prendasState.hasMoreNoPrice =
+              Boolean(nullSnapshot?.docs.length) || Boolean(zeroSnapshot?.docs.length);
+          }
 
-            // Update cursors for the normal mode
-            if (mainSnapshot && mainSnapshot.docs.length) {
-              prendasState.lastDocs.main = mainSnapshot.docs[mainSnapshot.docs.length - 1];
-            }
-            if (!mainSnapshot || mainSnapshot.docs.length < pageSize) {
-              prendasState.isDone = true;
-            }
-            if (reset) {
-              prendasState.data = combined;
-            } else {
-              prendasState.data = prendasState.data.concat(combined);
-            }
+          const combined = combinedDocs
+            .filter((item) => {
+              if (prendasState.seenIds.has(item.id)) return false;
+              prendasState.seenIds.add(item.id);
+              return true;
+            })
+            .sort((a, b) => comparePrendas(a, b));
+
+          const tMap = Number((performance.now() - mapStart).toFixed(1));
+          console.info("[Prendas] Query Firestore", {
+            ms: tQuery,
+            docs: combined.length,
+            pageSize,
+            tMap
+          });
+
+          if (mainSnapshot && mainSnapshot.docs.length) {
+            prendasState.lastDocs.main = mainSnapshot.docs[mainSnapshot.docs.length - 1];
+          }
+          const mainHasMore = mainSnapshot && mainSnapshot.docs.length === pageSize;
+          const noPriceHasMore = includeNoPrice ? prendasState.hasMoreNoPrice : false;
+          prendasState.isDone = !mainHasMore && !noPriceHasMore;
+
+          if (reset) {
+            prendasState.data = combined;
+          } else {
+            prendasState.data = prendasState.data.concat(combined);
           }
         } catch (error) {
           if (!handleIndexError(error)) {
