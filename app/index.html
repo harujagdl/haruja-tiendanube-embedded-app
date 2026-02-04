@@ -972,21 +972,6 @@
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
       const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
-      const SEARCH_STOPWORDS = new Set([
-        "de",
-        "la",
-        "el",
-        "los",
-        "las",
-        "y",
-        "o",
-        "en",
-        "para",
-        "con",
-        "sin",
-        "un",
-        "una"
-      ]);
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
@@ -1204,16 +1189,12 @@
             data.Detalles ??
             ""
         ).trim();
-        const color = safeString(data.color ?? data.Color ?? data.COLOR ?? "").trim();
-        const talla = safeString(data.talla ?? data.Talla ?? data.TALLA ?? "").trim();
-        const proveedor = safeString(
-          data.proveedor ?? data.Proveedor ?? data.PROVEEDOR ?? ""
-        ).trim();
-        const tipo = safeString(data.tipo ?? data.Tipo ?? data.TIPO ?? "").trim();
-        const status = safeString(
-          data.status ?? data.Status ?? data.ESTATUS ?? ""
-        ).trim();
-        const precio = toNumberOrNull(data.precio ?? data.Precio ?? data.price);
+        const proveedor = safeString(data.proveedor || data.Proveedor || "").trim();
+        const tipo = safeString(data.tipo || data.Tipo || "").trim();
+        const color = safeString(data.color || data.Color || "").trim();
+        const talla = safeString(data.talla || data.Talla || "").trim();
+        const status = safeString(data.status || data.Status || "").trim();
+        const precio = toNumberOrNull(data.precio ?? data.Precio ?? null);
         const precioConIva = toNumberOrNull(data.precioConIva ?? data.precioConIVA);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const costo = toNumberOrNull(data.costo);
@@ -1229,13 +1210,7 @@
             : Number.isFinite(basePrice) && basePrice !== 0
               ? Number(((basePrice - (costo ?? 0)) / basePrice).toFixed(3))
               : null;
-        const createdAt =
-          data.createdAt ??
-          data.CreatedAt ??
-          data.fecha ??
-          data.Fecha ??
-          data.updatedAt ??
-          null;
+        const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const descripcionLower = descripcion.toLowerCase();
         const codigoUpper = codigo.toUpperCase();
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
@@ -1266,11 +1241,6 @@
       const getSearchTerm = () => normalizeText(prendasSearch.value);
       const getSearchRaw = () => safeString(prendasSearch.value).trim();
       const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
-      const getPrimaryToken = (value) =>
-        normalizeText(value)
-          .split(/[^a-z0-9]+/i)
-          .map((token) => token.trim())
-          .filter((token) => token && !SEARCH_STOPWORDS.has(token))[0] || "";
       const looksLikeCodeSearch = (value) => {
         const raw = safeString(value).trim().toUpperCase();
         if (!raw) return false;
@@ -1496,7 +1466,7 @@
         const hasTalla = Boolean(filters.talla);
         const hasSearch = Boolean(safeString(filters.searchRaw).trim());
         const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
-        const includeNoPrice = filters.includeNoPrice === true;
+        const excludeNoPrice = filters.includeNoPrice === false;
         return (
           hasStatus ||
           hasProveedor ||
@@ -1505,7 +1475,7 @@
           hasTalla ||
           hasSearch ||
           hasPriceRange ||
-          includeNoPrice
+          excludeNoPrice
         );
       };
 
@@ -1518,7 +1488,11 @@
           prendasState.showingTotal = null;
         }
         console.info("[Prendas] Filters in use", filters);
-        const finalFiltered = prendasState.data;
+        const filterStart = performance.now();
+        const finalFiltered = prendasState.data.filter((item) =>
+          matchFilters(item, filters)
+        );
+        const tFilter = Number((performance.now() - filterStart).toFixed(1));
         prendasState.filtered = finalFiltered;
         const tRender = await renderDocs(finalFiltered);
         if (!prendasState.isSkuSearch) {
@@ -1530,7 +1504,7 @@
             setPrendasAlert("");
           }
         }
-        return { tFilter: 0, tRender };
+        return { tFilter, tRender };
       };
 
       const setSkuSearchMode = (enabled) => {
@@ -1617,88 +1591,17 @@
         }
       };
 
-      const buildQueryKey = (filters, pageSize) => {
-        const hasPriceRange = filters.priceMin !== null || filters.priceMax !== null;
-        return JSON.stringify({
-          status: filters.status ?? null,
-          proveedor: filters.proveedor ?? null,
-          tipo: filters.tipo ?? null,
-          color: filters.color ?? null,
-          talla: filters.talla ?? null,
-          priceMin: filters.priceMin ?? null,
-          priceMax: filters.priceMax ?? null,
-          includeNoPrice: Boolean(filters.includeNoPrice),
-          search: filters.searchRaw ?? null,
-          sortMode: hasPriceRange ? "precio" : "createdAt",
+      const buildQueryKey = (filters, pageSize) =>
+        JSON.stringify({
+          filtersActive: hasActiveFilters(filters),
           pageSize
         });
-      };
 
-      const getSearchConfig = (filters) => {
-        const raw = safeString(filters.searchRaw).trim();
-        if (!raw) return { mode: "none" };
-        if (looksLikeCodeSearch(raw)) {
-          const normalized = normalizeSkuPrefix(raw);
-          if (!normalized) return { mode: "none" };
-          return { mode: "codigo", raw: normalized };
-        }
-        const token = getPrimaryToken(filters.searchTerm || raw);
-        if (!token) return { mode: "none" };
-        return { mode: "descripcion", token };
-      };
-
-      const buildListQuery = ({ filters, cursor, pageSize, nullPriceOnly = false }) => {
-        const constraints = [];
-        const searchConfig = getSearchConfig(filters);
-        const hasRangeFilters = (filters.priceMin !== null || filters.priceMax !== null);
-        const hasPriceRange =
-          searchConfig.mode === "none" &&
-          (filters.priceMin !== null || filters.priceMax !== null);
-
-        if (filters.status) {
-          constraints.push(where("status", "==", filters.status));
-        }
-        if (filters.proveedor) {
-          constraints.push(where("proveedor", "==", filters.proveedor));
-        }
-        if (filters.tipo) {
-          constraints.push(where("tipo", "==", filters.tipo));
-        }
-        if (filters.color) {
-          constraints.push(where("color", "==", filters.color));
-        }
-        if (filters.talla) {
-          constraints.push(where("talla", "==", filters.talla));
-        }
-
-        if (nullPriceOnly) {
-          constraints.push(where("precio", "==", null));
-        } else if (hasPriceRange) {
-          if (filters.priceMin !== null) {
-            constraints.push(where("precio", ">=", filters.priceMin));
-          }
-          if (filters.priceMax !== null) {
-            constraints.push(where("precio", "<=", filters.priceMax));
-          }
-        }
-
-        if (searchConfig.mode === "codigo") {
-          constraints.push(orderBy("codigoLower"));
-          constraints.push(startAt(searchConfig.raw));
-          constraints.push(endAt(`${searchConfig.raw}\uf8ff`));
-        } else {
-          if (searchConfig.mode === "descripcion") {
-            constraints.push(where("searchTokens", "array-contains", searchConfig.token));
-          }
-          if (hasPriceRange) {
-            constraints.push(orderBy("precio", "asc"));
-            constraints.push(orderBy(documentId(), "desc"));
-          } else {
-            constraints.push(orderBy("createdAt", "desc"));
-            constraints.push(orderBy(documentId(), "desc"));
-          }
-        }
-
+      const buildListQuery = ({ cursor, pageSize }) => {
+        const constraints = [
+          orderBy("createdAt", "desc"),
+          orderBy(documentId(), "desc")
+        ];
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -1714,19 +1617,7 @@
         return PRENDAS_PAGE_SIZE_DEFAULT;
       };
 
-      const comparePrendas = (a, b, { hasPriceRange, searchConfig }) => {
-        if (searchConfig?.mode === "codigo") {
-          return safeString(a.codigo).localeCompare(safeString(b.codigo));
-        }
-        if (hasPriceRange) {
-          const priceA = toNumberOrNull(a.precio ?? a.precioConIva);
-          const priceB = toNumberOrNull(b.precio ?? b.precioConIva);
-          if (priceA === null && priceB !== null) return 1;
-          if (priceA !== null && priceB === null) return -1;
-          if (priceA !== null && priceB !== null && priceA !== priceB) {
-            return priceA - priceB;
-          }
-        }
+      const comparePrendas = (a, b) => {
         const dateA = getPrendaDate(a);
         const dateB = getPrendaDate(b);
         const timeA = dateA ? dateA.getTime() : 0;
@@ -1747,7 +1638,7 @@
         return normalized;
       };
 
-      const matchesFiltersLocal = (item, filters) => {
+      const matchFilters = (item, filters) => {
         if (filters.status && normalizeStatus(item.status) !== normalizeStatus(filters.status)) {
           return false;
         }
@@ -1784,24 +1675,23 @@
         if (searchRaw) {
           if (looksLikeCodeSearch(searchRaw)) {
             const normalizedPrefix = normalizeSkuPrefix(searchRaw);
-            const codigoComparable = normalizeSkuPrefix(item.codigoUpper || "");
+            const codigoComparable = normalizeSkuPrefix(item.codigo || "");
             if (normalizedPrefix && !codigoComparable.startsWith(normalizedPrefix)) return false;
           } else {
-            const token = getPrimaryToken(filters.searchTerm || searchRaw);
-            if (token && !safeString(item.descripcionLower).includes(token)) return false;
+            const normalizedSearch = normalizeText(searchRaw);
+            const descripcionComparable = normalizeText(item.descripcion || "");
+            if (normalizedSearch && !descripcionComparable.includes(normalizedSearch)) return false;
           }
         }
 
         return true;
       };
 
-      const buildScanQuery = ({ cursor, orderField }) => {
-        const constraints = [];
-        if (orderField === "__name__") {
-          constraints.push(orderBy("__name__", "desc"));
-        } else {
-          constraints.push(orderBy("createdAt", "desc"));
-        }
+      const buildScanQuery = ({ cursor }) => {
+        const constraints = [
+          orderBy("createdAt", "desc"),
+          orderBy(documentId(), "desc")
+        ];
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -1810,19 +1700,8 @@
       };
 
       const fetchScanBatch = async ({ cursor }) => {
-        let orderField = prendasState.scanOrderField || "createdAt";
-        try {
-          const snap = await getDocs(buildScanQuery({ cursor, orderField }));
-          return { snap, orderField };
-        } catch (error) {
-          if (orderField !== "__name__") {
-            prendasState.scanOrderField = "__name__";
-            orderField = "__name__";
-            const snap = await getDocs(buildScanQuery({ cursor, orderField }));
-            return { snap, orderField };
-          }
-          throw error;
-        }
+        const snap = await getDocs(buildScanQuery({ cursor }));
+        return { snap };
       };
 
       const scanUntilFilled = async ({ filters, pageSize, reset }) => {
@@ -1834,10 +1713,12 @@
         const results = [];
         let cursor = prendasState.lastScanSnap;
         let hasMore = prendasState.hasMoreScan;
+        let pagesScanned = 0;
 
-        while (results.length < pageSize && hasMore) {
+        while (results.length < pageSize && hasMore && pagesScanned < 10) {
           const { snap } = await fetchScanBatch({ cursor });
           const docsFetched = snap.docs.length;
+          pagesScanned += 1;
           if (!docsFetched) {
             hasMore = false;
             break;
@@ -1847,7 +1728,7 @@
           let matches = 0;
           normalized.forEach((item) => {
             if (prendasState.seenIds.has(item.id)) return;
-            if (!matchesFiltersLocal(item, filters)) return;
+            if (!matchFilters(item, filters)) return;
             prendasState.seenIds.add(item.id);
             results.push(item);
             matches += 1;
@@ -1858,10 +1739,10 @@
             hasMore = false;
           }
 
-          console.log("[Prendas] Scan page fetched", {
-            docs: docsFetched,
+          console.log("[Prendas] Scan progress", {
+            fetched: docsFetched,
             matches,
-            total: results.length
+            showing: results.length
           });
         }
 
@@ -1870,8 +1751,8 @@
         return results;
       };
 
-      const fetchPrendasPage = async ({ filters, cursor, pageSize, nullPriceOnly }) => {
-        const pageQuery = buildListQuery({ filters, cursor, pageSize, nullPriceOnly });
+      const fetchPrendasPage = async ({ cursor, pageSize }) => {
+        const pageQuery = buildListQuery({ cursor, pageSize });
         return getDocs(pageQuery);
       };
 
@@ -1890,7 +1771,6 @@
         prendasState.scanMode = false;
         prendasState.lastScanSnap = null;
         prendasState.hasMoreScan = true;
-        prendasState.scanOrderField = "createdAt";
       };
 
       const renderLoadingPlaceholder = () => {
@@ -1916,14 +1796,8 @@
         setPrendasAlert("");
         setLoadingState(reset ? "initial" : "more", true);
         prendasLoadMore.disabled = true;
-        const pageSize = getPageSize();
-        const searchConfig = getSearchConfig(filters);
+        const pageSize = PRENDAS_PAGE_SIZE_DEFAULT;
         const useScanFallback = hasActiveFilters(filters);
-        const hasPriceRange =
-          searchConfig.mode === "none" &&
-          (filters.priceMin !== null || filters.priceMax !== null);
-        const shouldIncludeNoPrice = Boolean(filters.includeNoPrice);
-        const needsNullPriceQuery = hasPriceRange && shouldIncludeNoPrice;
 
         const queryStart = performance.now();
         const rid = ++prendasState.reqId;
@@ -1933,9 +1807,10 @@
           let combined = [];
 
           if (useScanFallback) {
-            if (reset || !prendasState.scanMode) {
-              console.log("[Prendas] Using SCAN fallback (no where)", { filters });
-            }
+            console.log("[Prendas] SCAN mode", {
+              filters,
+              lastDocId: prendasState.lastScanSnap?.id ?? null
+            });
             const scanItems = await scanUntilFilled({
               filters,
               pageSize,
@@ -1950,24 +1825,10 @@
             }
           } else {
             const mainPromise = fetchPrendasPage({
-              filters,
               cursor: reset ? null : prendasState.lastDocs.main,
-              pageSize,
-              nullPriceOnly: false
+              pageSize
             });
-            const noPricePromise = needsNullPriceQuery
-              ? fetchPrendasPage({
-                  filters,
-                  cursor: reset ? null : prendasState.lastDocs.noPrice,
-                  pageSize,
-                  nullPriceOnly: true
-                })
-              : Promise.resolve(null);
-
-            const [mainSnapshot, noPriceSnapshot] = await Promise.all([
-              mainPromise,
-              noPricePromise
-            ]);
+            const mainSnapshot = await mainPromise;
             if (rid !== prendasState.reqId) {
               return;
             }
@@ -1977,17 +1838,13 @@
             const mainDocs = mainSnapshot
               ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
               : [];
-            const noPriceDocs = noPriceSnapshot
-              ? noPriceSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-              : [];
-
-            combined = [...mainDocs, ...noPriceDocs]
+            combined = [...mainDocs]
               .filter((item) => {
                 if (prendasState.seenIds.has(item.id)) return false;
                 prendasState.seenIds.add(item.id);
                 return true;
               })
-              .sort((a, b) => comparePrendas(a, b, { hasPriceRange, searchConfig }));
+              .sort((a, b) => comparePrendas(a, b));
 
             const tMap = Number((performance.now() - mapStart).toFixed(1));
             console.info("[Prendas] Query Firestore", {
@@ -2000,9 +1857,6 @@
             // Update cursors for the normal mode
             if (mainSnapshot && mainSnapshot.docs.length) {
               prendasState.lastDocs.main = mainSnapshot.docs[mainSnapshot.docs.length - 1];
-            }
-            if (noPriceSnapshot && noPriceSnapshot.docs.length) {
-              prendasState.lastDocs.noPrice = noPriceSnapshot.docs[noPriceSnapshot.docs.length - 1];
             }
             if (!mainSnapshot || mainSnapshot.docs.length < pageSize) {
               prendasState.isDone = true;
