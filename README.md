@@ -85,3 +85,26 @@ npm run seed:prendas
 3. Mantén `dryRun=true` para validar el resumen primero.
 4. Cuando el dry-run esté correcto, vuelve a ejecutar con `dryRun=false`.
 5. Verifica en Firestore la colección `HarujaPrendas_2025`.
+
+---
+
+# Índices recomendados (Base de datos códigos HarujaGdl)
+
+Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`, crea los siguientes índices compuestos:
+
+1. **Index A (sin rango de precio)**
+   - proveedor (asc)
+   - tipo (asc)
+   - color (asc)
+   - talla (asc)
+   - status (asc)
+   - createdAt (desc)
+
+2. **Index B (con rango de precio)**
+   - proveedor (asc)
+   - tipo (asc)
+   - color (asc)
+   - talla (asc)
+   - status (asc)
+   - precio (asc)
+   - createdAt (desc)
