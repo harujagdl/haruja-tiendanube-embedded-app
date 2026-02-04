@@ -1135,6 +1135,18 @@
         }
       };
 
+      const resetCounters = () => {
+        if (prendasTotal) {
+          prendasTotal.textContent = "—";
+        }
+        if (prendasNuevos) {
+          prendasNuevos.textContent = "—";
+        }
+        if (prendasExistentes) {
+          prendasExistentes.textContent = "—";
+        }
+      };
+
       const setPrendasAlert = (message = "", { isHtml = false } = {}) => {
         if (message) {
           if (isHtml) {
@@ -1416,9 +1428,7 @@
         console.assert(prendasTbody, "tbody no encontrado");
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
-        prendasTotal.textContent = "—";
-        prendasNuevos.textContent = "—";
-        prendasExistentes.textContent = "—";
+        resetCounters();
 
         const showingTotal = Number.isFinite(prendasState.showingTotal)
           ? prendasState.showingTotal
@@ -1832,6 +1842,7 @@
         prendasState.scanMode = false;
         prendasState.lastScanSnap = null;
         prendasState.hasMoreScan = true;
+        resetCounters();
       };
 
       const renderLoadingPlaceholder = () => {
@@ -2482,6 +2493,7 @@
       const init = async () => {
         isBooting = true;
         resetPrendasState();
+        resetCounters();
         prendasSearch.value = "";
         prendasStatus.value = "todos";
         prendasProveedor.value = "todos";
