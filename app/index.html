@@ -976,7 +976,7 @@
       const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
-      const DICTS_CACHE_KEY = "haruja_dicts_cache_v1";
+      const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
       const SEARCH_STOPWORDS = new Set([
         "de",
         "la",
@@ -1080,7 +1080,7 @@
           try {
             const parsed = JSON.parse(cached);
             if (
-              parsed?.version === "1" &&
+              parsed?.version === "2" &&
               parsed?.dicts &&
               ["proveedores", "tipos", "colores", "tallas"].every((key) =>
                 Array.isArray(parsed.dicts[key])
@@ -1100,7 +1100,8 @@
             const snapshot = await getDocs(collection(db, COLLECTIONS[category]));
             const normalizedMap = new Map();
             snapshot.docs.forEach((docSnap) => {
-              const raw = docSnap.data()?.valor;
+              const data = docSnap.data() || {};
+              const raw = data.valor ?? data.nombre ?? data.clave ?? docSnap.id;
               const cleaned = normalizeDictionaryValue(raw);
               if (!cleaned) return;
               const key = normalizeText(cleaned);
@@ -1126,7 +1127,7 @@
         prendasState.dictsLoaded = true;
         localStorage.setItem(
           DICTS_CACHE_KEY,
-          JSON.stringify({ version: "1", dicts: prendasState.dicts })
+          JSON.stringify({ version: "2", dicts: prendasState.dicts })
         );
         return prendasState.dicts;
       };
