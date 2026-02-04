@@ -88,6 +88,38 @@ npm run seed:prendas
 
 ---
 
+# Admin y Backfill del buscador (Cloud Functions)
+
+La app incluye un modo admin que valida contraseña vía Cloud Functions y permite ejecutar un backfill de `searchTokens` para habilitar la búsqueda por descripción sin cargar toda la colección.
+
+## Configurar contraseña admin (Functions config)
+
+Configura la contraseña de admin desde tu máquina local:
+
+```bash
+firebase functions:config:set admin.password="TU_PASSWORD_ADMIN"
+```
+
+## Deploy de Functions
+
+Desde la raíz del repo:
+
+```bash
+cd functions
+npm install
+npm run deploy
+```
+
+## Ejecutar el backfill desde la UI
+
+1. Abre la sección **Base de datos códigos**.
+2. Ingresa la contraseña admin y presiona **Ingresar**.
+3. Presiona **Preparar buscador (1 vez)** y espera el progreso.
+
+> El backfill es idempotente: si un documento ya tiene `searchTokens` con `searchVersion` actualizado, se omite.
+
+---
+
 # Índices recomendados (Base de datos códigos HarujaGdl)
 
 Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`, crea los siguientes índices compuestos:
@@ -107,4 +139,8 @@ Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`,
    - talla (asc)
    - status (asc)
    - precio (asc)
+   - createdAt (desc)
+
+3. **Index C (búsqueda por descripción)**
+   - searchTokens (array-contains)
    - createdAt (desc)
