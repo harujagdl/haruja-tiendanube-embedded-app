@@ -1,0 +1,41 @@
+name: Deploy Firebase Functions
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functionsDeploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies (functions)
+        working-directory: functions
+        run: npm ci
+
+      - name: Auth to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Deploy Functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: |
+          npx -y firebase-tools@latest --version
+          npx -y firebase-tools@latest deploy --only functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
