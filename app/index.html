@@ -559,8 +559,8 @@
                   <label for="prendas-status">Status</label>
                   <select id="prendas-status">
                     <option value="todos">Todos</option>
-                    <option value="Disponible">Disponible</option>
-                    <option value="Vendido">Vendido</option>
+                    <option value="disponible">Disponible</option>
+                    <option value="vendido">Vendido</option>
                   </select>
                 </div>
                 <div>
@@ -1043,8 +1043,8 @@
         const entries = snapshot.docs
           .map((docSnap) => {
             const data = docSnap.data() || {};
-            const clave = data.clave || data.Clave || docSnap.id;
-            const valor = data.valor || data.Valor || data.nombre || data.Nombre || clave;
+            const clave = data.clave || docSnap.id;
+            const valor = data.valor || data.nombre || clave;
             return { clave, valor };
           })
           .filter((entry) => entry.clave && entry.valor);
@@ -1101,7 +1101,7 @@
             const normalizedMap = new Map();
             snapshot.docs.forEach((docSnap) => {
               const data = docSnap.data() || {};
-              const raw = data.valor ?? data.Valor ?? data.nombre ?? data.Nombre ?? data.clave ?? data.Clave ?? docSnap.id;
+              const raw = data.valor ?? data.nombre ?? data.clave ?? docSnap.id;
               const cleaned = normalizeDictionaryValue(raw);
               if (!cleaned) return;
               const key = normalizeText(cleaned);
@@ -1255,7 +1255,7 @@
       const getSearchInput = () => safeString(prendasSearch.value);
       const getSearchTerm = () => normalizeText(prendasSearch.value);
       const getSearchRaw = () => safeString(prendasSearch.value).trim();
-      const normalizeSelectValue = (value) => (isAllFilter(value) ? null : normalizeDictionaryValue(value));
+      const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
       const getPrimaryToken = (value) =>
         normalizeText(value)
           .split(/[^a-z0-9]+/i)
@@ -1421,6 +1421,43 @@
 
         return row;
       };
+
+const renderCountsOnly = (rows = prendasState.filtered || []) => {
+  const stats = prendasState.globalStats;
+  const hasGlobalTotals =
+    stats &&
+    Number.isFinite(stats.totalAll) &&
+    Number.isFinite(stats.nuevos7dAll) &&
+    Number.isFinite(stats.existentesAll);
+  const useGlobalStats = !prendasState.filtersActive && hasGlobalTotals;
+  const countState = prendasState.counts || {};
+  const nuevosFromRows = rows.filter((item) => isNew(getPrendaDate(item))).length;
+
+  let total = null;
+  let nuevos = null;
+  let existentes = null;
+
+  if (useGlobalStats) {
+    total = stats.totalAll;
+    nuevos = stats.nuevos7dAll;
+    existentes = stats.existentesAll;
+  } else if (Number.isFinite(countState.total)) {
+    total = countState.total;
+    nuevos = Number.isFinite(countState.nuevos) ? countState.nuevos : nuevosFromRows;
+    existentes = Number.isFinite(countState.existentes)
+      ? countState.existentes
+      : Math.max(0, total - nuevosFromRows);
+  } else {
+    // fallback: mostrar conteos aproximados por lo cargado
+    total = rows.length;
+    nuevos = nuevosFromRows;
+    existentes = Math.max(0, total - nuevosFromRows);
+  }
+
+  prendasTotal.textContent = Number.isFinite(total) ? total : "—";
+  prendasNuevos.textContent = Number.isFinite(nuevos) ? nuevos : "—";
+  prendasExistentes.textContent = Number.isFinite(existentes) ? existentes : "—";
+};
 
       const renderDocs = async (rows) => {
         const renderStart = performance.now();
@@ -1978,86 +2015,76 @@
         }
       };
 
-      const refreshPrendasCounts = async (filters) => {
-        try {
-          if (!hasActiveFilters(filters)) {
-            if (!prendasState.globalStats) {
-              const stats = await fetchGlobalStats();
-              if (stats) {
-                prendasState.globalStats = stats;
-              }
-            }
-          }
-          if (hasActiveFilters(filters)) {
-            const searchConfig = getSearchConfig(filters);
-            if (searchConfig.mode === "codigo") {
-              prendasState.counts = {
-                total: null,
-                nuevos: null,
-                existentes: null,
-                countFailed: false
-              };
-              await renderDocs(prendasState.filtered);
-              return;
-            }
-            const now = Date.now();
-            const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-            const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
-
-            const runCount = async (nullPriceOnly = false, extraConstraints = []) => {
-              const countQuery = buildCountQuery({
-                filters,
-                nullPriceOnly,
-                extraConstraints
-              });
-              const snapshot = await getCountFromServer(countQuery);
-              return toNumberOrNull(snapshot?.data()?.count) ?? 0;
-            };
-
-            let totalCount = 0;
-            let nuevosCount = 0;
-            if (filters.includeNoPrice) {
-              const [totalMain, totalNull, nuevosMain, nuevosNull] = await Promise.all([
-                runCount(false),
-                runCount(true),
-                runCount(false, [extraNewConstraint]),
-                runCount(true, [extraNewConstraint])
-              ]);
-              totalCount = totalMain + totalNull;
-              nuevosCount = nuevosMain + nuevosNull;
-            } else {
-              totalCount = await runCount(false);
-              nuevosCount = await runCount(false, [extraNewConstraint]);
-            }
-
-            prendasState.counts = {
-              total: Number.isFinite(totalCount) ? totalCount : null,
-              nuevos: Number.isFinite(nuevosCount) ? nuevosCount : null,
-              existentes: Number.isFinite(totalCount)
-                ? Math.max(0, totalCount - (Number.isFinite(nuevosCount) ? nuevosCount : 0))
-                : null,
-              countFailed: false
-            };
-          } else {
-            prendasState.counts = {
-              total: null,
-              nuevos: null,
-              existentes: null,
-              countFailed: false
-            };
-          }
-          await renderDocs(prendasState.filtered);
-        } catch (error) {
-          console.warn("No se pudieron refrescar las estadísticas.", error);
-          prendasState.counts = {
-            total: null,
-            nuevos: null,
-            existentes: null,
-            countFailed: true
-          };
-          await renderDocs(prendasState.filtered);
+      
+const refreshPrendasCounts = async (filters) => {
+  try {
+    // 1) Guardar/resolver totales globales solo cuando NO hay filtros.
+    if (!hasActiveFilters(filters)) {
+      if (!prendasState.globalStats) {
+        const stats = await fetchGlobalStats();
+        if (stats) {
+          prendasState.globalStats = stats;
         }
-      };
+      }
+      // Para vista sin filtros, renderizamos conteos desde globalStats (si existe)
+      renderCountsOnly(prendasState.filtered);
+      return;
+    }
+
+    // 2) Con filtros: el conteo es "best effort". Si falla, NO afecta la lista (FAIL-OPEN).
+    const searchConfig = getSearchConfig(filters);
+    if (searchConfig.mode === "codigo") {
+      // En modo búsqueda por código no tiene sentido contar.
+      prendasState.counts = { total: null, nuevos: null, existentes: null, countFailed: false };
+      renderCountsOnly(prendasState.filtered);
+      return;
+    }
+
+    const now = Date.now();
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const extraNewConstraint = where("createdAt", ">=", sevenDaysAgo);
+
+    const runCount = async (nullPriceOnly = false, extraConstraints = []) => {
+      const countQuery = buildCountQuery({ filters, nullPriceOnly, extraConstraints });
+      const snapshot = await getCountFromServer(countQuery);
+      return toNumberOrNull(snapshot?.data()?.count) ?? 0;
+    };
+
+    let totalCount = 0;
+    let nuevosCount = 0;
+
+    if (filters.includeNoPrice) {
+      const [totalMain, totalNull, nuevosMain, nuevosNull] = await Promise.all([
+        runCount(false),
+        runCount(true),
+        runCount(false, [extraNewConstraint]),
+        runCount(true, [extraNewConstraint])
+      ]);
+      totalCount = totalMain + totalNull;
+      nuevosCount = nuevosMain + nuevosNull;
+    } else {
+      totalCount = await runCount(false);
+      nuevosCount = await runCount(false, [extraNewConstraint]);
+    }
+
+    prendasState.counts = {
+      total: Number.isFinite(totalCount) ? totalCount : null,
+      nuevos: Number.isFinite(nuevosCount) ? nuevosCount : null,
+      existentes: Number.isFinite(totalCount)
+        ? Math.max(0, totalCount - (Number.isFinite(nuevosCount) ? nuevosCount : 0))
+        : null,
+      countFailed: false
+    };
+
+    // Actualizar SOLO UI de conteos (no tocar la tabla)
+    renderCountsOnly(prendasState.filtered);
+  } catch (error) {
+    // FAIL-OPEN: si el conteo falla (índices/limitaciones), NO mostrar error global ni vaciar la lista.
+    console.warn("Conteo falló (FAIL-OPEN): se ignora para no bloquear la lista.", error);
+    prendasState.counts = { total: null, nuevos: null, existentes: null, countFailed: false };
+    renderCountsOnly(prendasState.filtered);
+  }
+};
 
       const reloadPrendasList = async ({ reason = "manual" } = {}) => {
         setLoadingState("initial", true);
