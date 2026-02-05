@@ -6,23 +6,23 @@ on:
 jobs:
   hostingDeploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Auth to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          create_credentials_file: true
-          export_environment_variables: true
+      - name: Write service account
+        run: |
+          printf '%s' "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" > /tmp/serviceAccount.json
 
       - name: Deploy Hosting
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
         run: |
+          npx -y firebase-tools@latest --version
           npx -y firebase-tools@latest deploy --only hosting --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
