@@ -120,6 +120,12 @@ npm run deploy
 
 ---
 
+# Conteos aproximados en la base de datos de códigos
+
+Para evitar errores de índices compuestos infinitos en Firestore, la sección **Base de datos códigos HarujaGdl** usa conteos aproximados calculados por escaneo local (hasta un límite de documentos). Esto evita `failed-precondition` en `runAggregationQuery` y mantiene la UI estable incluso con muchos filtros. Cuando se alcanza el límite de escaneo, el total se muestra con prefijo `≈`. 
+
+---
+
 # Índices recomendados (Base de datos códigos HarujaGdl)
 
 Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`, crea los siguientes índices compuestos:

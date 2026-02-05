@@ -159,6 +159,15 @@
         background: var(--primary-dark);
       }
 
+      button.secondary {
+        background: #e5e7eb;
+        color: #1f2937;
+      }
+
+      button.secondary:hover {
+        background: #d1d5db;
+      }
+
       .status {
         font-size: 14px;
         color: var(--muted);
@@ -385,6 +394,23 @@
         min-width: 120px;
       }
 
+      .pagination .page-indicator {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      .admin-optional {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px dashed #d1d5db;
+        background: #f8fafc;
+      }
+
       #dbCodigosSection .admin-only {
         display: none !important;
       }
@@ -606,10 +632,17 @@
                   <label for="prendas-page-size">Registros por página</label>
                   <select id="prendas-page-size">
                     <option value="30">30</option>
-                    <option value="50" selected>50</option>
+                    <option value="50">50</option>
+                    <option value="80" selected>80</option>
                     <option value="100">100</option>
                   </select>
                 </div>
+              </div>
+              <div class="admin-optional" id="admin-optional">
+                <span class="muted">Admin opcional: configura después si no necesitas costos.</span>
+                <button type="button" id="admin-optional-toggle" class="secondary">
+                  Mostrar admin
+                </button>
               </div>
               <div class="admin-panel" id="admin-panel">
                 <div>
@@ -651,6 +684,7 @@
                   <strong id="prendas-existentes">—</strong>
                 </div>
               </div>
+              <p id="prendas-count-note" class="muted"></p>
             </div>
             <div id="prendas-alert" class="alert hidden"></div>
             <div id="prendas-loader" class="loader hidden" data-db-loader>
@@ -684,7 +718,11 @@
             </div>
             <div class="pagination">
               <span id="prendas-showing" data-count-shown>Mostrando 0</span>
-              <button type="button" id="prendas-load-more">Cargar más</button>
+              <span id="prendas-page-indicator" class="page-indicator">Página 1</span>
+              <div>
+                <button type="button" id="prendas-prev">Anterior</button>
+                <button type="button" id="prendas-next">Siguiente</button>
+              </div>
             </div>
           </div>
         </section>
@@ -706,10 +744,8 @@
         runTransaction,
         serverTimestamp,
         startAfter,
-        startAt,
         where,
         limit,
-        endAt,
         persistentLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
       import {
@@ -775,6 +811,7 @@
       const prendasTotal = document.querySelector("[data-count-total]") || document.getElementById("prendas-total");
       const prendasNuevos = document.getElementById("prendas-nuevos");
       const prendasExistentes = document.getElementById("prendas-existentes");
+      const prendasCountNote = document.getElementById("prendas-count-note");
       const prendasTable =
         document.querySelector("[data-prendas-table]") ||
         document.getElementById("tablaPrendas");
@@ -784,7 +821,9 @@
         document.getElementById("prendas-tbody");
       const prendasShowing =
         document.querySelector("[data-count-shown]") || document.getElementById("prendas-showing");
-      const prendasLoadMore = document.getElementById("prendas-load-more");
+      const prendasPrev = document.getElementById("prendas-prev");
+      const prendasNext = document.getElementById("prendas-next");
+      const prendasPageIndicator = document.getElementById("prendas-page-indicator");
       const prendasLoader =
         document.querySelector("[data-db-loader]") || document.getElementById("prendas-loader");
       const prendasEmptyRow =
@@ -797,9 +836,12 @@
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
       const adminLoginStatus = document.getElementById("admin-login-status");
+      const adminPanel = document.getElementById("admin-panel");
       const adminActions = document.getElementById("admin-actions");
       const adminBackfillButton = document.getElementById("admin-backfill");
       const adminBackfillStatus = document.getElementById("admin-backfill-status");
+      const adminOptional = document.getElementById("admin-optional");
+      const adminOptionalToggle = document.getElementById("admin-optional-toggle");
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
       console.assert(prendasLoader, "No existe loader de prendas");
@@ -964,8 +1006,11 @@
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
-      const PRENDAS_PAGE_SIZE_DEFAULT = 50;
+      const PRENDAS_PAGE_SIZE_DEFAULT = 80;
       const PRENDAS_SCAN_PAGE_SIZE = 200;
+      const PRENDAS_SCAN_MAX_PAGES = 12;
+      const PRENDAS_COUNT_SCAN_LIMIT = 2000;
+      const PRENDAS_COUNT_BATCH_SIZE = 250;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const ADMIN_SESSION_KEY = "haruja_admin_session";
@@ -975,9 +1020,11 @@
 
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
-        data: [],
         filtered: [],
         isAdmin: false,
+        pageIndex: 0,
+        pageCursors: [null],
+        hasNextPage: false,
         dicts: {
           proveedores: [],
           tipos: [],
@@ -985,18 +1032,9 @@
           tallas: []
         },
         dictsLoaded: false,
-        lastDocs: {
-          main: null,
-          noPrice: null,
-          noPriceZero: null
-        },
-        hasMoreMain: true,
-        hasMoreNoPrice: true,
-        hasMore: true,
         isDone: false,
         isLoadingInitial: false,
         isLoadingMore: false,
-        seenIds: new Set(),
         filters: null,
         filtersActive: false,
         renderToken: 0,
@@ -1005,10 +1043,7 @@
         showingTotal: null,
         queryKey: "",
         reqId: 0,
-        scanMode: false,
-        lastScanSnap: null,
-        hasMoreScan: true,
-        scanOrderField: "createdAt"
+        countToken: 0
       };
       let isBooting = true;
 
@@ -1145,6 +1180,56 @@
         if (prendasExistentes) {
           prendasExistentes.textContent = "—";
         }
+        if (prendasCountNote) {
+          prendasCountNote.textContent = "";
+        }
+      };
+
+      const updatePaginationUi = () => {
+        if (!prendasPrev || !prendasNext || !prendasPageIndicator) return;
+        const isSkuSearch = prendasState.isSkuSearch;
+        const pageIndex = prendasState.pageIndex;
+        const hasPrev = pageIndex > 0;
+        const hasNext = prendasState.hasNextPage;
+        const isBusy = prendasState.isLoadingInitial || prendasState.isLoadingMore;
+        prendasPrev.disabled = isSkuSearch || isBusy || !hasPrev;
+        prendasNext.disabled = isSkuSearch || isBusy || !hasNext;
+        prendasPrev.classList.toggle("hidden", isSkuSearch);
+        prendasNext.classList.toggle("hidden", isSkuSearch);
+        prendasPageIndicator.textContent = `Página ${pageIndex + 1}`;
+      };
+
+      const formatApproxCount = (value, isApprox) =>
+        isApprox ? `≈ ${value}+` : `${value}`;
+
+      const setApproxCounts = ({ total, nuevos, existentes, isApprox }) => {
+        if (prendasTotal) {
+          prendasTotal.textContent = Number.isFinite(total)
+            ? formatApproxCount(total, isApprox)
+            : "—";
+        }
+        if (prendasNuevos) {
+          prendasNuevos.textContent = Number.isFinite(nuevos)
+            ? formatApproxCount(nuevos, isApprox)
+            : "—";
+        }
+        if (prendasExistentes) {
+          prendasExistentes.textContent = Number.isFinite(existentes)
+            ? formatApproxCount(existentes, isApprox)
+            : "—";
+        }
+        if (prendasCountNote) {
+          prendasCountNote.textContent = isApprox
+            ? "Conteos aproximados para evitar errores de índices."
+            : "Conteos basados en escaneo para evitar errores de índices.";
+        }
+      };
+
+      const setExactCountsFromItems = (items) => {
+        const total = items.length;
+        const nuevos = items.filter((item) => isNew(getPrendaDate(item))).length;
+        const existentes = total - nuevos;
+        setApproxCounts({ total, nuevos, existentes, isApprox: false });
       };
 
       const setPrendasAlert = (message = "", { isHtml = false } = {}) => {
@@ -1428,19 +1513,12 @@
         console.assert(prendasTbody, "tbody no encontrado");
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
-        resetCounters();
 
         const showingTotal = Number.isFinite(prendasState.showingTotal)
           ? prendasState.showingTotal
           : null;
         setCounter(rows.length, showingTotal);
-        const disableLoadMore =
-          prendasState.isSkuSearch ||
-          prendasState.isDone ||
-          prendasState.isLoadingInitial ||
-          prendasState.isLoadingMore;
-        prendasLoadMore.disabled = disableLoadMore;
-        prendasLoadMore.classList.toggle("hidden", prendasState.isSkuSearch);
+        updatePaginationUi();
 
         prendasTbody.textContent = "";
         if (!rows.length) {
@@ -1500,45 +1578,12 @@
         );
       };
 
-      const applyFiltersAndRender = async () => {
-        const filters = prendasState.filters || getCurrentFilters();
-        prendasState.filters = filters;
-        const filtersActive = hasActiveFilters(filters);
-        prendasState.filtersActive = filtersActive;
-        if (!prendasState.isSkuSearch) {
-          prendasState.showingTotal = null;
-        }
-        console.info("[Prendas] Filters in use", filters);
-        const filterStart = performance.now();
-        const finalFiltered = prendasState.data.filter((item) =>
-          matchFilters(item, filters)
-        );
-        const tFilter = Number((performance.now() - filterStart).toFixed(1));
-        prendasState.filtered = finalFiltered;
-        const tRender = await renderDocs(finalFiltered);
-        if (!prendasState.isSkuSearch) {
-          if (filtersActive) {
-            setPrendasAlert(
-              `Mostrando ${finalFiltered.length} resultados. Usa “Cargar más” para ver más.`
-            );
-          } else {
-            setPrendasAlert("");
-          }
-        }
-        return { tFilter, tRender };
-      };
-
       const setSkuSearchMode = (enabled) => {
         prendasState.isSkuSearch = enabled;
         if (!enabled) {
           prendasState.showingTotal = null;
         }
-        prendasLoadMore.classList.toggle("hidden", enabled);
-        prendasLoadMore.disabled =
-          enabled ||
-          prendasState.isDone ||
-          prendasState.isLoadingInitial ||
-          prendasState.isLoadingMore;
+        updatePaginationUi();
       };
 
       const fetchBySku = async (rawInput) => {
@@ -1594,7 +1639,10 @@
           const items = result ? [result] : [];
           prendasState.filtered = items;
           prendasState.showingTotal = items.length;
+          prendasState.pageIndex = 0;
+          prendasState.hasNextPage = false;
           await renderDocs(items);
+          setExactCountsFromItems(items);
           if (!items.length) {
             setPrendasAlert("No se encontró ese código. Revisa formato.");
           }
@@ -1606,6 +1654,7 @@
           setPrendasAlert("No se pudo buscar el código en Firestore.");
           prendasState.filtered = [];
           prendasState.showingTotal = 0;
+          resetCounters();
           await renderDocs([]);
         } finally {
           setLoadingState("initial", false);
@@ -1627,54 +1676,12 @@
           pageSize
         });
 
-      const buildBaseConstraints = (filters) => {
-        const constraints = [];
-        if (filters?.status) constraints.push(where("status", "==", filters.status));
-        if (filters?.proveedor) constraints.push(where("proveedor", "==", filters.proveedor));
-        if (filters?.tipo) constraints.push(where("tipo", "==", filters.tipo));
-        if (filters?.color) constraints.push(where("color", "==", filters.color));
-        if (filters?.talla) constraints.push(where("talla", "==", filters.talla));
-        return constraints;
-      };
-
-      const buildListQuery = ({ cursor, pageSize, filters }) => {
-        const hasPriceRange = filters?.minPrice !== null || filters?.maxPrice !== null;
-        const constraints = buildBaseConstraints(filters);
-        if (hasPriceRange) {
-          if (filters?.minPrice !== null) {
-            constraints.push(where("precio", ">=", filters.minPrice));
-          }
-          if (filters?.maxPrice !== null) {
-            constraints.push(where("precio", "<=", filters.maxPrice));
-          }
-          constraints.push(orderBy("precio"), orderBy("createdAt"));
-        } else {
-          constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
-        }
-        if (cursor) {
-          constraints.push(startAfter(cursor));
-        }
-        constraints.push(limit(pageSize));
-        return query(prendas2025Ref, ...constraints);
-      };
-
       const getPageSize = () => {
         const selected = Number(prendasPageSize?.value);
         if (Number.isFinite(selected) && selected > 0) {
           return selected;
         }
         return PRENDAS_PAGE_SIZE_DEFAULT;
-      };
-
-      const comparePrendas = (a, b) => {
-        const dateA = getPrendaDate(a);
-        const dateB = getPrendaDate(b);
-        const timeA = dateA ? dateA.getTime() : 0;
-        const timeB = dateB ? dateB.getTime() : 0;
-        if (timeA !== timeB) {
-          return timeB - timeA;
-        }
-        return safeString(b.id).localeCompare(safeString(a.id));
       };
 
       const normalizeExact = (value) => safeString(value).trim();
@@ -1728,7 +1735,7 @@
         return true;
       };
 
-      const buildScanQuery = ({ cursor }) => {
+      const buildScanQuery = ({ cursor, batchSize }) => {
         const constraints = [
           orderBy("createdAt", "desc"),
           orderBy(documentId(), "desc")
@@ -1736,28 +1743,26 @@
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
-        constraints.push(limit(PRENDAS_SCAN_PAGE_SIZE));
+        constraints.push(limit(batchSize));
         return query(prendas2025Ref, ...constraints);
       };
 
-      const fetchScanBatch = async ({ cursor }) => {
-        const snap = await getDocs(buildScanQuery({ cursor }));
+      const fetchScanBatch = async ({ cursor, batchSize }) => {
+        const snap = await getDocs(buildScanQuery({ cursor, batchSize }));
         return { snap };
       };
 
-      const scanUntilFilled = async ({ filters, pageSize, reset }) => {
-        if (reset) {
-          prendasState.lastScanSnap = null;
-          prendasState.hasMoreScan = true;
-          prendasState.scanMode = true;
-        }
-        let cursor = prendasState.lastScanSnap;
-        let hasMore = prendasState.hasMoreScan;
+      const fetchPageByScan = async ({ cursor, filters, pageSize }) => {
+        let currentCursor = cursor;
+        let hasMore = true;
         let pagesScanned = 0;
-        let filteredCount = prendasState.filtered.length;
+        const items = [];
 
-        while (filteredCount < pageSize && hasMore && pagesScanned < 10) {
-          const { snap } = await fetchScanBatch({ cursor });
+        while (items.length < pageSize && hasMore && pagesScanned < PRENDAS_SCAN_MAX_PAGES) {
+          const { snap } = await fetchScanBatch({
+            cursor: currentCursor,
+            batchSize: PRENDAS_SCAN_PAGE_SIZE
+          });
           const docsFetched = snap.docs.length;
           pagesScanned += 1;
           if (!docsFetched) {
@@ -1767,81 +1772,30 @@
 
           const normalized = snap.docs.map((docSnap) => normalizeDoc(docSnap));
           normalized.forEach((item) => {
-            if (prendasState.seenIds.has(item.id)) return;
-            prendasState.seenIds.add(item.id);
-            prendasState.data.push(item);
+            if (items.length >= pageSize) return;
+            if (matchFilters(item, filters)) {
+              items.push(item);
+            }
           });
 
-          cursor = snap.docs[docsFetched - 1];
+          currentCursor = snap.docs[docsFetched - 1];
           if (docsFetched < PRENDAS_SCAN_PAGE_SIZE) {
             hasMore = false;
           }
-
-          await applyFiltersAndRender();
-          filteredCount = prendasState.filtered.length;
-          console.log("[Prendas] Scan progress", {
-            fetched: docsFetched,
-            showing: filteredCount
-          });
         }
 
-        prendasState.lastScanSnap = cursor;
-        prendasState.hasMoreScan = hasMore;
-        return { filteredCount, pagesScanned };
-      };
-
-      const fetchPrendasPage = async ({ cursor, pageSize, filters, mode = "main" }) => {
-        console.log("[Prendas] Query ejecutada", {
-          filters,
-          mode,
-          cursorId: cursor?.id ?? null,
-          pageSize
-        });
-        const pageQuery = buildListQuery({ cursor, pageSize, filters });
-        const snapshot = await getDocs(pageQuery);
-        console.log("[Prendas] Docs recibidos", snapshot.docs.length);
-        return snapshot;
-      };
-
-      const buildNoPriceQuery = ({ cursor, pageSize, filters, priceValue }) => {
-        const constraints = buildBaseConstraints(filters);
-        constraints.push(where("precio", "==", priceValue));
-        constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
-        if (cursor) {
-          constraints.push(startAfter(cursor));
-        }
-        constraints.push(limit(pageSize));
-        return query(prendas2025Ref, ...constraints);
-      };
-
-      const fetchNoPricePage = async ({ cursor, pageSize, filters, priceValue }) => {
-        console.log("[Prendas] Query ejecutada", {
-          filters,
-          mode: priceValue === null ? "no-price-null" : "no-price-zero",
-          cursorId: cursor?.id ?? null,
-          pageSize
-        });
-        const pageQuery = buildNoPriceQuery({ cursor, pageSize, filters, priceValue });
-        const snapshot = await getDocs(pageQuery);
-        console.log("[Prendas] Docs recibidos", snapshot.docs.length);
-        return snapshot;
+        return { items, cursor: currentCursor, hasMore, pagesScanned };
       };
 
       const resetPrendasState = () => {
-        prendasState.data = [];
         prendasState.filtered = [];
-        prendasState.lastDocs = { main: null, noPrice: null, noPriceZero: null };
-        prendasState.hasMore = true;
-        prendasState.hasMoreMain = true;
-        prendasState.hasMoreNoPrice = true;
         prendasState.isDone = false;
-        prendasState.seenIds.clear();
         prendasState.filtersActive = false;
         prendasState.showingTotal = null;
         prendasState.queryKey = "";
-        prendasState.scanMode = false;
-        prendasState.lastScanSnap = null;
-        prendasState.hasMoreScan = true;
+        prendasState.pageIndex = 0;
+        prendasState.pageCursors = [null];
+        prendasState.hasNextPage = false;
         resetCounters();
       };
 
@@ -1857,107 +1811,129 @@
         setCounter(0, prendasState.showingTotal ?? 0);
       };
 
-      const fetchNextPage = async (filters, { reset = false } = {}) => {
-        if (
-          prendasState.isLoadingInitial ||
-          prendasState.isLoadingMore ||
-          prendasState.isDone
-        )
+      const refreshApproxCounts = async (filters) => {
+        const token = ++prendasState.countToken;
+        if (prendasCountNote) {
+          prendasCountNote.textContent = "Calculando conteos aproximados...";
+        }
+        let cursor = null;
+        let scanned = 0;
+        let total = 0;
+        let nuevos = 0;
+        let existentes = 0;
+        let hasMore = true;
+
+        while (hasMore && scanned < PRENDAS_COUNT_SCAN_LIMIT) {
+          const { snap } = await fetchScanBatch({
+            cursor,
+            batchSize: PRENDAS_COUNT_BATCH_SIZE
+          });
+          if (token !== prendasState.countToken) {
+            return;
+          }
+          const docsFetched = snap.docs.length;
+          if (!docsFetched) {
+            hasMore = false;
+            break;
+          }
+
+          for (const docSnap of snap.docs) {
+            if (scanned >= PRENDAS_COUNT_SCAN_LIMIT) {
+              break;
+            }
+            const item = normalizeDoc(docSnap);
+            scanned += 1;
+            if (!matchFilters(item, filters)) {
+              continue;
+            }
+            total += 1;
+            if (isNew(getPrendaDate(item))) {
+              nuevos += 1;
+            } else {
+              existentes += 1;
+            }
+          }
+
+          cursor = snap.docs[docsFetched - 1];
+          if (docsFetched < PRENDAS_COUNT_BATCH_SIZE) {
+            hasMore = false;
+          }
+        }
+
+        const isApprox = scanned >= PRENDAS_COUNT_SCAN_LIMIT && hasMore;
+        if (token !== prendasState.countToken) {
           return;
+        }
+        setApproxCounts({ total, nuevos, existentes, isApprox });
+      };
+
+      const loadPrendasPage = async ({
+        pageIndex = 0,
+        reset = false,
+        reason = "manual"
+      } = {}) => {
+        if (prendasState.isLoadingInitial || prendasState.isLoadingMore) {
+          return;
+        }
         setSkuSearchMode(false);
         setPrendasAlert("");
-        setLoadingState(reset ? "initial" : "more", true);
-        prendasLoadMore.disabled = true;
-        const pageSize = getPageSize();
-        const hasPriceRange = filters.minPrice !== null || filters.maxPrice !== null;
-        const includeNoPrice = Boolean(filters.includeNoPrice && hasPriceRange);
-
-        const queryStart = performance.now();
+        setLoadingState("initial", true);
         const rid = ++prendasState.reqId;
-
         try {
-
-          const mainSnapshot = await fetchPrendasPage({
-            cursor: reset ? null : prendasState.lastDocs.main,
-            pageSize,
+          if (reset) {
+            resetPrendasState();
+            renderLoadingPlaceholder();
+          }
+          const filters = getCurrentFilters();
+          const pageSize = getPageSize();
+          const queryKey = buildQueryKey(filters, pageSize);
+          const isNewQuery = reset || queryKey !== prendasState.queryKey;
+          if (isNewQuery) {
+            prendasState.pageCursors = [null];
+            pageIndex = 0;
+            prendasState.queryKey = queryKey;
+          }
+          if (pageIndex > 0 && !prendasState.pageCursors[pageIndex]) {
+            return;
+          }
+          prendasState.filters = filters;
+          prendasState.filtersActive = hasActiveFilters(filters);
+          const cursor = prendasState.pageCursors[pageIndex] ?? null;
+          const { items, cursor: nextCursor, hasMore } = await fetchPageByScan({
+            cursor,
             filters,
-            mode: hasPriceRange ? "price-range" : "list"
+            pageSize
           });
           if (rid !== prendasState.reqId) {
             return;
           }
-          const tQuery = Number((performance.now() - queryStart).toFixed(1));
 
-          const mapStart = performance.now();
-          const mainDocs = mainSnapshot
-            ? mainSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-            : [];
-          let combinedDocs = [...mainDocs];
+          prendasState.filtered = items;
+          prendasState.showingTotal = null;
+          prendasState.pageIndex = pageIndex;
+          prendasState.hasNextPage = hasMore && items.length === pageSize;
+          prendasState.pageCursors[pageIndex + 1] = nextCursor ?? null;
+          await renderDocs(items);
 
-          if (includeNoPrice) {
-            const [nullSnapshot, zeroSnapshot] = await Promise.all([
-              fetchNoPricePage({
-                cursor: reset ? null : prendasState.lastDocs.noPrice,
-                pageSize,
-                filters,
-                priceValue: null
-              }),
-              fetchNoPricePage({
-                cursor: reset ? null : prendasState.lastDocs.noPriceZero,
-                pageSize,
-                filters,
-                priceValue: 0
-              })
-            ]);
-            if (rid !== prendasState.reqId) {
-              return;
-            }
-            const nullDocs = nullSnapshot
-              ? nullSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-              : [];
-            const zeroDocs = zeroSnapshot
-              ? zeroSnapshot.docs.map((docSnap) => normalizeDoc(docSnap))
-              : [];
-            combinedDocs = combinedDocs.concat(nullDocs, zeroDocs);
-
-            if (nullSnapshot && nullSnapshot.docs.length) {
-              prendasState.lastDocs.noPrice = nullSnapshot.docs[nullSnapshot.docs.length - 1];
-            }
-            if (zeroSnapshot && zeroSnapshot.docs.length) {
-              prendasState.lastDocs.noPriceZero = zeroSnapshot.docs[zeroSnapshot.docs.length - 1];
-            }
-            prendasState.hasMoreNoPrice =
-              Boolean(nullSnapshot?.docs.length) || Boolean(zeroSnapshot?.docs.length);
-          }
-
-          const combined = combinedDocs
-            .filter((item) => {
-              if (prendasState.seenIds.has(item.id)) return false;
-              prendasState.seenIds.add(item.id);
-              return true;
-            })
-            .sort((a, b) => comparePrendas(a, b));
-
-          const tMap = Number((performance.now() - mapStart).toFixed(1));
-          console.info("[Prendas] Query Firestore", {
-            ms: tQuery,
-            docs: combined.length,
-            pageSize,
-            tMap
-          });
-
-          if (mainSnapshot && mainSnapshot.docs.length) {
-            prendasState.lastDocs.main = mainSnapshot.docs[mainSnapshot.docs.length - 1];
-          }
-          const mainHasMore = mainSnapshot && mainSnapshot.docs.length === pageSize;
-          const noPriceHasMore = includeNoPrice ? prendasState.hasMoreNoPrice : false;
-          prendasState.isDone = !mainHasMore && !noPriceHasMore;
-
-          if (reset) {
-            prendasState.data = combined;
+          if (prendasState.filtersActive) {
+            setPrendasAlert(
+              items.length
+                ? `Mostrando ${items.length} resultados en esta página.`
+                : "No hay resultados con los filtros actuales."
+            );
           } else {
-            prendasState.data = prendasState.data.concat(combined);
+            setPrendasAlert("");
           }
+
+          if (isNewQuery) {
+            void refreshApproxCounts(filters);
+          }
+
+          console.log("[Prendas] Página cargada", {
+            reason,
+            pageIndex,
+            docs: items.length
+          });
         } catch (error) {
           if (!handleIndexError(error)) {
             console.error(error);
@@ -1967,45 +1943,13 @@
           if (rid !== prendasState.reqId) {
             return;
           }
-          setLoadingState(reset ? "initial" : "more", false);
-          prendasLoadMore.disabled = prendasState.isDone || prendasState.isSkuSearch;
-        }
-      };
-
-      const reloadPrendasList = async ({ reason = "manual" } = {}) => {
-        setLoadingState("initial", true);
-        const rid = ++prendasState.reqId;
-        try {
-          setSkuSearchMode(false);
-          resetPrendasState();
-          renderLoadingPlaceholder();
-          const filters = getCurrentFilters();
-          prendasState.filters = filters;
-          prendasState.filtersActive = hasActiveFilters(filters);
-          const pageSize = getPageSize();
-          prendasState.queryKey = buildQueryKey(filters, pageSize);
-          await fetchNextPage(filters, { reset: true });
-          if (rid !== prendasState.reqId) {
-            return;
-          }
-          const { tFilter, tRender } = await applyFiltersAndRender();
-          console.log("[Perf]", {
-            reason,
-            tFilter,
-            tRender,
-            docs: prendasState.filtered.length
-          });
-        } finally {
-          if (rid !== prendasState.reqId) {
-            return;
-          }
           setLoadingState("initial", false);
+          updatePaginationUi();
         }
       };
 
       const applyFilters = async () => {
-        prendasState.filters = getCurrentFilters();
-        await reloadPrendasList({ reason: "filters" });
+        await loadPrendasPage({ reset: true, reason: "filters" });
       };
 
       const ensureRequired = () => {
@@ -2270,6 +2214,18 @@
         adminBackfillStatus.className = `status ${type}`.trim();
       };
 
+      let adminPanelVisible = false;
+
+      const setAdminPanelVisible = (visible) => {
+        adminPanelVisible = visible;
+        if (adminPanel) {
+          adminPanel.classList.toggle("hidden", !visible);
+        }
+        if (adminOptionalToggle) {
+          adminOptionalToggle.textContent = visible ? "Ocultar admin" : "Mostrar admin";
+        }
+      };
+
       const applyAdminUI = () => {
         const session = getAdminSession();
         const sessionActive = Boolean(session);
@@ -2297,6 +2253,7 @@
         if (prendasState.filtered.length) {
           renderDocs(prendasState.filtered);
         }
+        setAdminPanelVisible(adminPanelVisible);
       };
 
       const handleAdminToggle = (event) => {
@@ -2413,6 +2370,11 @@
       if (adminBackfillButton) {
         adminBackfillButton.addEventListener("click", handleBackfill);
       }
+      if (adminOptionalToggle) {
+        adminOptionalToggle.addEventListener("click", () => {
+          setAdminPanelVisible(!adminPanelVisible);
+        });
+      }
       if (adminPasswordInput) {
         adminPasswordInput.addEventListener("keydown", (event) => {
           if (event.key === "Enter") {
@@ -2438,7 +2400,7 @@
         if (isBooting) return;
         const rawInput = getSearchInput();
         if (!rawInput.trim()) {
-          await reloadPrendasList();
+          await loadPrendasPage({ reset: true, reason: "search-clear" });
           return;
         }
         if (isFullSku(rawInput)) {
@@ -2464,7 +2426,7 @@
       if (prendasPageSize) {
         prendasPageSize.addEventListener("change", async () => {
           if (isBooting) return;
-          await reloadPrendasList({ reason: "page-size" });
+          await loadPrendasPage({ reset: true, reason: "page-size" });
         });
       }
 
@@ -2478,17 +2440,21 @@
         });
       });
 
-      prendasLoadMore.addEventListener("click", async () => {
-        if (isBooting) return;
-        const filters = prendasState.filters || getCurrentFilters();
-        const nextHash = buildQueryKey(filters, getPageSize());
-        if (prendasState.queryKey && nextHash !== prendasState.queryKey) {
-          await reloadPrendasList({ reason: "filters-changed" });
-          return;
-        }
-        await fetchNextPage(filters, { reset: false });
-        await applyFiltersAndRender();
-      });
+      if (prendasPrev) {
+        prendasPrev.addEventListener("click", async () => {
+          if (isBooting) return;
+          const prevIndex = Math.max(prendasState.pageIndex - 1, 0);
+          await loadPrendasPage({ pageIndex: prevIndex, reason: "pagination-prev" });
+        });
+      }
+
+      if (prendasNext) {
+        prendasNext.addEventListener("click", async () => {
+          if (isBooting) return;
+          const nextIndex = prendasState.pageIndex + 1;
+          await loadPrendasPage({ pageIndex: nextIndex, reason: "pagination-next" });
+        });
+      }
 
       const init = async () => {
         isBooting = true;
@@ -2564,16 +2530,17 @@
           console.error(error);
         } finally {
           // ADMIN DB MODE START
+          setAdminPanelVisible(false);
           applyAdminUI();
           handleTabChange(window.location.hash);
           // ADMIN DB MODE END
           setSkuSearchMode(false);
           try {
             await loadFilterDictionaries();
-            await reloadPrendasList({ reason: "init" });
+            await loadPrendasPage({ reset: true, reason: "init" });
           } catch (error) {
             console.warn("No se pudieron cargar los filtros completos.", error);
-            await reloadPrendasList({ reason: "init" });
+            await loadPrendasPage({ reset: true, reason: "init" });
           } finally {
             isBooting = false;
           }

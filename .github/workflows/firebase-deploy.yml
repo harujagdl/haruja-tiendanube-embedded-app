@@ -20,10 +20,10 @@ jobs:
           printf '%s' "${{ secrets.GCP_SA_KEY }}" > /tmp/serviceAccount.json
 
       - name: Deploy Hosting
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
         run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/serviceAccount.json
           npx -y firebase-tools@latest deploy \
-            --only hosting \
+            --only hosting,firestore:indexes \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --force \
             --non-interactive
