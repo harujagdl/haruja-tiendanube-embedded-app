@@ -1,28 +1,32 @@
-name: Deploy Firebase Hosting
+name: Deploy Firebase (Hosting + Firestore + Indexes)
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  hostingDeploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
 
       - name: Write service account
         run: |
-          printf '%s' "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" > /tmp/serviceAccount.json
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > serviceAccount.json
 
-      - name: Deploy Hosting
+      - name: Deploy Firebase
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
+          GOOGLE_APPLICATION_CREDENTIALS: serviceAccount.json
         run: |
-          npx -y firebase-tools@latest --version
-          npx -y firebase-tools@latest deploy --only hosting --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+          firebase deploy --only hosting,firestore,indexes --project haruja-tiendanube
