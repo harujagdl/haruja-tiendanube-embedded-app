@@ -23,10 +23,12 @@ jobs:
 
       - name: Write service account
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > serviceAccount.json
+          echo '${{ secrets.GCP_SA_KEY }}' > serviceAccount.json
 
       - name: Deploy Firebase
         env:
           GOOGLE_APPLICATION_CREDENTIALS: serviceAccount.json
         run: |
-          firebase deploy --only hosting,firestore,indexes --project haruja-tiendanube
+          firebase deploy \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --only hosting,firestore,indexes
