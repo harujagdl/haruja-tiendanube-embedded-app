@@ -31,4 +31,5 @@ jobs:
         run: |
           firebase deploy \
             --project ${{ secrets.FIREBASE_PROJECT_ID }} \
-            --only hosting,firestore,indexes
+            --only hosting,firestore,indexes \
+            --force
