@@ -2,12 +2,12 @@ const functions = require("firebase-functions");
 const {setGlobalOptions} = require("firebase-functions");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
+const {randomUUID} = require("crypto");
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
-const ADMIN_SESSIONS_COLLECTION = "admin_sessions";
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -26,6 +26,7 @@ const STOPWORDS = new Set([
   "un",
   "una"
 ]);
+const adminSessions = new Map();
 
 const safeString = (value) => {
   if (value === null || value === undefined) return "";
@@ -56,7 +57,7 @@ const tokenize = (value) => {
 
 const requireAdminPassword = () => {
   const config = functions.config();
-  const password = config?.admin?.password;
+  const password = process.env.ADMIN_PASSWORD || config?.admin?.password;
   if (!password) {
     throw new functions.https.HttpsError(
       "failed-precondition",
@@ -73,26 +74,22 @@ const verifyAdminSession = async (sessionId) => {
       "Sesión admin requerida."
     );
   }
-  const sessionRef = admin.firestore().collection(ADMIN_SESSIONS_COLLECTION).doc(sessionId);
-  const sessionSnap = await sessionRef.get();
-  if (!sessionSnap.exists) {
+  const session = adminSessions.get(sessionId);
+  if (!session) {
     throw new functions.https.HttpsError(
       "permission-denied",
       "Sesión admin inválida."
     );
   }
-  const data = sessionSnap.data() || {};
-  const expiresAt =
-    typeof data.expiresAt?.toMillis === "function"
-      ? data.expiresAt.toMillis()
-      : Number(data.expiresAt);
+  const expiresAt = Number(session.expiresAt);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+    adminSessions.delete(sessionId);
     throw new functions.https.HttpsError(
       "permission-denied",
       "Sesión admin expirada."
     );
   }
-  return sessionRef;
+  return session;
 };
 
 exports.verifyAdminPassword = functions.https.onCall(async (data) => {
@@ -110,14 +107,11 @@ exports.verifyAdminPassword = functions.https.onCall(async (data) => {
       "Contraseña inválida."
     );
   }
-  const sessionRef = admin.firestore().collection(ADMIN_SESSIONS_COLLECTION).doc();
   const expiresAtMs = Date.now() + SESSION_TTL_MS;
-  await sessionRef.set({
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    expiresAt: admin.firestore.Timestamp.fromMillis(expiresAtMs)
-  });
-  logger.info("Admin session creada", {sessionId: sessionRef.id});
-  return {sessionId: sessionRef.id, expiresAt: expiresAtMs};
+  const sessionId = randomUUID();
+  adminSessions.set(sessionId, {expiresAt: expiresAtMs});
+  logger.info("Admin session creada", {sessionId});
+  return {sessionId, expiresAt: expiresAtMs};
 });
 
 exports.backfillSearchTokens = functions.https.onCall(async (data) => {
