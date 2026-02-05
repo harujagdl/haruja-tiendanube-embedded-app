@@ -3,21 +3,13 @@ name: Deploy Firebase Hosting
 on:
   workflow_dispatch:
 
-concurrency:
-  group: firebase-hosting-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   hostingDeploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
@@ -33,5 +25,4 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
-          npx -y firebase-tools@latest --version
           npx -y firebase-tools@latest deploy --only hosting --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
