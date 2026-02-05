@@ -1293,10 +1293,32 @@
         return toNumberOrNull(price);
       };
 
+      const currencyFormatter = new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        maximumFractionDigits: 2
+      });
+
+      const formatCurrency = (value) => currencyFormatter.format(value);
+
+      const formatPercent = (value) => {
+        const ratio = value > 1 ? value / 100 : value;
+        return `${(ratio * 100).toFixed(1)}%`;
+      };
+
       const buildSearchKey = (data) => {
         const codigo = safeString(data.codigo || data.code || data.Codigo || data.Code);
         const descripcion = safeString(data.descripcion || data.Descripcion || data.detalles);
         return normalizeText(`${codigo} ${descripcion}`.trim());
+      };
+
+      const pickFirstValue = (...values) => {
+        for (const value of values) {
+          if (value !== undefined && value !== null && value !== "") {
+            return value;
+          }
+        }
+        return null;
       };
 
       const normalizeDoc = (docSnap) => {
@@ -1322,22 +1344,57 @@
         const color = safeString(data.color || data.Color || "").trim();
         const talla = safeString(data.talla || data.Talla || "").trim();
         const status = safeString(data.status || data.Status || "").trim();
-        const precio = toNumberOrNull(data.precio ?? data.Precio ?? null);
-        const precioConIva = toNumberOrNull(data.precioConIva ?? data.precioConIVA);
+        const costoRaw = pickFirstValue(
+          data.costo,
+          data.Costo,
+          data.cost,
+          data.costoSinIva,
+          data.costo_sin_iva,
+          data.costoConIva,
+          data.costoConIVA
+        );
+        const precioRaw = pickFirstValue(
+          data.precio,
+          data.Precio,
+          data.price,
+          data.precioFinal,
+          data.precio_final,
+          data.precioConIva,
+          data.precioConIVA
+        );
+        const margenRaw = pickFirstValue(
+          data.margen,
+          data.Margen,
+          data.margenEstimado,
+          data.margen_estimado
+        );
+        const utilidadRaw = pickFirstValue(
+          data.utilidad,
+          data.Utilidad,
+          data.ganancia,
+          data.gananciaEstimada
+        );
+        const precio = toNumberOrNull(precioRaw);
+        const precioConIva = toNumberOrNull(
+          pickFirstValue(data.precioConIva, data.precioConIVA, precioRaw)
+        );
         const iva = toNumberOrNull(data.iva ?? data.IVA);
-        const costo = toNumberOrNull(data.costo);
+        const costo = toNumberOrNull(costoRaw);
         const basePrice = precio ?? precioConIva;
-        const utilidad =
+        const utilidadCalculada =
           Number.isFinite(basePrice) || Number.isFinite(costo)
             ? Number((basePrice ?? 0) - (costo ?? 0))
             : null;
-        const margenRaw = toNumberOrNull(data.margen);
-        const margen =
-          Number.isFinite(margenRaw)
-            ? margenRaw
-            : Number.isFinite(basePrice) && basePrice !== 0
-              ? Number(((basePrice - (costo ?? 0)) / basePrice).toFixed(3))
-              : null;
+        const utilidad = Number.isFinite(toNumberOrNull(utilidadRaw))
+          ? toNumberOrNull(utilidadRaw)
+          : utilidadCalculada;
+        const margenCalculado =
+          Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(utilidad)
+            ? Number((utilidad / basePrice).toFixed(3))
+            : null;
+        const margen = Number.isFinite(toNumberOrNull(margenRaw))
+          ? toNumberOrNull(margenRaw)
+          : margenCalculado;
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const descripcionLower = descripcion.toLowerCase();
         const codigoUpper = codigo.toUpperCase();
@@ -1485,9 +1542,13 @@
         const fechaTexto = safeString(item.fechaTexto);
         const dateValue = getPrendaDate(item) || toDateValue(item.createdAt);
         const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
-        const costo = safeString(item.costo) || "--";
-        const margen = safeString(item.margen) || "--";
-        const utilidad = safeString(item.utilidad) || "--";
+        const costo = Number.isFinite(item.costo)
+          ? formatCurrency(item.costo)
+          : "--";
+        const margen = Number.isFinite(item.margen) ? formatPercent(item.margen) : "--";
+        const utilidad = Number.isFinite(item.utilidad)
+          ? formatCurrency(item.utilidad)
+          : "--";
         const isNewItem = isNew(dateValue);
 
         const row = document.createElement("tr");
@@ -2058,9 +2119,6 @@
             setPrendasAlert("No se pudo cargar la base de datos de códigos.");
           }
         } finally {
-          if (rid !== prendasState.reqId) {
-            return;
-          }
           setLoadingState("initial", false);
           updatePaginationUi();
         }
@@ -2405,7 +2463,10 @@
           applyAdminUI();
         } catch (error) {
           console.error(error);
-          setAdminLoginStatus("Contraseña inválida o servicio no disponible.", "error");
+          setAdminLoginStatus(
+            "Servicio admin no disponible / Falta desplegar functions.",
+            "error"
+          );
         } finally {
           if (adminLoginButton) {
             adminLoginButton.disabled = false;
