@@ -773,7 +773,11 @@
       };
 
       const app = initializeApp(firebaseConfig);
-      const functions = getFunctions(app);
+      const FUNCTIONS_REGION =
+        window.HARUJA_FUNCTIONS_REGION ||
+        firebaseConfig.functionsRegion ||
+        "us-central1";
+      const functions = getFunctions(app, FUNCTIONS_REGION);
       let db;
       try {
         db = initializeFirestore(app, {
@@ -1173,6 +1177,7 @@
       const updateLoadingUi = () => {
         const isLoading = prendasState.isLoadingInitial || prendasState.isLoadingMore;
         prendasLoader.classList.toggle("hidden", !isLoading);
+        prendasLoader.hidden = !isLoading;
       };
 
       const setLoadingState = (mode, isLoading) => {
@@ -1357,6 +1362,10 @@
           data.costo,
           data.Costo,
           data.cost,
+          data.costoUnitario,
+          data.costo_unitario,
+          data.costoTotal,
+          data.costo_total,
           data.costoSinIva,
           data.costo_sin_iva,
           data.costoConIva,
@@ -1374,12 +1383,18 @@
         const margenRaw = pickFirstValue(
           data.margen,
           data.Margen,
+          data.margenUtilidad,
+          data.margen_utilidad,
+          data.porcentajeMargen,
+          data.porcentaje_margen,
           data.margenEstimado,
           data.margen_estimado
         );
         const utilidadRaw = pickFirstValue(
           data.utilidad,
           data.Utilidad,
+          data.utilidadNeta,
+          data.utilidad_neta,
           data.ganancia,
           data.gananciaEstimada
         );
@@ -2732,10 +2747,13 @@
           try {
             await loadFilterDictionaries();
             await loadPrendasPage({ reset: true, reason: "init" });
+            setLoadingState("initial", false);
           } catch (error) {
             console.warn("No se pudieron cargar los filtros completos.", error);
             await loadPrendasPage({ reset: true, reason: "init" });
+            setLoadingState("initial", false);
           } finally {
+            setLoadingState("initial", false);
             isBooting = false;
           }
         }
