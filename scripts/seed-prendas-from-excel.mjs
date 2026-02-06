@@ -23,6 +23,9 @@ const HEADER_FIELD_MAP = {
   "iva (16%)": "iva",
   "precio con iv": "precioConIva",
   "precio con iva": "precioConIva",
+  "p. venta": "pVenta",
+  "p venta": "pVenta",
+  "pventa": "pVenta",
   status: "status",
   disponibilidad: "disponibilidad",
   proveedor: "proveedor",
@@ -294,8 +297,11 @@ const main = async () => {
     setField("color", String(getValue("color") ?? "").trim());
     setField("talla", String(getValue("talla") ?? "").trim());
     setField("descripcion", String(getValue("descripcion") ?? "").trim());
-    setField("status", String(getValue("status") ?? "").trim());
-    setField("disponibilidad", String(getValue("disponibilidad") ?? "").trim());
+    const status = String(getValue("status") ?? "").trim();
+    setField("status", status);
+    const disponibilidadRaw = String(getValue("disponibilidad") ?? "").trim();
+    const disponibilidad = status.toLowerCase() === "vendido" ? "No disponible" : disponibilidadRaw;
+    setField("disponibilidad", disponibilidad);
     setField("proveedor", String(getValue("proveedor") ?? "").trim());
 
     if (fechaDate) {
@@ -305,9 +311,20 @@ const main = async () => {
       );
     }
 
-    setField("precio", parseNumber(getValue("precio")));
-    setField("iva", parseNumber(getValue("iva")));
-    setField("precioConIva", parseNumber(getValue("precioConIva")));
+    const precio = parseNumber(getValue("precio"));
+    const iva = parseNumber(getValue("iva"));
+    const pVentaRaw = parseNumber(getValue("pVenta"));
+    const precioConIvaLegacy = parseNumber(getValue("precioConIva"));
+
+    setField("precio", precio);
+    setField("iva", iva);
+
+    const pVenta =
+      pVentaRaw ??
+      precioConIvaLegacy ??
+      (Number.isFinite(precio) ? Number((precio * 1.16).toFixed(2)) : null);
+    setField("pVenta", pVenta);
+
     setField("costo", parseNumber(getValue("costo")));
     setField("cantidad", parseNumber(getValue("cantidad")));
     setField("costoSubtotal", parseNumber(getValue("costoSubtotal")));
