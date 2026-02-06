@@ -712,6 +712,7 @@
                     <th>Status</th>
                     <th>Disponibilidad</th>
                     <th>Fecha</th>
+                    <th>P. Venta</th>
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
                     <th class="admin-only">(Admin) Utilidad</th>
@@ -721,7 +722,7 @@
               </table>
               <template id="noResultsRow" data-empty-row>
                 <tr>
-                  <td colspan="11">No hay resultados con los filtros actuales.</td>
+                  <td colspan="12">No hay resultados con los filtros actuales.</td>
                 </tr>
               </template>
             </div>
@@ -1301,11 +1302,23 @@
         toDateValue(data?.fecha) ||
         toDateValue(data?.updatedAt);
 
-      const getPrendaPrice = (data) => {
-        const price =
-          data?.precio ?? data?.price ?? data?.precioConIva ?? data?.precioConIVA;
-        return toNumberOrNull(price);
+      const resolvePVenta = (data) => {
+        const precioBase = toNumberOrNull(
+          pickFirstValue(data?.precio, data?.Precio, data?.price)
+        );
+        const pVenta = toNumberOrNull(
+          pickFirstValue(data?.pVenta, data?.PVenta, data?.p_venta)
+        );
+        const precioConIvaLegacy = toNumberOrNull(
+          pickFirstValue(data?.precioConIva, data?.precioConIVA)
+        );
+        if (Number.isFinite(pVenta)) return pVenta;
+        if (Number.isFinite(precioConIvaLegacy)) return precioConIvaLegacy;
+        if (Number.isFinite(precioBase)) return Number((precioBase * 1.16).toFixed(2));
+        return null;
       };
+
+      const getPrendaPrice = (data) => resolvePVenta(data);
 
       const currencyFormatter = new Intl.NumberFormat("es-MX", {
         style: "currency",
@@ -1358,6 +1371,7 @@
         const color = safeString(data.color || data.Color || "").trim();
         const talla = safeString(data.talla || data.Talla || "").trim();
         const status = safeString(data.status || data.Status || "").trim();
+        const sold = normalizeText(status) === "vendido";
         const costoRaw = pickFirstValue(
           data.costo,
           data.Costo,
@@ -1376,9 +1390,7 @@
           data.Precio,
           data.price,
           data.precioFinal,
-          data.precio_final,
-          data.precioConIva,
-          data.precioConIVA
+          data.precio_final
         );
         const margenRaw = pickFirstValue(
           data.margen,
@@ -1400,11 +1412,12 @@
         );
         const precio = toNumberOrNull(precioRaw);
         const precioConIva = toNumberOrNull(
-          pickFirstValue(data.precioConIva, data.precioConIVA, precioRaw)
+          pickFirstValue(data.precioConIva, data.precioConIVA)
         );
+        const pVenta = resolvePVenta(data);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const costo = toNumberOrNull(costoRaw);
-        const basePrice = precio ?? precioConIva;
+        const basePrice = pVenta;
         const utilidadCalculada =
           Number.isFinite(basePrice) || Number.isFinite(costo)
             ? Number((basePrice ?? 0) - (costo ?? 0))
@@ -1433,7 +1446,11 @@
           proveedor,
           tipo,
           status,
+          disponibilidad: sold
+            ? "No disponible"
+            : safeString(data.disponibilidad || data.Disponibilidad || "").trim(),
           precio,
+          pVenta,
           precioConIva,
           iva,
           costo,
@@ -1562,10 +1579,16 @@
         const talla = safeString(item.talla || item.tallaNombre) || "--";
         const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
         const status = safeString(item.status) || "--";
-        const disponibilidad = safeString(item.disponibilidad) || "--";
+        const sold = normalizeText(item.status) === "vendido";
+        const disponibilidad = sold
+          ? "No disponible"
+          : safeString(item.disponibilidad) || "--";
         const fechaTexto = safeString(item.fechaTexto);
         const dateValue = getPrendaDate(item) || toDateValue(item.createdAt);
         const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
+        const pVenta = Number.isFinite(item.pVenta)
+          ? formatCurrency(item.pVenta)
+          : "--";
         const costo = Number.isFinite(item.costo)
           ? formatCurrency(item.costo)
           : "--";
@@ -1585,7 +1608,7 @@
         badgesLine.appendChild(
           isNewItem ? buildBadge("Nuevo", "badge-new") : buildBadge("Existente", "badge-old")
         );
-        if (normalizeText(status) === "vendido") {
+        if (sold) {
           badgesLine.appendChild(buildBadge("Vendido", "badge-sold"));
         }
         statusCell.append(statusLine, badgesLine);
@@ -1599,6 +1622,7 @@
           statusCell,
           disponibilidad,
           fecha,
+          pVenta,
           costo,
           margen,
           utilidad
@@ -1606,7 +1630,7 @@
 
         cells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
-            if (index >= 8) {
+            if (index >= 9) {
               value.classList.add("admin-only");
             }
             row.appendChild(value);
@@ -1614,7 +1638,7 @@
           }
           const cell = document.createElement("td");
           cell.textContent = value;
-          if (index >= 8) {
+          if (index >= 9) {
             cell.classList.add("admin-only");
           }
           row.appendChild(cell);
@@ -1648,7 +1672,7 @@
           if (!emptyNode) {
             const emptyRow = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 11;
+            cell.colSpan = 12;
             cell.textContent = "No hay resultados con los filtros actuales.";
             emptyRow.appendChild(cell);
             emptyNode = emptyRow;
@@ -1838,7 +1862,7 @@
           return false;
         }
 
-        const precio = toNum(item.precio);
+        const precio = toNum(item.pVenta);
         const isNoPrice = precio === null || precio === 0;
         if (isNoPrice) {
           if (!filters.includeNoPrice) return false;
@@ -1886,15 +1910,15 @@
           (filters?.minPrice != null || filters?.maxPrice != null)
         ) {
           if (filters.minPrice != null) {
-            constraints.push(where("precio", ">=", filters.minPrice));
+            constraints.push(where("pVenta", ">=", filters.minPrice));
           }
           if (filters.maxPrice != null) {
-            constraints.push(where("precio", "<=", filters.maxPrice));
+            constraints.push(where("pVenta", "<=", filters.maxPrice));
           }
           needsPriceOrder = true;
         }
         if (needsPriceOrder) {
-          constraints.push(orderBy("precio", "asc"));
+          constraints.push(orderBy("pVenta", "asc"));
         }
         constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
         if (cursor) {
