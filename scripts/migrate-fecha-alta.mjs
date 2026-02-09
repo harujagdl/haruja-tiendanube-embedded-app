@@ -81,26 +81,29 @@ const main = async () => {
     const data = docSnap.data() || {};
 
     const hasFechaAlta = data.fechaAlta !== undefined && data.fechaAlta !== null;
-    if (hasFechaAlta) return;
+    const hasFechaAltaTexto =
+      data.fechaAltaTexto !== undefined && String(data.fechaAltaTexto).trim() !== "";
 
     const payload = {};
     const legacyFechaTexto = String(data.fechaTexto ?? data.FechaTexto ?? "").trim();
     const legacyFecha = data.fecha ?? data.Fecha ?? null;
 
-    if (legacyFechaTexto) {
+    if (!hasFechaAltaTexto && legacyFechaTexto) {
       payload.fechaAltaTexto = legacyFechaTexto;
     }
 
-    const parsedLegacyFecha = toDateValue(legacyFecha);
-    if (parsedLegacyFecha) {
-      const cleanDate = new Date(
-        parsedLegacyFecha.getFullYear(),
-        parsedLegacyFecha.getMonth(),
-        parsedLegacyFecha.getDate()
-      );
-      payload.fechaAlta = admin.firestore.Timestamp.fromDate(cleanDate);
-      if (!payload.fechaAltaTexto) {
-        payload.fechaAltaTexto = formatDateText(cleanDate);
+    if (!hasFechaAlta) {
+      const parsedLegacyFecha = toDateValue(legacyFecha);
+      if (parsedLegacyFecha) {
+        const cleanDate = new Date(
+          parsedLegacyFecha.getFullYear(),
+          parsedLegacyFecha.getMonth(),
+          parsedLegacyFecha.getDate()
+        );
+        payload.fechaAlta = admin.firestore.Timestamp.fromDate(cleanDate);
+        if (!payload.fechaAltaTexto) {
+          payload.fechaAltaTexto = formatDateText(cleanDate);
+        }
       }
     }
 
