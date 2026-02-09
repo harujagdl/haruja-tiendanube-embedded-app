@@ -960,6 +960,54 @@
         return null;
       };
 
+      const parseDateTextValue = (value) => {
+        const raw = safeString(value).trim();
+        if (!raw) return null;
+        const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw);
+        if (!match) return null;
+        const day = Number(match[1]);
+        const month = Number(match[2]);
+        const year = Number(match[3]);
+        if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
+          return null;
+        }
+        const parsed = new Date(year, month - 1, day, 0, 0, 0, 0);
+        if (
+          Number.isNaN(parsed.getTime()) ||
+          parsed.getFullYear() !== year ||
+          parsed.getMonth() !== month - 1 ||
+          parsed.getDate() !== day
+        ) {
+          return null;
+        }
+        return parsed;
+      };
+
+      const resolveComparableDate = (item) => {
+        return (
+          toDateValue(item?.fechaAlta) ||
+          parseDateTextValue(item?.fechaAltaTexto) ||
+          parseDateTextValue(item?.fechaTexto) ||
+          null
+        );
+      };
+
+      const isInDateRange = (item, dateRange) => {
+        if (!dateRange?.start || !dateRange?.end) return true;
+        const value = resolveComparableDate(item);
+        if (!value) return false;
+        return value >= dateRange.start && value < dateRange.end;
+      };
+
+      const compareItemsByDateDesc = (a, b) => {
+        const dateA = resolveComparableDate(a);
+        const dateB = resolveComparableDate(b);
+        const timeA = dateA ? dateA.getTime() : Number.NEGATIVE_INFINITY;
+        const timeB = dateB ? dateB.getTime() : Number.NEGATIVE_INFINITY;
+        if (timeA !== timeB) return timeB - timeA;
+        return safeString(b?.codigo).localeCompare(safeString(a?.codigo));
+      };
+
       const isNew = (createdAt, days = 7) => {
         const createdDate = toDateValue(createdAt);
         if (!createdDate) return false;
@@ -1052,6 +1100,7 @@
       const PRENDAS_PAGE_SIZE_DEFAULT = 80;
       const PRENDAS_SCAN_PAGE_SIZE = 200;
       const PRENDAS_SCAN_MAX_PAGES = 12;
+      const PRENDAS_DATE_FALLBACK_LIMIT = 1200;
       const PRENDAS_COUNT_SCAN_LIMIT = 2000;
       const PRENDAS_COUNT_BATCH_SIZE = 250;
       const PRENDAS_RENDER_CHUNK = 20;
@@ -2055,7 +2104,7 @@
         return true;
       };
 
-      const buildScanQuery = ({ cursor, batchSize, filters }) => {
+      const buildScanQuery = ({ cursor, batchSize, filters, includeDateRange = true }) => {
         const constraints = [];
         if (filters?.status) {
           constraints.push(where("status", "==", filters.status));
@@ -2072,11 +2121,15 @@
         if (filters?.talla) {
           constraints.push(where("talla", "==", filters.talla));
         }
-        if (filters?.dateRange?.start && filters?.dateRange?.end) {
+        if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
           constraints.push(where("fechaAlta", ">=", filters.dateRange.start));
           constraints.push(where("fechaAlta", "<", filters.dateRange.end));
         }
-        constraints.push(orderBy("fechaAlta", "desc"), orderBy(documentId(), "desc"));
+        if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
+          constraints.push(orderBy("fechaAlta", "desc"), orderBy(documentId(), "desc"));
+        } else {
+          constraints.push(orderBy(documentId(), "desc"));
+        }
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -2084,12 +2137,77 @@
         return query(prendas2025Ref, ...constraints);
       };
 
-      const fetchScanBatch = async ({ cursor, batchSize, filters }) => {
-        const snap = await getDocs(buildScanQuery({ cursor, batchSize, filters }));
+      const fetchScanBatch = async ({
+        cursor,
+        batchSize,
+        filters,
+        includeDateRange = true
+      }) => {
+        const snap = await getDocs(
+          buildScanQuery({ cursor, batchSize, filters, includeDateRange })
+        );
         return { snap };
       };
 
-      const fetchPageByScan = async ({ cursor, filters, pageSize }) => {
+      const fetchDateHybridPage = async ({ filters, pageSize, pageIndex = 0 }) => {
+        const dateQuerySnap = await getDocs(
+          buildScanQuery({
+            cursor: null,
+            batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
+            filters,
+            includeDateRange: true
+          })
+        );
+        const withDate = dateQuerySnap.docs.map((docSnap) => normalizeDoc(docSnap));
+
+        const baseSnap = await getDocs(
+          buildScanQuery({
+            cursor: null,
+            batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
+            filters,
+            includeDateRange: false
+          })
+        );
+        const withoutDate = baseSnap.docs
+          .map((docSnap) => normalizeDoc(docSnap))
+          .filter((item) => !toDateValue(item.fechaAlta) && isInDateRange(item, filters?.dateRange));
+
+        const mergedMap = new Map();
+        [...withDate, ...withoutDate].forEach((item) => {
+          const key = safeString(item?.id || item?.codigo).trim();
+          if (!key || mergedMap.has(key)) return;
+          if (!matchFilters(item, filters)) return;
+          mergedMap.set(key, item);
+        });
+
+        const merged = [...mergedMap.values()].sort(compareItemsByDateDesc);
+        const startIndex = pageIndex * pageSize;
+        const endIndex = startIndex + pageSize;
+        const items = merged.slice(startIndex, endIndex);
+        const hasMore = endIndex < merged.length;
+
+        console.log("[Prendas] Date hybrid query", {
+          withDateDocs: withDate.length,
+          withoutDateDocs: withoutDate.length,
+          mergedDocs: merged.length,
+          pageIndex,
+          pageSize
+        });
+
+        return { items, hasMore, totalMerged: merged.length };
+      };
+
+      const fetchPageByScan = async ({ cursor, filters, pageSize, pageIndex = 0 }) => {
+        if (filters?.dateRange?.start && filters?.dateRange?.end) {
+          const hybrid = await fetchDateHybridPage({ filters, pageSize, pageIndex });
+          return {
+            items: hybrid.items,
+            cursor,
+            hasMore: hybrid.hasMore,
+            pagesScanned: 1
+          };
+        }
+
         let currentCursor = cursor;
         let hasMore = true;
         let pagesScanned = 0;
@@ -2099,7 +2217,8 @@
           const { snap } = await fetchScanBatch({
             cursor: currentCursor,
             batchSize: PRENDAS_SCAN_PAGE_SIZE,
-            filters
+            filters,
+            includeDateRange: false
           });
           const docsFetched = snap.docs.length;
           pagesScanned += 1;
@@ -2281,11 +2400,18 @@
           }
           prendasState.filters = filters;
           prendasState.filtersActive = hasActiveFilters(filters);
+          if (reason === "init") {
+            console.log("[Prendas] Init filters", {
+              ...filters,
+              applyDateRange: Boolean(filters?.dateRange?.start && filters?.dateRange?.end)
+            });
+          }
           const cursor = prendasState.pageCursors[pageIndex] ?? null;
           const { items, cursor: nextCursor, hasMore } = await fetchPageByScan({
             cursor,
             filters,
-            pageSize
+            pageSize,
+            pageIndex
           });
           if (rid !== prendasState.reqId) {
             return;
@@ -2930,6 +3056,15 @@
           handleTabChange(window.location.hash);
           // ADMIN DB MODE END
           setSkuSearchMode(false);
+          try {
+            const baseSnapshot = await getDocs(query(prendas2025Ref, limit(10)));
+            console.log("[Prendas] Base query (sin filtros) docs", {
+              collection: PRENDAS_2025_COLLECTION,
+              docs: baseSnapshot.size
+            });
+          } catch (error) {
+            console.warn("[Prendas] No se pudo medir query base sin filtros", error);
+          }
           void loadMetadataCounts().then((total) => {
             if (Number.isFinite(total) && !hasActiveFilters(getCurrentFilters())) {
               prendasState.showingTotal = total;
