@@ -321,17 +321,12 @@
         font-weight: 600;
       }
 
-      .badge-new {
-        background: #e0ecff;
-        color: #1d4ed8;
-      }
-
-      .badge-old {
+      .badge-success {
         background: #e8f5e9;
         color: #166534;
       }
 
-      .badge-sold {
+      .badge-danger {
         background: #fee2e2;
         color: #b91c1c;
       }
@@ -1302,6 +1297,44 @@
         toDateValue(data?.fecha) ||
         toDateValue(data?.updatedAt);
 
+      const normalizeStatusLabel = (value) => {
+        const normalized = normalizeText(value);
+        if (normalized === "vendido") return "Vendido";
+        if (normalized === "disponible") return "Disponible";
+        return "--";
+      };
+
+      const normalizeDisponibilidadLabel = (disponibilidad, status) => {
+        const statusLabel = normalizeStatusLabel(status);
+        if (statusLabel === "Vendido") return "No disponible";
+        const normalized = normalizeText(disponibilidad);
+        if (normalized === "disponible") return "Disponible";
+        if (normalized === "no disponible") return "No disponible";
+        return "--";
+      };
+
+      const getBadgeClassByLabel = (label) => {
+        if (label === "Disponible") return "badge-success";
+        if (label === "No disponible" || label === "Vendido") return "badge-danger";
+        return "";
+      };
+
+      const renderBadgeCell = (label) => {
+        const cell = document.createElement("td");
+        if (label === "--") {
+          cell.textContent = "--";
+          return cell;
+        }
+        cell.appendChild(buildBadge(label, getBadgeClassByLabel(label)));
+        return cell;
+      };
+
+      const renderStatusCell = (status) =>
+        renderBadgeCell(normalizeStatusLabel(status));
+
+      const renderDisponibilidadCell = (disponibilidad, status) =>
+        renderBadgeCell(normalizeDisponibilidadLabel(disponibilidad, status));
+
       const resolvePVenta = (data) => {
         const precioBase = toNumberOrNull(
           pickFirstValue(data?.precio, data?.Precio, data?.price)
@@ -1371,7 +1404,7 @@
         const color = safeString(data.color || data.Color || "").trim();
         const talla = safeString(data.talla || data.Talla || "").trim();
         const status = safeString(data.status || data.Status || "").trim();
-        const sold = normalizeText(status) === "vendido";
+        const statusLabel = normalizeStatusLabel(status);
         const costoRaw = pickFirstValue(
           data.costo,
           data.Costo,
@@ -1445,10 +1478,11 @@
           talla,
           proveedor,
           tipo,
-          status,
-          disponibilidad: sold
-            ? "No disponible"
-            : safeString(data.disponibilidad || data.Disponibilidad || "").trim(),
+          status: statusLabel,
+          disponibilidad: normalizeDisponibilidadLabel(
+            safeString(data.disponibilidad || data.Disponibilidad || "").trim(),
+            statusLabel
+          ),
           precio,
           pVenta,
           precioConIva,
@@ -1578,11 +1612,8 @@
         const color = safeString(item.color || item.colorNombre) || "--";
         const talla = safeString(item.talla || item.tallaNombre) || "--";
         const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
-        const status = safeString(item.status) || "--";
-        const sold = normalizeText(item.status) === "vendido";
-        const disponibilidad = sold
-          ? "No disponible"
-          : safeString(item.disponibilidad) || "--";
+        const status = normalizeStatusLabel(item.status);
+        const disponibilidad = normalizeDisponibilidadLabel(item.disponibilidad, status);
         const fechaTexto = safeString(item.fechaTexto);
         const dateValue = getPrendaDate(item) || toDateValue(item.createdAt);
         const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
@@ -1601,17 +1632,8 @@
         const row = document.createElement("tr");
         row.className = isNewItem ? "row-new" : "row-old";
 
-        const statusCell = document.createElement("td");
-        const statusLine = document.createElement("div");
-        statusLine.textContent = status;
-        const badgesLine = document.createElement("div");
-        badgesLine.appendChild(
-          isNewItem ? buildBadge("Nuevo", "badge-new") : buildBadge("Existente", "badge-old")
-        );
-        if (sold) {
-          badgesLine.appendChild(buildBadge("Vendido", "badge-sold"));
-        }
-        statusCell.append(statusLine, badgesLine);
+        const statusCell = renderStatusCell(status);
+        const disponibilidadCell = renderDisponibilidadCell(disponibilidad, status);
 
         const cells = [
           codigo,
@@ -1620,7 +1642,7 @@
           talla,
           proveedor,
           statusCell,
-          disponibilidad,
+          disponibilidadCell,
           fecha,
           pVenta,
           costo,
