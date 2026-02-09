@@ -589,8 +589,8 @@
                   <label for="prendas-status">Status</label>
                   <select id="prendas-status">
                     <option value="todos">Todos</option>
-                    <option value="disponible">Disponible</option>
-                    <option value="vendido">Vendido</option>
+                    <option value="Disponible">Disponible</option>
+                    <option value="Vendido">Vendido</option>
                   </select>
                 </div>
                 <div>
@@ -1393,20 +1393,27 @@
         toDateValue(data?.updatedAt) ||
         toDateValue(data?.createdAt);
 
-      const normalizeStatusLabel = (value) => {
-        const normalized = normalizeText(value);
+      const normalizeStatus = (raw) => {
+        const normalized = normalizeText(raw);
+        if (!normalized) return "";
         if (normalized === "vendido") return "Vendido";
-        if (normalized === "disponible") return "Disponible";
-        return "--";
+        if (["existente", "en stock", "disponible", "activo"].includes(normalized)) {
+          return "Disponible";
+        }
+        return "";
       };
 
-      const normalizeDisponibilidadLabel = (disponibilidad, status) => {
-        const statusLabel = normalizeStatusLabel(status);
-        if (statusLabel === "Vendido") return "No disponible";
-        const normalized = normalizeText(disponibilidad);
-        if (normalized === "disponible") return "Disponible";
-        if (normalized === "no disponible") return "No disponible";
-        return "--";
+      const normalizeDisponibilidad = (raw, statusCanon) => {
+        if (statusCanon === "Vendido") return "No disponible";
+        const normalized = normalizeText(raw);
+        if (!normalized) return "Disponible";
+        if (["no disponible", "agotado", "sin stock", "0"].includes(normalized)) {
+          return "No disponible";
+        }
+        if (["disponible", "en stock", "1", "si"].includes(normalized)) {
+          return "Disponible";
+        }
+        return "Disponible";
       };
 
       const getBadgeClassByLabel = (label) => {
@@ -1426,10 +1433,10 @@
       };
 
       const renderStatusCell = (status) =>
-        renderBadgeCell(normalizeStatusLabel(status));
+        renderBadgeCell(normalizeStatus(status) || "--");
 
       const renderDisponibilidadCell = (disponibilidad, status) =>
-        renderBadgeCell(normalizeDisponibilidadLabel(disponibilidad, status));
+        renderBadgeCell(normalizeDisponibilidad(disponibilidad, status));
 
       const resolvePVenta = (data) => {
         const precioBase = toNumberOrNull(
@@ -1499,8 +1506,8 @@
         const tipo = safeString(data.tipo || data.Tipo || "").trim();
         const color = safeString(data.color || data.Color || "").trim();
         const talla = safeString(data.talla || data.Talla || "").trim();
-        const status = safeString(data.status || data.Status || "").trim();
-        const statusLabel = normalizeStatusLabel(status);
+        const statusRaw = safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim();
+        const statusCanon = normalizeStatus(statusRaw);
         const costoRaw = pickFirstValue(
           data.costo,
           data.Costo,
@@ -1580,10 +1587,15 @@
           talla,
           proveedor,
           tipo,
-          status: statusLabel,
-          disponibilidad: normalizeDisponibilidadLabel(
-            safeString(data.disponibilidad || data.Disponibilidad || "").trim(),
-            statusLabel
+          status: statusCanon,
+          statusCanon,
+          disponibilidad: normalizeDisponibilidad(
+            safeString(data.disponibilidadCanon ?? data.disponibilidad || data.Disponibilidad || "").trim(),
+            statusCanon
+          ),
+          disponibilidadCanon: normalizeDisponibilidad(
+            safeString(data.disponibilidadCanon ?? data.disponibilidad || data.Disponibilidad || "").trim(),
+            statusCanon
           ),
           precio,
           pVenta,
@@ -1808,8 +1820,11 @@
         const color = safeString(item.color || item.colorNombre) || "--";
         const talla = safeString(item.talla || item.tallaNombre) || "--";
         const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
-        const status = normalizeStatusLabel(item.status);
-        const disponibilidad = normalizeDisponibilidadLabel(item.disponibilidad, status);
+        const status = normalizeStatus(item.statusCanon || item.status);
+        const disponibilidad = normalizeDisponibilidad(
+          item.disponibilidadCanon || item.disponibilidad,
+          status
+        );
         const fechaAltaTexto = safeString(item.fechaAltaTexto).trim();
         const fechaAltaFormateada = formatDateDDMMYYYY(toDateValue(item.fechaAlta));
         const fechaLegacyTexto = safeString(item.fechaTexto).trim();
@@ -2063,7 +2078,8 @@
       const matchFilters = (item, filters) => {
         if (
           filters.status &&
-          normalizeFilterValue(item.status) !== normalizeFilterValue(filters.status)
+          normalizeFilterValue(item.statusCanon || item.status) !==
+            normalizeFilterValue(filters.status)
         ) {
           return false;
         }
@@ -2133,7 +2149,11 @@
       const buildBaseConstraints = (filters) => {
         const constraints = [];
         if (filters?.status) {
-          constraints.push(where("status", "==", filters.status));
+          if (filters.status === "Disponible") {
+            constraints.push(where("status", "in", ["Disponible", "Existente", "En stock", "Activo"]));
+          } else if (filters.status === "Vendido") {
+            constraints.push(where("status", "==", "Vendido"));
+          }
         }
         if (filters?.proveedor) {
           constraints.push(where("proveedor", "==", filters.proveedor));

@@ -8,7 +8,9 @@
     "seed:prendas:dry": "node scripts/seed-prendas-from-excel.mjs --dry-run true --excel Data/HarujaPrendas_2025.xlsx",
     "seed:prendas": "node scripts/seed-prendas-from-excel.mjs --dry-run false --excel Data/HarujaPrendas_2025.xlsx",
     "migrate:fechaAlta:dry": "DRY_RUN=true node scripts/migrate-fecha-alta.mjs",
-    "migrate:fechaAlta": "DRY_RUN=false node scripts/migrate-fecha-alta.mjs"
+    "migrate:fechaAlta": "DRY_RUN=false node scripts/migrate-fecha-alta.mjs",
+    "migrate:canon:dry": "DRY_RUN=true node scripts/migrate-status-disponibilidad-canon.mjs",
+    "migrate:canon": "DRY_RUN=false node scripts/migrate-status-disponibilidad-canon.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
