@@ -4,38 +4,86 @@
       "collectionGroup": "HarujaPrendas_2025",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "mode": "ASCENDING" },
-        { "fieldPath": "proveedor", "mode": "ASCENDING" },
-        { "fieldPath": "tipo", "mode": "ASCENDING" },
-        { "fieldPath": "color", "mode": "ASCENDING" },
-        { "fieldPath": "talla", "mode": "ASCENDING" },
-        { "fieldPath": "__name__", "mode": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "proveedor",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "tipo",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "color",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "talla",
+          "mode": "ASCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "HarujaPrendas_2025",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "mode": "ASCENDING" },
-        { "fieldPath": "proveedor", "mode": "ASCENDING" },
-        { "fieldPath": "tipo", "mode": "ASCENDING" },
-        { "fieldPath": "color", "mode": "ASCENDING" },
-        { "fieldPath": "talla", "mode": "ASCENDING" },
-        { "fieldPath": "fechaAlta", "mode": "DESCENDING" },
-        { "fieldPath": "__name__", "mode": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "proveedor",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "tipo",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "color",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "talla",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "fechaAlta",
+          "mode": "DESCENDING"
+        }
       ]
     },
     {
       "collectionGroup": "HarujaPrendas_2025",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "mode": "ASCENDING" },
-        { "fieldPath": "proveedor", "mode": "ASCENDING" },
-        { "fieldPath": "tipo", "mode": "ASCENDING" },
-        { "fieldPath": "color", "mode": "ASCENDING" },
-        { "fieldPath": "talla", "mode": "ASCENDING" },
-        { "fieldPath": "pVenta", "mode": "ASCENDING" },
-        { "fieldPath": "__name__", "mode": "ASCENDING" }
+        {
+          "fieldPath": "status",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "proveedor",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "tipo",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "color",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "talla",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "pVenta",
+          "mode": "ASCENDING"
+        }
       ]
     }
   ],
