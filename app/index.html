@@ -986,6 +986,7 @@
       const resolveComparableDate = (item) => {
         return (
           toDateValue(item?.fechaAlta) ||
+          toDateValue(item?.fecha) ||
           parseDateTextValue(item?.fechaAltaTexto) ||
           parseDateTextValue(item?.fechaTexto) ||
           null
@@ -1106,6 +1107,8 @@
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
       const PRENDAS_YEAR_MIN = 2024;
+      const DATE_FIELD_PRIMARY = "fechaAlta";
+      const DATE_FIELD_FALLBACK = "fecha";
       const MONTH_OPTIONS = [
         { value: 1, label: "Enero" },
         { value: 2, label: "Febrero" },
@@ -1556,7 +1559,8 @@
           ? toNumberOrNull(margenRaw)
           : margenCalculado;
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
-        const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? data.fecha ?? null;
+        const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
+        const fecha = data.fecha ?? data.Fecha ?? null;
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
         ).trim();
@@ -1587,6 +1591,7 @@
           utilidad,
           createdAt,
           fechaAlta,
+          fecha,
           fechaAltaTexto,
           fechaTexto,
           descripcionLower,
@@ -2104,7 +2109,13 @@
         return true;
       };
 
-      const buildScanQuery = ({ cursor, batchSize, filters, includeDateRange = true }) => {
+      const buildScanQuery = ({
+        cursor,
+        batchSize,
+        filters,
+        includeDateRange = true,
+        dateField = DATE_FIELD_PRIMARY
+      }) => {
         const constraints = [];
         if (filters?.status) {
           constraints.push(where("status", "==", filters.status));
@@ -2122,11 +2133,11 @@
           constraints.push(where("talla", "==", filters.talla));
         }
         if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
-          constraints.push(where("fechaAlta", ">=", filters.dateRange.start));
-          constraints.push(where("fechaAlta", "<", filters.dateRange.end));
+          constraints.push(where(dateField, ">=", filters.dateRange.start));
+          constraints.push(where(dateField, "<", filters.dateRange.end));
         }
         if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
-          constraints.push(orderBy("fechaAlta", "desc"), orderBy(documentId(), "desc"));
+          constraints.push(orderBy(dateField, "desc"), orderBy(documentId(), "desc"));
         } else {
           constraints.push(orderBy(documentId(), "desc"));
         }
@@ -2141,21 +2152,23 @@
         cursor,
         batchSize,
         filters,
-        includeDateRange = true
+        includeDateRange = true,
+        dateField = DATE_FIELD_PRIMARY
       }) => {
         const snap = await getDocs(
-          buildScanQuery({ cursor, batchSize, filters, includeDateRange })
+          buildScanQuery({ cursor, batchSize, filters, includeDateRange, dateField })
         );
         return { snap };
       };
 
-      const fetchDateHybridPage = async ({ filters, pageSize, pageIndex = 0 }) => {
+      const fetchDateHybridPage = async ({ filters, pageSize, pageIndex = 0, dateField = DATE_FIELD_PRIMARY }) => {
         const dateQuerySnap = await getDocs(
           buildScanQuery({
             cursor: null,
             batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
             filters,
-            includeDateRange: true
+            includeDateRange: true,
+            dateField
           })
         );
         const withDate = dateQuerySnap.docs.map((docSnap) => normalizeDoc(docSnap));
@@ -2170,7 +2183,7 @@
         );
         const withoutDate = baseSnap.docs
           .map((docSnap) => normalizeDoc(docSnap))
-          .filter((item) => !toDateValue(item.fechaAlta) && isInDateRange(item, filters?.dateRange));
+          .filter((item) => !toDateValue(item[dateField]) && isInDateRange(item, filters?.dateRange));
 
         const mergedMap = new Map();
         [...withDate, ...withoutDate].forEach((item) => {
@@ -2187,6 +2200,7 @@
         const hasMore = endIndex < merged.length;
 
         console.log("[Prendas] Date hybrid query", {
+          dateField,
           withDateDocs: withDate.length,
           withoutDateDocs: withoutDate.length,
           mergedDocs: merged.length,
@@ -2199,7 +2213,27 @@
 
       const fetchPageByScan = async ({ cursor, filters, pageSize, pageIndex = 0 }) => {
         if (filters?.dateRange?.start && filters?.dateRange?.end) {
-          const hybrid = await fetchDateHybridPage({ filters, pageSize, pageIndex });
+          let activeDateField = DATE_FIELD_PRIMARY;
+          let hybrid = await fetchDateHybridPage({
+            filters,
+            pageSize,
+            pageIndex,
+            dateField: activeDateField
+          });
+          if (!hybrid.totalMerged) {
+            activeDateField = DATE_FIELD_FALLBACK;
+            hybrid = await fetchDateHybridPage({
+              filters,
+              pageSize,
+              pageIndex,
+              dateField: activeDateField
+            });
+          }
+          console.log("[Prendas] Date filter field selected", {
+            requested: DATE_FIELD_PRIMARY,
+            used: activeDateField,
+            totalMerged: hybrid.totalMerged
+          });
           return {
             items: hybrid.items,
             cursor,
