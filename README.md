@@ -168,3 +168,42 @@ Regla de migración:
 - Si falta `fechaAltaTexto` y existe `fechaTexto`, se copia a `fechaAltaTexto`.
 - Si falta `fechaAlta` y existe `fecha` parseable, se setea `fechaAlta` y `fechaAltaTexto` normalizada.
 - No se eliminan campos legacy (`fecha`/`fechaTexto`).
+
+## Firestore indexes como fuente única de verdad (evitar HTTP 409)
+
+Para estabilizar deploys en CI/CD, los índices se gestionan **solo desde el repo** con `firestore.indexes.json`.
+
+### Regla operativa
+
+- ✅ Fuente única: `firestore.indexes.json`
+- ❌ No crear índices manualmente en Firebase Console
+
+### Limpieza inicial (una sola vez)
+
+1. Ir a Firebase Console → Firestore → Índices.
+2. En la colección `HarujaPrendas_2025`, eliminar los índices compuestos creados manualmente que ya estén definidos en `firestore.indexes.json`.
+3. No tocar índices del sistema.
+
+### Deploy recomendado
+
+Local:
+
+```bash
+firebase deploy --only firestore:indexes
+```
+
+CI/CD (GitHub Actions):
+
+```bash
+firebase deploy --only firestore:indexes,firestore:rules,hosting
+```
+
+### Mantenimiento futuro
+
+Si Firestore devuelve `requires an index`:
+
+1. Copiar la definición exacta sugerida por Firestore.
+2. Replicarla en `firestore.indexes.json`.
+3. Hacer deploy.
+
+No crear ese índice desde consola para evitar volver al conflicto `HTTP Error: 409, index already exists`.
