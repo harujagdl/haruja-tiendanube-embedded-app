@@ -618,6 +618,18 @@
                   </select>
                 </div>
                 <div>
+                  <label for="prendas-year">Año alta</label>
+                  <select id="prendas-year">
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="prendas-month">Mes alta</label>
+                  <select id="prendas-month">
+                    <option value="">Todos</option>
+                  </select>
+                </div>
+                <div>
                   <label>Precio (rango)</label>
                   <div class="price-range">
                     <input id="prendas-precio-min" type="number" min="0" placeholder="Mín" />
@@ -631,6 +643,10 @@
                 <div>
                   <label>&nbsp;</label>
                   <button type="button" id="prendas-precio-apply">Aplicar filtros</button>
+                </div>
+                <div>
+                  <label>&nbsp;</label>
+                  <button type="button" id="prendas-filters-clear" class="secondary">Limpiar</button>
                 </div>
                 <div>
                   <label for="prendas-page-size">Registros por página</label>
@@ -812,10 +828,13 @@
       const prendasTipo = document.getElementById("prendas-tipo");
       const prendasColor = document.getElementById("prendas-color");
       const prendasTalla = document.getElementById("prendas-talla");
+      const prendasYear = document.getElementById("prendas-year");
+      const prendasMonth = document.getElementById("prendas-month");
       const prendasPrecioMin = document.getElementById("prendas-precio-min");
       const prendasPrecioMax = document.getElementById("prendas-precio-max");
       const prendasPrecioSin = document.getElementById("prendas-precio-sin");
       const prendasPrecioApply = document.getElementById("prendas-precio-apply");
+      const prendasFiltersClear = document.getElementById("prendas-filters-clear");
       const prendasPageSize = document.getElementById("prendas-page-size");
       const prendasTotal = document.querySelector("[data-count-total]") || document.getElementById("prendas-total");
       const prendasNuevos = document.getElementById("prendas-nuevos");
@@ -1031,6 +1050,21 @@
       const PRENDAS_COUNT_BATCH_SIZE = 250;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
+      const PRENDAS_YEARS_BACK = 10;
+      const MONTH_OPTIONS = [
+        { value: 1, label: "Enero" },
+        { value: 2, label: "Febrero" },
+        { value: 3, label: "Marzo" },
+        { value: 4, label: "Abril" },
+        { value: 5, label: "Mayo" },
+        { value: 6, label: "Junio" },
+        { value: 7, label: "Julio" },
+        { value: 8, label: "Agosto" },
+        { value: 9, label: "Septiembre" },
+        { value: 10, label: "Octubre" },
+        { value: 11, label: "Noviembre" },
+        { value: 12, label: "Diciembre" }
+      ];
       const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -1510,6 +1544,82 @@
       const getSearchTerm = () => normalizeText(prendasSearch.value);
       const getSearchRaw = () => safeString(prendasSearch.value).trim();
       const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
+      const getDateRangeFromFilters = (yearValue, monthValue) => {
+        const year = Number(yearValue);
+        if (!Number.isInteger(year) || year < 1900) {
+          return null;
+        }
+
+        const month = Number(monthValue);
+        if (Number.isInteger(month) && month >= 1 && month <= 12) {
+          return {
+            start: new Date(year, month - 1, 1, 0, 0, 0, 0),
+            end: new Date(year, month, 1, 0, 0, 0, 0),
+            granularity: "month"
+          };
+        }
+
+        return {
+          start: new Date(year, 0, 1, 0, 0, 0, 0),
+          end: new Date(year + 1, 0, 1, 0, 0, 0, 0),
+          granularity: "year"
+        };
+      };
+
+      const populateYearFilter = () => {
+        if (!prendasYear) return;
+        const current = prendasYear.value;
+        const thisYear = new Date().getFullYear();
+        const years = Array.from({ length: PRENDAS_YEARS_BACK }, (_, idx) => thisYear - idx);
+        prendasYear.innerHTML = '<option value="">Todos</option>';
+        years.forEach((year) => {
+          const option = document.createElement("option");
+          option.value = String(year);
+          option.textContent = String(year);
+          prendasYear.appendChild(option);
+        });
+        prendasYear.value = years.includes(Number(current)) ? current : "";
+      };
+
+      const populateMonthFilter = () => {
+        if (!prendasMonth) return;
+        const current = prendasMonth.value;
+        prendasMonth.innerHTML = '<option value="">Todos</option>';
+        MONTH_OPTIONS.forEach(({ value, label }) => {
+          const option = document.createElement("option");
+          option.value = String(value);
+          option.textContent = `${String(value).padStart(2, "0")} - ${label}`;
+          prendasMonth.appendChild(option);
+        });
+        prendasMonth.value = MONTH_OPTIONS.some(({ value }) => String(value) === current)
+          ? current
+          : "";
+      };
+
+      const syncDateFilterUi = () => {
+        if (!prendasYear || !prendasMonth) return;
+        const hasYear = Boolean(safeString(prendasYear.value).trim());
+        prendasMonth.disabled = !hasYear;
+        if (!hasYear) {
+          prendasMonth.value = "";
+        }
+      };
+
+      const clearFiltersUi = () => {
+        prendasSearch.value = "";
+        prendasStatus.value = "todos";
+        prendasProveedor.value = "todos";
+        prendasTipo.value = "todos";
+        prendasColor.value = "todos";
+        prendasTalla.value = "todos";
+        if (prendasYear) prendasYear.value = "";
+        if (prendasMonth) prendasMonth.value = "";
+        prendasPrecioMin.value = "";
+        prendasPrecioMax.value = "";
+        if (prendasPrecioSin) prendasPrecioSin.checked = true;
+        syncDateFilterUi();
+      };
+
       const looksLikeCodeSearch = (value) => {
         const raw = safeString(value).trim().toUpperCase();
         if (!raw) return false;
@@ -1520,12 +1630,18 @@
         const priceMin = toNumberOrNull(prendasPrecioMin.value);
         const priceMax = toNumberOrNull(prendasPrecioMax.value);
         const searchRaw = getSearchRaw();
+        const year = safeString(prendasYear?.value).trim();
+        const month = year ? safeString(prendasMonth?.value).trim() : "";
+        const dateRange = getDateRangeFromFilters(year, month);
         return {
           status: normalizeSelectValue(prendasStatus.value),
           proveedor: normalizeSelectValue(prendasProveedor.value),
           tipo: normalizeSelectValue(prendasTipo.value),
           color: normalizeSelectValue(prendasColor.value),
           talla: normalizeSelectValue(prendasTalla.value),
+          year,
+          month,
+          dateRange,
           priceMin,
           priceMax,
           minPrice: priceMin,
@@ -1741,6 +1857,7 @@
         const hasSearch = Boolean(
           safeString(filters.query || filters.searchRaw).trim()
         );
+        const hasDate = Boolean(filters.dateRange?.start && filters.dateRange?.end);
         const hasPriceRange = filters.minPrice !== null || filters.maxPrice !== null;
         const excludeNoPrice = filters.includeNoPrice === false;
         return (
@@ -1750,6 +1867,7 @@
           hasColor ||
           hasTalla ||
           hasSearch ||
+          hasDate ||
           hasPriceRange ||
           excludeNoPrice
         );
@@ -1846,6 +1964,9 @@
           tipo: normalizeFilterValue(filters?.tipo ?? ""),
           color: normalizeFilterValue(filters?.color ?? ""),
           talla: normalizeFilterValue(filters?.talla ?? ""),
+          year: filters?.year ?? "",
+          month: filters?.month ?? "",
+          dateGranularity: filters?.dateRange?.granularity ?? "",
           minPrice: filters?.minPrice ?? null,
           maxPrice: filters?.maxPrice ?? null,
           includeNoPrice: filters?.includeNoPrice ?? null,
@@ -1927,7 +2048,6 @@
 
       const buildScanQuery = ({ cursor, batchSize, filters }) => {
         const constraints = [];
-        let needsPriceOrder = false;
         if (filters?.status) {
           constraints.push(where("status", "==", filters.status));
         }
@@ -1943,22 +2063,11 @@
         if (filters?.talla) {
           constraints.push(where("talla", "==", filters.talla));
         }
-        if (
-          filters?.includeNoPrice === false &&
-          (filters?.minPrice != null || filters?.maxPrice != null)
-        ) {
-          if (filters.minPrice != null) {
-            constraints.push(where("pVenta", ">=", filters.minPrice));
-          }
-          if (filters.maxPrice != null) {
-            constraints.push(where("pVenta", "<=", filters.maxPrice));
-          }
-          needsPriceOrder = true;
+        if (filters?.dateRange?.start && filters?.dateRange?.end) {
+          constraints.push(where("fechaAlta", ">=", filters.dateRange.start));
+          constraints.push(where("fechaAlta", "<", filters.dateRange.end));
         }
-        if (needsPriceOrder) {
-          constraints.push(orderBy("pVenta", "asc"));
-        }
-        constraints.push(orderBy("createdAt", "desc"), orderBy(documentId(), "desc"));
+        constraints.push(orderBy("fechaAlta", "desc"), orderBy(documentId(), "desc"));
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -2686,8 +2795,23 @@
         await applyFilters();
       };
 
+      const handleFilterClear = async () => {
+        if (isBooting) return;
+        setSkuSearchMode(false);
+        clearFiltersUi();
+        await loadPrendasPage({ reset: true, reason: "filters-clear" });
+      };
+
       prendasSearch.addEventListener("input", handleSearchInput);
       prendasPrecioApply.addEventListener("click", handleFilterApply);
+      if (prendasFiltersClear) {
+        prendasFiltersClear.addEventListener("click", handleFilterClear);
+      }
+      if (prendasYear) {
+        prendasYear.addEventListener("change", () => {
+          syncDateFilterUi();
+        });
+      }
       if (prendasPageSize) {
         prendasPageSize.addEventListener("change", async () => {
           if (isBooting) return;
@@ -2725,12 +2849,9 @@
         isBooting = true;
         resetPrendasState();
         resetCounters();
-        prendasSearch.value = "";
-        prendasStatus.value = "todos";
-        prendasProveedor.value = "todos";
-        prendasTipo.value = "todos";
-        prendasColor.value = "todos";
-        prendasTalla.value = "todos";
+        populateYearFilter();
+        populateMonthFilter();
+        clearFiltersUi();
         try {
           setRegistroStatus("Cargando diccionario...");
           registroSubmit.disabled = true;

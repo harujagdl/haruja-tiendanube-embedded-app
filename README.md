@@ -135,26 +135,17 @@ Para evitar errores de índices compuestos infinitos en Firestore, la sección *
 
 Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`, crea los siguientes índices compuestos:
 
-1. **Index A (sin rango de precio)**
+1. **Index A (filtro por fechaAlta + facetas)**
    - proveedor (asc)
    - tipo (asc)
    - color (asc)
    - talla (asc)
    - status (asc)
-   - createdAt (desc)
+   - fechaAlta (desc)
 
-2. **Index B (con rango de precio)**
-   - proveedor (asc)
-   - tipo (asc)
-   - color (asc)
-   - talla (asc)
-   - status (asc)
-   - precio (asc)
-   - createdAt (desc)
-
-3. **Index C (búsqueda por descripción)**
+2. **Index B (búsqueda por descripción)**
    - searchTokens (array-contains)
-   - createdAt (desc)
+   - fechaAlta (desc)
 
 
 ## Migración de fechaAlta (legacy -> oficial)
@@ -174,6 +165,6 @@ npm run migrate:fechaAlta
 ```
 
 Regla de migración:
-- Si falta `fechaAlta` y existe `fechaTexto`, se copia a `fechaAltaTexto`.
-- Si además existe `fecha` parseable, se setea `fechaAlta` y `fechaAltaTexto` normalizada.
+- Si falta `fechaAltaTexto` y existe `fechaTexto`, se copia a `fechaAltaTexto`.
+- Si falta `fechaAlta` y existe `fecha` parseable, se setea `fechaAlta` y `fechaAltaTexto` normalizada.
 - No se eliminan campos legacy (`fecha`/`fechaTexto`).

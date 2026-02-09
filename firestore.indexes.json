@@ -56,7 +56,7 @@
         { "fieldPath": "color", "mode": "ASCENDING" },
         { "fieldPath": "talla", "mode": "ASCENDING" },
         { "fieldPath": "status", "mode": "ASCENDING" },
-        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+        { "fieldPath": "fechaAlta", "mode": "DESCENDING" }
       ]
     },
     {
@@ -68,8 +68,8 @@
         { "fieldPath": "color", "mode": "ASCENDING" },
         { "fieldPath": "talla", "mode": "ASCENDING" },
         { "fieldPath": "status", "mode": "ASCENDING" },
-        { "fieldPath": "precio", "mode": "ASCENDING" },
-        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+        { "fieldPath": "pVenta", "mode": "ASCENDING" },
+        { "fieldPath": "fechaAlta", "mode": "DESCENDING" }
       ]
     },
     {
@@ -77,7 +77,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "searchTokens", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+        { "fieldPath": "fechaAlta", "mode": "DESCENDING" }
       ]
     }
   ],
