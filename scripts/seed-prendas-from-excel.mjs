@@ -96,6 +96,36 @@ const parseArgs = () => {
   return result;
 };
 
+
+const normalizeText = (value) =>
+  String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const normalizeStatus = (raw) => {
+  const normalized = normalizeText(raw);
+  if (!normalized) return "";
+  if (normalized === "vendido") return "Vendido";
+  if (["existente", "en stock", "disponible", "activo"].includes(normalized)) {
+    return "Disponible";
+  }
+  return "";
+};
+
+const normalizeDisponibilidad = (raw, statusCanon) => {
+  if (statusCanon === "Vendido") return "No disponible";
+  const normalized = normalizeText(raw);
+  if (!normalized) return "Disponible";
+  if (["no disponible", "agotado", "sin stock", "0"].includes(normalized)) {
+    return "No disponible";
+  }
+  if (["disponible", "en stock", "1", "si"].includes(normalized)) {
+    return "Disponible";
+  }
+  return "Disponible";
+};
 const parseNumber = (value) => {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -297,11 +327,16 @@ const main = async () => {
     setField("color", String(getValue("color") ?? "").trim());
     setField("talla", String(getValue("talla") ?? "").trim());
     setField("descripcion", String(getValue("descripcion") ?? "").trim());
-    const status = String(getValue("status") ?? "").trim();
-    setField("status", status);
+    const statusRaw = String(getValue("status") ?? "").trim();
+    const statusCanon = normalizeStatus(statusRaw);
+    if (statusCanon) {
+      setField("status", statusCanon);
+      setField("statusCanon", statusCanon);
+    }
     const disponibilidadRaw = String(getValue("disponibilidad") ?? "").trim();
-    const disponibilidad = status.toLowerCase() === "vendido" ? "No disponible" : disponibilidadRaw;
-    setField("disponibilidad", disponibilidad);
+    const disponibilidadCanon = normalizeDisponibilidad(disponibilidadRaw, statusCanon);
+    setField("disponibilidad", disponibilidadCanon);
+    setField("disponibilidadCanon", disponibilidadCanon);
     setField("proveedor", String(getValue("proveedor") ?? "").trim());
 
     if (fechaAltaDate) {
