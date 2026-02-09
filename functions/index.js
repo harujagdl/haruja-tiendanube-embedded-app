@@ -200,3 +200,94 @@ exports.backfillSearchTokens = functions.https.onCall(async (data) => {
     hasMore: snapshot.size === batchSize
   };
 });
+
+const resolvePVenta = (data = {}) => {
+  const pVenta = Number(data.pVenta);
+  if (Number.isFinite(pVenta)) {
+    return Number(pVenta.toFixed(2));
+  }
+
+  const precioConIva = Number(data.precioConIva ?? data.precioConIVA);
+  if (Number.isFinite(precioConIva)) {
+    return Number(precioConIva.toFixed(2));
+  }
+
+  const precio = Number(data.precio ?? data.Precio ?? data.price);
+  if (Number.isFinite(precio)) {
+    return Number((precio * 1.16).toFixed(2));
+  }
+
+  return null;
+};
+
+exports.normalizePrendasPVenta = functions.https.onCall(async (data) => {
+  const sessionId = safeString(data?.sessionId).trim();
+  await verifyAdminSession(sessionId);
+
+  const cursor = safeString(data?.cursor).trim() || null;
+  const batchSizeRaw = Number(data?.batchSize);
+  const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0
+    ? Math.min(batchSizeRaw, 500)
+    : DEFAULT_BATCH_SIZE;
+
+  let baseQuery = admin
+    .firestore()
+    .collection(PRENDAS_COLLECTION)
+    .orderBy(admin.firestore.FieldPath.documentId())
+    .limit(batchSize);
+
+  if (cursor) {
+    baseQuery = baseQuery.startAfter(cursor);
+  }
+
+  const snapshot = await baseQuery.get();
+  if (snapshot.empty) {
+    return {
+      processed: 0,
+      updated: 0,
+      skipped: 0,
+      lastDocId: cursor,
+      hasMore: false
+    };
+  }
+
+  let updated = 0;
+  let skipped = 0;
+  const batch = admin.firestore().batch();
+
+  snapshot.docs.forEach((docSnap) => {
+    const payload = docSnap.data() || {};
+    const normalizedPVenta = resolvePVenta(payload);
+
+    if (!Number.isFinite(normalizedPVenta)) {
+      skipped += 1;
+      return;
+    }
+
+    if (Number(payload.pVenta) === normalizedPVenta) {
+      skipped += 1;
+      return;
+    }
+
+    batch.update(docSnap.ref, {
+      pVenta: normalizedPVenta,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    updated += 1;
+  });
+
+  if (updated > 0) {
+    await batch.commit();
+  }
+
+  const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+  const lastDocId = lastDoc?.id || cursor;
+
+  return {
+    processed: snapshot.size,
+    updated,
+    skipped,
+    lastDocId,
+    hasMore: snapshot.size === batchSize
+  };
+});
