@@ -1590,11 +1590,11 @@
           status: statusCanon,
           statusCanon,
           disponibilidad: normalizeDisponibilidad(
-            safeString(data.disponibilidadCanon ?? data.disponibilidad || data.Disponibilidad || "").trim(),
+            safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
             statusCanon
           ),
           disponibilidadCanon: normalizeDisponibilidad(
-            safeString(data.disponibilidadCanon ?? data.disponibilidad || data.Disponibilidad || "").trim(),
+            safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
             statusCanon
           ),
           precio,
