@@ -1109,6 +1109,9 @@
       const PRENDAS_YEAR_MIN = 2024;
       const DATE_FIELD_PRIMARY = "fechaAlta";
       const DATE_FIELD_FALLBACK = "fecha";
+      const QUERY_MODE_EQUALITY = "equality";
+      const QUERY_MODE_DATE = "dateRange";
+      const QUERY_MODE_PRICE = "priceRange";
       const MONTH_OPTIONS = [
         { value: 1, label: "Enero" },
         { value: 2, label: "Febrero" },
@@ -1696,6 +1699,11 @@
         const year = safeString(prendasYear?.value).trim();
         const month = year ? safeString(prendasMonth?.value).trim() : "";
         const dateRange = getDateRangeFromFilters(year, month);
+        const hasDateRange = Boolean(dateRange?.start && dateRange?.end);
+        const hasPriceRange = priceMin !== null || priceMax !== null;
+        if (hasDateRange && hasPriceRange) {
+          console.warn("[Prendas] Se prioriza rango de fechaAlta y se ignora rango de pVenta en la query.");
+        }
         return {
           status: normalizeSelectValue(prendasStatus.value),
           proveedor: normalizeSelectValue(prendasProveedor.value),
@@ -2109,13 +2117,20 @@
         return true;
       };
 
-      const buildScanQuery = ({
-        cursor,
-        batchSize,
-        filters,
-        includeDateRange = true,
-        dateField = DATE_FIELD_PRIMARY
-      }) => {
+      const getQueryMode = (filters) => {
+        const hasDateRange = Boolean(filters?.dateRange?.start && filters?.dateRange?.end);
+        const hasPriceRange = filters?.minPrice != null || filters?.maxPrice != null;
+
+        if (hasDateRange) {
+          return QUERY_MODE_DATE;
+        }
+        if (hasPriceRange) {
+          return QUERY_MODE_PRICE;
+        }
+        return QUERY_MODE_EQUALITY;
+      };
+
+      const buildBaseConstraints = (filters) => {
         const constraints = [];
         if (filters?.status) {
           constraints.push(where("status", "==", filters.status));
@@ -2132,15 +2147,34 @@
         if (filters?.talla) {
           constraints.push(where("talla", "==", filters.talla));
         }
-        if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
+        return constraints;
+      };
+
+      const buildScanQuery = ({
+        cursor,
+        batchSize,
+        filters,
+        mode,
+        dateField = DATE_FIELD_PRIMARY
+      }) => {
+        const constraints = buildBaseConstraints(filters);
+
+        if (mode === QUERY_MODE_DATE && filters?.dateRange?.start && filters?.dateRange?.end) {
           constraints.push(where(dateField, ">=", filters.dateRange.start));
           constraints.push(where(dateField, "<", filters.dateRange.end));
-        }
-        if (includeDateRange && filters?.dateRange?.start && filters?.dateRange?.end) {
-          constraints.push(orderBy(dateField, "desc"), orderBy(documentId(), "desc"));
+          constraints.push(orderBy(dateField, "desc"), orderBy(documentId(), "asc"));
+        } else if (mode === QUERY_MODE_PRICE) {
+          if (filters?.minPrice != null) {
+            constraints.push(where("pVenta", ">=", filters.minPrice));
+          }
+          if (filters?.maxPrice != null) {
+            constraints.push(where("pVenta", "<=", filters.maxPrice));
+          }
+          constraints.push(orderBy("pVenta", "asc"), orderBy(documentId(), "asc"));
         } else {
-          constraints.push(orderBy(documentId(), "desc"));
+          constraints.push(orderBy(documentId(), "asc"));
         }
+
         if (cursor) {
           constraints.push(startAfter(cursor));
         }
@@ -2152,11 +2186,11 @@
         cursor,
         batchSize,
         filters,
-        includeDateRange = true,
+        mode = QUERY_MODE_EQUALITY,
         dateField = DATE_FIELD_PRIMARY
       }) => {
         const snap = await getDocs(
-          buildScanQuery({ cursor, batchSize, filters, includeDateRange, dateField })
+          buildScanQuery({ cursor, batchSize, filters, mode, dateField })
         );
         return { snap };
       };
@@ -2167,7 +2201,7 @@
             cursor: null,
             batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
             filters,
-            includeDateRange: true,
+            mode: QUERY_MODE_DATE,
             dateField
           })
         );
@@ -2178,7 +2212,7 @@
             cursor: null,
             batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
             filters,
-            includeDateRange: false
+            mode: QUERY_MODE_EQUALITY
           })
         );
         const withoutDate = baseSnap.docs
@@ -2212,7 +2246,8 @@
       };
 
       const fetchPageByScan = async ({ cursor, filters, pageSize, pageIndex = 0 }) => {
-        if (filters?.dateRange?.start && filters?.dateRange?.end) {
+        const mode = getQueryMode(filters);
+        if (mode === QUERY_MODE_DATE) {
           let activeDateField = DATE_FIELD_PRIMARY;
           let hybrid = await fetchDateHybridPage({
             filters,
@@ -2252,7 +2287,7 @@
             cursor: currentCursor,
             batchSize: PRENDAS_SCAN_PAGE_SIZE,
             filters,
-            includeDateRange: false
+            mode
           });
           const docsFetched = snap.docs.length;
           pagesScanned += 1;
@@ -2318,7 +2353,8 @@
           const { snap } = await fetchScanBatch({
             cursor,
             batchSize: PRENDAS_COUNT_BATCH_SIZE,
-            filters
+            filters,
+            mode: getQueryMode(filters)
           });
           if (token !== prendasState.countToken) {
             return;
