@@ -767,7 +767,9 @@
         startAfter,
         where,
         limit,
-        persistentLocalCache
+        persistentLocalCache,
+        persistentMultipleTabManager,
+        memoryLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
       import {
         getFunctions,
@@ -793,14 +795,18 @@
       let db;
       try {
         db = initializeFirestore(app, {
-          localCache: persistentLocalCache()
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager()
+          })
         });
       } catch (error) {
         console.warn(
-          "[Firestore] Persistencia no disponible, usando caché en memoria",
+          "[Firestore] Persistencia multi-tab no disponible, usando caché en memoria",
           error?.code || error?.message
         );
-        db = getFirestore(app);
+        db = initializeFirestore(app, {
+          localCache: memoryLocalCache()
+        });
       }
       const prendasRef = collection(db, "prendas");
       const registroForm = document.getElementById("registro-form");
@@ -1050,7 +1056,7 @@
       const PRENDAS_COUNT_BATCH_SIZE = 250;
       const PRENDAS_RENDER_CHUNK = 20;
       const PRENDAS_SEARCH_DEBOUNCE = 250;
-      const PRENDAS_YEARS_BACK = 10;
+      const PRENDAS_YEAR_MIN = 2024;
       const MONTH_OPTIONS = [
         { value: 1, label: "Enero" },
         { value: 2, label: "Febrero" },
@@ -1570,7 +1576,10 @@
         if (!prendasYear) return;
         const current = prendasYear.value;
         const thisYear = new Date().getFullYear();
-        const years = Array.from({ length: PRENDAS_YEARS_BACK }, (_, idx) => thisYear - idx);
+        const years = [];
+        for (let year = thisYear; year >= PRENDAS_YEAR_MIN; year -= 1) {
+          years.push(year);
+        }
         prendasYear.innerHTML = '<option value="">Todos</option>';
         years.forEach((year) => {
           const option = document.createElement("option");
