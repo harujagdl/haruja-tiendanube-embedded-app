@@ -77,6 +77,11 @@ npm run seed:prendas
 ```
 
 > Importante: ejecuta primero el dry-run para validar filas inválidas antes de escribir.
+>
+> Campos de fecha oficiales por prenda:
+> - `fechaAlta` (timestamp real de alta desde Excel, columna M)
+> - `fechaAltaTexto` (`dd/mm/yyyy`, recomendado para mostrar en UI)
+> - `createdAt` (timestamp técnico de creación de documento, no se sobrescribe en updates)
 
 ## Ejecutar desde GitHub Actions
 
@@ -150,3 +155,25 @@ Para evitar errores de índices faltantes en la colección `HarujaPrendas_2025`,
 3. **Index C (búsqueda por descripción)**
    - searchTokens (array-contains)
    - createdAt (desc)
+
+
+## Migración de fechaAlta (legacy -> oficial)
+
+Si ya existen prendas sin `fechaAlta`, corre la migración para mapear datos legacy sin tocar `createdAt`.
+
+Dry run:
+
+```bash
+npm run migrate:fechaAlta:dry
+```
+
+Escritura real:
+
+```bash
+npm run migrate:fechaAlta
+```
+
+Regla de migración:
+- Si falta `fechaAlta` y existe `fechaTexto`, se copia a `fechaAltaTexto`.
+- Si además existe `fecha` parseable, se setea `fechaAlta` y `fechaAltaTexto` normalizada.
+- No se eliminan campos legacy (`fecha`/`fechaTexto`).

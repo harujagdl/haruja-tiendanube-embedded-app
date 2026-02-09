@@ -1293,9 +1293,10 @@
       };
 
       const getPrendaDate = (data) =>
-        toDateValue(data?.createdAt) ||
+        toDateValue(data?.fechaAlta) ||
         toDateValue(data?.fecha) ||
-        toDateValue(data?.updatedAt);
+        toDateValue(data?.updatedAt) ||
+        toDateValue(data?.createdAt);
 
       const normalizeStatusLabel = (value) => {
         const normalized = normalizeText(value);
@@ -1466,6 +1467,11 @@
           ? toNumberOrNull(margenRaw)
           : margenCalculado;
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
+        const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? data.fecha ?? null;
+        const fechaAltaTexto = safeString(
+          data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
+        ).trim();
+        const fechaTexto = safeString(data.fechaTexto ?? data.FechaTexto ?? "").trim();
         const descripcionLower = descripcion.toLowerCase();
         const codigoUpper = codigo.toUpperCase();
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
@@ -1491,6 +1497,9 @@
           margen,
           utilidad,
           createdAt,
+          fechaAlta,
+          fechaAltaTexto,
+          fechaTexto,
           descripcionLower,
           codigoUpper,
           _searchKey
@@ -1614,9 +1623,16 @@
         const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
         const status = normalizeStatusLabel(item.status);
         const disponibilidad = normalizeDisponibilidadLabel(item.disponibilidad, status);
-        const fechaTexto = safeString(item.fechaTexto);
-        const dateValue = getPrendaDate(item) || toDateValue(item.createdAt);
-        const fecha = fechaTexto || formatDateDDMMYYYY(dateValue);
+        const fechaAltaTexto = safeString(item.fechaAltaTexto).trim();
+        const fechaAltaFormateada = formatDateDDMMYYYY(toDateValue(item.fechaAlta));
+        const fechaLegacyTexto = safeString(item.fechaTexto).trim();
+        const createdAtFormateado = formatDateDDMMYYYY(toDateValue(item.createdAt));
+        const fecha =
+          fechaAltaTexto ||
+          (fechaAltaFormateada !== "--" ? fechaAltaFormateada : "") ||
+          fechaLegacyTexto ||
+          (createdAtFormateado !== "--" ? createdAtFormateado : "--");
+        const dateValue = getPrendaDate(item);
         const pVenta = Number.isFinite(item.pVenta)
           ? formatCurrency(item.pVenta)
           : "--";

@@ -146,37 +146,37 @@ const parseExcelSerialDate = (serial) => {
 
 const parseFecha = (value) => {
   if (value === null || value === undefined || value === "") {
-    return { fechaTexto: null, fechaDate: null };
+    return { fechaAltaTexto: null, fechaAltaDate: null };
   }
 
   // Si xlsx ya la trajo como Date
   if (value instanceof Date) {
     const date = new Date(value.getFullYear(), value.getMonth(), value.getDate());
-    return { fechaTexto: formatDateText(date), fechaDate: date };
+    return { fechaAltaTexto: formatDateText(date), fechaAltaDate: date };
   }
 
   // Serial de Excel
   if (typeof value === "number") {
     const date = parseExcelSerialDate(value);
-    if (!date) return { fechaTexto: String(value), fechaDate: null };
+    if (!date) return { fechaAltaTexto: String(value), fechaAltaDate: null };
     const cleanDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    return { fechaTexto: formatDateText(cleanDate), fechaDate: cleanDate };
+    return { fechaAltaTexto: formatDateText(cleanDate), fechaAltaDate: cleanDate };
   }
 
   const raw = String(value).trim();
-  if (!raw) return { fechaTexto: null, fechaDate: null };
+  if (!raw) return { fechaAltaTexto: null, fechaAltaDate: null };
 
   // dd/mm/yyyy o dd-mm-yyyy
   const match = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
-  if (!match) return { fechaTexto: raw, fechaDate: null };
+  if (!match) return { fechaAltaTexto: raw, fechaAltaDate: null };
 
   const day = Number(match[1]);
   const month = Number(match[2]);
   const year = Number(match[3]);
   const date = new Date(year, month - 1, day);
 
-  if (Number.isNaN(date.getTime())) return { fechaTexto: raw, fechaDate: null };
-  return { fechaTexto: formatDateText(date), fechaDate: date };
+  if (Number.isNaN(date.getTime())) return { fechaAltaTexto: raw, fechaAltaDate: null };
+  return { fechaAltaTexto: formatDateText(date), fechaAltaDate: date };
 };
 
 const loadServiceAccount = () => {
@@ -263,12 +263,12 @@ const main = async () => {
       return;
     }
 
-    const { fechaTexto, fechaDate } = parseFecha(getValue("fecha"));
+    const { fechaAltaTexto, fechaAltaDate } = parseFecha(getValue("fecha"));
 
     // Si hay algo en fecha pero no se pudo parsear, lo marcamos inválido.
     // (Si prefieres NO invalidar por fecha, te lo cambio.)
-    if (fechaTexto && !fechaDate) {
-      invalids.push({ rowNumber, code: codeRaw, reason: `Fecha inválida (${fechaTexto})` });
+    if (fechaAltaTexto && !fechaAltaDate) {
+      invalids.push({ rowNumber, code: codeRaw, reason: `Fecha inválida (${fechaAltaTexto})` });
       return;
     }
 
@@ -304,11 +304,17 @@ const main = async () => {
     setField("disponibilidad", disponibilidad);
     setField("proveedor", String(getValue("proveedor") ?? "").trim());
 
-    if (fechaDate) {
-      docData.fechaTexto = fechaTexto; // DD/MM/YYYY
-      docData.fecha = admin.firestore.Timestamp.fromDate(
-        new Date(fechaDate.getFullYear(), fechaDate.getMonth(), fechaDate.getDate())
+    if (fechaAltaDate) {
+      const cleanFechaAltaDate = new Date(
+        fechaAltaDate.getFullYear(),
+        fechaAltaDate.getMonth(),
+        fechaAltaDate.getDate()
       );
+      docData.fechaAltaTexto = fechaAltaTexto; // DD/MM/YYYY
+      docData.fechaAlta = admin.firestore.Timestamp.fromDate(cleanFechaAltaDate);
+      // Legacy (compatibilidad)
+      docData.fechaTexto = fechaAltaTexto;
+      docData.fecha = admin.firestore.Timestamp.fromDate(cleanFechaAltaDate);
     }
 
     const precio = parseNumber(getValue("precio"));
