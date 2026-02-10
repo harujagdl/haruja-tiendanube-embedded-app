@@ -1,10 +1,60 @@
-rules_version='2'
+rules_version='2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminEmail() {
+      return isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email == "yair.tenorio.silva@gmail.com" ||
+        request.auth.token.email == "harujagdl@gmail.com" ||
+        request.auth.token.email == "harujagdl.ventas@gmail.com"
+      );
+    }
+
+    match /diccionario_tipos/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_proveedores/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_colores/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_tallas/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /HarujaPrendas_2025_public/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /HarujaPrendas_2025_admin/{docId} {
+      allow read, write: if isAdminEmail();
+    }
+
+    match /counters/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /metadata/{docId} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
     match /{document=**} {
-      // TODO: Endurecer reglas luego (por dominio, auth, claims, etc.).
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

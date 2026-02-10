@@ -10,7 +10,9 @@
     "migrate:fechaAlta:dry": "DRY_RUN=true node scripts/migrate-fecha-alta.mjs",
     "migrate:fechaAlta": "DRY_RUN=false node scripts/migrate-fecha-alta.mjs",
     "migrate:canon:dry": "DRY_RUN=true node scripts/migrate-status-disponibilidad-canon.mjs",
-    "migrate:canon": "DRY_RUN=false node scripts/migrate-status-disponibilidad-canon.mjs"
+    "migrate:canon": "DRY_RUN=false node scripts/migrate-status-disponibilidad-canon.mjs",
+    "migrate:split:dry": "DRY_RUN=true node scripts/migrate-prendas-public-admin.mjs",
+    "migrate:split": "DRY_RUN=false node scripts/migrate-prendas-public-admin.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
