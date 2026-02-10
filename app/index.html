@@ -339,27 +339,32 @@
         background: #f3fbf6;
       }
 
-      .loader {
+      .loading-row {
         display: flex;
         align-items: center;
-        gap: 10px;
-        color: var(--muted);
-        font-size: 14px;
+        gap: 8px;
+        padding: 8px 0;
+        color: #667085;
+        font-size: 13px;
       }
 
-      .spinner {
-        width: 18px;
-        height: 18px;
+      .loading-spinner {
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        border: 2px solid #d1d5db;
-        border-top-color: var(--primary);
-        animation: spin 0.9s linear infinite;
+        border: 2px solid #e4e7ec;
+        border-top-color: #667085;
+        animation: spin 0.8s linear infinite;
       }
 
       @keyframes spin {
         to {
           transform: rotate(360deg);
         }
+      }
+
+      .loading-text {
+        user-select: none;
       }
 
       .alert {
@@ -707,9 +712,9 @@
               <p id="prendas-count-note" class="muted"></p>
             </div>
             <div id="prendas-alert" class="alert hidden"></div>
-            <div id="prendas-loader" class="loader hidden" data-db-loader>
-              <span class="spinner"></span>
-              <span>Cargando base de datos...</span>
+            <div id="loadingRow" class="loading-row" style="display:none" data-db-loader>
+              <span class="loading-spinner"></span>
+              <span class="loading-text">Cargando base de datos...</span>
             </div>
             <div class="table-wrapper">
               <table id="tablaPrendas" data-prendas-table>
@@ -858,8 +863,8 @@
       const prendasPrev = document.getElementById("prendas-prev");
       const prendasNext = document.getElementById("prendas-next");
       const prendasPageIndicator = document.getElementById("prendas-page-indicator");
-      const prendasLoader =
-        document.querySelector("[data-db-loader]") || document.getElementById("prendas-loader");
+      const loadingRow =
+        document.querySelector("[data-db-loader]") || document.getElementById("loadingRow");
       const prendasEmptyRow =
         document.querySelector("[data-empty-row]") || document.getElementById("noResultsRow");
       const prendasAlert = document.getElementById("prendas-alert");
@@ -878,7 +883,7 @@
       const adminOptionalToggle = document.getElementById("admin-optional-toggle");
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
-      console.assert(prendasLoader, "No existe loader de prendas");
+      console.assert(loadingRow, "No existe loader de prendas");
       console.assert(prendasShowing, "No existe contador de prendas mostradas");
       console.assert(prendasTotal, "No existe contador total de prendas");
       console.assert(prendasEmptyRow, "No existe template de filas vacías");
@@ -1151,7 +1156,6 @@
         dictsLoaded: false,
         isDone: false,
         isLoadingInitial: false,
-        isLoadingMore: false,
         filters: null,
         filtersActive: false,
         renderToken: 0,
@@ -1265,19 +1269,13 @@
         return prendasState.dicts;
       };
 
-      const updateLoadingUi = () => {
-        const isLoading = prendasState.isLoadingInitial || prendasState.isLoadingMore;
-        prendasLoader.classList.toggle("hidden", !isLoading);
-        prendasLoader.hidden = !isLoading;
-      };
-
-      const setLoadingState = (mode, isLoading) => {
-        if (mode === "initial") {
-          prendasState.isLoadingInitial = isLoading;
-        } else if (mode === "more") {
-          prendasState.isLoadingMore = isLoading;
+      const setLoading = (isLoading, message = "Cargando base de datos...") => {
+        if (!loadingRow) return;
+        const text = loadingRow.querySelector(".loading-text");
+        if (text) {
+          text.textContent = message;
         }
-        updateLoadingUi();
+        loadingRow.style.display = isLoading ? "flex" : "none";
       };
 
       const setCounter = (shown, total) => {
@@ -1311,7 +1309,7 @@
         const pageIndex = prendasState.pageIndex;
         const hasPrev = pageIndex > 0;
         const hasNext = prendasState.hasNextPage;
-        const isBusy = prendasState.isLoadingInitial || prendasState.isLoadingMore;
+        const isBusy = prendasState.isLoadingInitial;
         prendasPrev.disabled = isSkuSearch || isBusy || !hasPrev;
         prendasNext.disabled = isSkuSearch || isBusy || !hasNext;
         prendasPrev.classList.toggle("hidden", isSkuSearch);
@@ -2011,7 +2009,8 @@
         setSkuSearchMode(true);
         prendasState.filtersActive = true;
         setPrendasAlert("");
-        setLoadingState("initial", true);
+        prendasState.isLoadingInitial = true;
+        setLoading(true, "Buscando código...");
         try {
           const result = await fetchBySku(rawUpper);
           if (token !== prendasState.searchToken) {
@@ -2038,7 +2037,8 @@
           resetCounters();
           await renderDocs([]);
         } finally {
-          setLoadingState("initial", false);
+          prendasState.isLoadingInitial = false;
+          setLoading(false);
         }
       };
 
@@ -2459,17 +2459,31 @@
           : null;
       };
 
+      const getLoadingMessageByReason = (reason) => {
+        if (["filters", "filters-clear", "search-clear"].includes(reason)) {
+          return "Aplicando filtros...";
+        }
+        if (["pagination-prev", "pagination-next"].includes(reason)) {
+          return "Cargando página...";
+        }
+        if (reason === "page-size") {
+          return "Actualizando cantidad por página...";
+        }
+        return "Cargando base de datos...";
+      };
+
       const loadPrendasPage = async ({
         pageIndex = 0,
         reset = false,
         reason = "manual"
       } = {}) => {
-        if (prendasState.isLoadingInitial || prendasState.isLoadingMore) {
+        if (prendasState.isLoadingInitial) {
           return;
         }
         setSkuSearchMode(false);
         setPrendasAlert("");
-        setLoadingState("initial", true);
+        prendasState.isLoadingInitial = true;
+        setLoading(true, getLoadingMessageByReason(reason));
         const rid = ++prendasState.reqId;
         try {
           if (reset) {
@@ -2539,7 +2553,8 @@
             setPrendasAlert("No se pudo cargar la base de datos de códigos.");
           }
         } finally {
-          setLoadingState("initial", false);
+          prendasState.isLoadingInitial = false;
+          setLoading(false);
           updatePaginationUi();
         }
       };
@@ -3164,13 +3179,12 @@
           try {
             await loadFilterDictionaries();
             await loadPrendasPage({ reset: true, reason: "init" });
-            setLoadingState("initial", false);
           } catch (error) {
             console.warn("No se pudieron cargar los filtros completos.", error);
             await loadPrendasPage({ reset: true, reason: "init" });
-            setLoadingState("initial", false);
           } finally {
-            setLoadingState("initial", false);
+            prendasState.isLoadingInitial = false;
+            setLoading(false);
             isBooting = false;
           }
         }
