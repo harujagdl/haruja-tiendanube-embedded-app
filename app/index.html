@@ -2856,12 +2856,16 @@
           } catch (error) {
             console.warn("[Prendas] No se pudo medir query base sin filtros", error);
           }
-          void loadMetadataCounts().then((total) => {
-            if (Number.isFinite(total) && !hasActiveFilters(getCurrentFilters())) {
-              prendasState.showingTotal = total;
-              setCounter(prendasState.filtered.length, total);
-            }
-          });
+          if (typeof loadMetadataCounts === "function") {
+            void loadMetadataCounts().then((total) => {
+              if (Number.isFinite(total) && !hasActiveFilters(getCurrentFilters())) {
+                prendasState.showingTotal = total;
+                setCounter(prendasState.filtered.length, total);
+              }
+            });
+          } else {
+            console.warn("loadMetadataCounts() no existe, se omite.");
+          }
           try {
             await loadPrendasPage({ reset: true, reason: "init" });
           } finally {
