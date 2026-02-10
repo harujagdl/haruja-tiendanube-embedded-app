@@ -848,16 +848,16 @@
               </div>
               <div class="admin-panel" id="admin-panel">
                 <div>
-                  <label for="admin-password">Admin</label>
+                  <label for="admin-password">Admin (Google + contraseña visual)</label>
                   <div class="admin-login-row">
+                    <button type="button" id="admin-login">Ingresar con Google</button>
+                    <button type="button" id="admin-logout" class="secondary hidden">Salir</button>
                     <input
                       id="admin-password"
                       type="password"
-                      placeholder="Contraseña admin"
+                      placeholder="Contraseña visual opcional"
                       autocomplete="current-password"
                     />
-                    <button type="button" id="admin-login">Ingresar</button>
-                    <button type="button" id="admin-logout" class="secondary hidden">Salir</button>
                   </div>
                   <div id="admin-login-status" class="status"></div>
                 </div>
@@ -866,10 +866,6 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
-                  <button type="button" id="admin-backfill">
-                    Preparar buscador (1 vez)
-                  </button>
-                  <div id="admin-backfill-status" class="status"></div>
                 </div>
               </div>
               <div class="counters">
@@ -955,9 +951,12 @@
         memoryLocalCache
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
       import {
-        getFunctions,
-        httpsCallable
-      } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-functions.js";
+        getAuth,
+        GoogleAuthProvider,
+        onAuthStateChanged,
+        signInWithPopup,
+        signOut
+      } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
       // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
       const firebaseConfig = {
@@ -970,11 +969,8 @@
       };
 
       const app = initializeApp(firebaseConfig);
-      const FUNCTIONS_REGION =
-        window.HARUJA_FUNCTIONS_REGION ||
-        firebaseConfig.functionsRegion ||
-        "us-central1";
-      const functions = getFunctions(app, FUNCTIONS_REGION);
+      const auth = getAuth(app);
+      const googleProvider = new GoogleAuthProvider();
       let db;
       try {
         db = initializeFirestore(app, {
@@ -1051,9 +1047,7 @@
       const adminLoginStatus = document.getElementById("admin-login-status");
       const adminPanel = document.getElementById("admin-panel");
       const adminActions = document.getElementById("admin-actions");
-      const adminBackfillButton = document.getElementById("admin-backfill");
-      const adminBackfillStatus = document.getElementById("admin-backfill-status");
-      const adminOptional = document.getElementById("admin-optional");
+            const adminOptional = document.getElementById("admin-optional");
       const adminOptionalToggle = document.getElementById("admin-optional-toggle");
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
@@ -1276,7 +1270,14 @@
       };
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
-      const PRENDAS_2025_COLLECTION = "HarujaPrendas_2025";
+      const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
+      const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      const ADMIN_ALLOWLIST = new Set([
+        "yair.tenorio.silva@gmail.com",
+        "harujagdl@gmail.com",
+        "harujagdl.ventas@gmail.com"
+      ]);
+      const ADMIN_VISUAL_PASSWORD = "Ahsoka.2803";
       const PRENDAS_PAGE_SIZE_DEFAULT = 80;
       const PRENDAS_SCAN_PAGE_SIZE = 200;
       const PRENDAS_SCAN_MAX_PAGES = 12;
@@ -1326,23 +1327,26 @@
         pventaMin: null,
         pventaMax: null
       });
-      const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
-      const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
       const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
       const METADATA_COUNTS_DOC = {
         collection: "metadata",
         doc: "counters"
       };
 
-      const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
+      const prendasPublicRef = collection(db, PRENDAS_PUBLIC_COLLECTION);
+      const prendasAdminRef = collection(db, PRENDAS_ADMIN_COLLECTION);
       const prendasState = {
         filtered: [],
         baseRows: [],
+        baseRowsCacheKey: "public",
         rowsAfterGlobal: [],
         rowsAfterAll: [],
         uniqueOptions: {},
         isAdmin: false,
+        adminUser: null,
+        adminEmail: "",
+        adminByAuth: false,
         pageIndex: 0,
         hasNextPage: false,
         dicts: {
@@ -1665,7 +1669,9 @@
       const formatCurrency = (value) => currencyFormatter.format(value);
 
       const formatPercent = (value) => {
-        const ratio = value > 1 ? value / 100 : value;
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return "--";
+        const ratio = numeric > 1 ? numeric / 100 : numeric;
         return `${(ratio * 100).toFixed(1)}%`;
       };
 
@@ -1763,8 +1769,8 @@
         );
         const pVenta = resolvePVenta(data);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
-        const costo = toNumberOrNull(costoRaw);
-        const basePrice = pVenta;
+        const costo = prendasState.isAdmin ? toNumberOrNull(costoRaw) : null;
+        const basePrice = Number.isFinite(pVenta) ? Number((pVenta / 1.16).toFixed(2)) : null;
         const utilidadCalculada =
           Number.isFinite(basePrice) || Number.isFinite(costo)
             ? Number((basePrice ?? 0) - (costo ?? 0))
@@ -2223,8 +2229,37 @@
         refreshList();
       };
 
+      const loadAdminCostMap = async () => {
+        const adminCostMap = new Map();
+        let cursor = null;
+        let hasMore = true;
+        while (hasMore) {
+          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (cursor) constraints.splice(1, 0, startAfter(cursor));
+          const snap = await getDocs(query(prendasAdminRef, ...constraints));
+          if (snap.empty) {
+            hasMore = false;
+            break;
+          }
+          snap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            const costo = toNumberOrNull(data.costo);
+            if (Number.isFinite(costo)) {
+              adminCostMap.set(docSnap.id, costo);
+            }
+          });
+          cursor = snap.docs[snap.docs.length - 1];
+          if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
+            hasMore = false;
+          }
+        }
+        return adminCostMap;
+      };
+
       const loadBaseRows = async () => {
-        if (prendasState.baseRows.length) {
+        const shouldIncludeAdmin = Boolean(prendasState.isAdmin);
+        const cacheKey = shouldIncludeAdmin ? "admin" : "public";
+        if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
           return prendasState.baseRows;
         }
         let cursor = null;
@@ -2233,7 +2268,7 @@
         while (hasMore) {
           const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
           if (cursor) constraints.splice(1, 0, startAfter(cursor));
-          const snap = await getDocs(query(prendas2025Ref, ...constraints));
+          const snap = await getDocs(query(prendasPublicRef, ...constraints));
           if (snap.empty) {
             hasMore = false;
             break;
@@ -2244,12 +2279,40 @@
             hasMore = false;
           }
         }
+
+        if (shouldIncludeAdmin) {
+          const adminCostMap = await loadAdminCostMap();
+          rows.forEach((row) => {
+            const costo = adminCostMap.get(row.id);
+            if (Number.isFinite(costo)) {
+              row.costo = costo;
+              const basePrice = Number.isFinite(row.pVenta) ? Number((row.pVenta / 1.16).toFixed(2)) : null;
+              row.utilidad = Number.isFinite(basePrice)
+                ? Number((basePrice - costo).toFixed(2))
+                : null;
+              row.margen =
+                Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(row.utilidad)
+                  ? Number((row.utilidad / basePrice).toFixed(3))
+                  : null;
+            }
+          });
+        } else {
+          rows.forEach((row) => {
+            row.costo = null;
+            row.utilidad = null;
+            row.margen = null;
+          });
+        }
+
         prendasState.baseRows = rows.sort(compareItemsByDateDesc);
+        prendasState.baseRowsCacheKey = cacheKey;
         return prendasState.baseRows;
       };
 
       const resetPrendasState = () => {
         prendasState.filtered = [];
+        prendasState.baseRows = [];
+        prendasState.baseRowsCacheKey = prendasState.isAdmin ? "admin" : "public";
         prendasState.rowsAfterGlobal = [];
         prendasState.rowsAfterAll = [];
         prendasState.isDone = false;
@@ -2476,11 +2539,33 @@
         const rawUpper = safeString(rawInput).trim().toUpperCase();
         const normalizedSku = normalizeSku(rawUpper);
         if (!rawUpper) return null;
-        const directSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, normalizedSku));
-        if (directSnap.exists()) return normalizeDoc(directSnap);
-        const altSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, rawUpper));
-        if (altSnap.exists()) return normalizeDoc(altSnap);
-        return null;
+        const directSnap = await getDoc(doc(db, PRENDAS_PUBLIC_COLLECTION, normalizedSku));
+        const altSnap = directSnap.exists()
+          ? null
+          : await getDoc(doc(db, PRENDAS_PUBLIC_COLLECTION, rawUpper));
+        const baseSnap = directSnap.exists() ? directSnap : altSnap;
+        if (!baseSnap?.exists()) return null;
+        const item = normalizeDoc(baseSnap);
+        if (prendasState.isAdmin) {
+          const adminSnap = await getDoc(doc(db, PRENDAS_ADMIN_COLLECTION, baseSnap.id));
+          if (adminSnap.exists()) {
+            const costo = toNumberOrNull(adminSnap.data()?.costo);
+            if (Number.isFinite(costo)) {
+              item.costo = costo;
+              const precioSinIva = Number.isFinite(item.pVenta)
+                ? Number((item.pVenta / 1.16).toFixed(2))
+                : null;
+              item.utilidad = Number.isFinite(precioSinIva)
+                ? Number((precioSinIva - costo).toFixed(2))
+                : null;
+              item.margen =
+                Number.isFinite(precioSinIva) && precioSinIva !== 0 && Number.isFinite(item.utilidad)
+                  ? Number((item.utilidad / precioSinIva).toFixed(3))
+                  : null;
+            }
+          }
+        }
+        return item;
       };
 
       const runSkuSearch = async (rawInput) => {
@@ -2713,37 +2798,9 @@
 
       // ADMIN DB MODE START
       const DB_TAB_HASH = "#base-datos-codigos";
-      const verifyAdminPassword = httpsCallable(functions, "verifyAdminPassword");
-      const backfillSearchTokens = httpsCallable(functions, "backfillSearchTokens");
 
-      const getAdminSession = () => {
-        const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
-        if (!raw) return null;
-        try {
-          const session = JSON.parse(raw);
-          if (!session?.sessionId || !session?.expiresAt) return null;
-          if (Date.now() > session.expiresAt) {
-            sessionStorage.removeItem(ADMIN_SESSION_KEY);
-            return null;
-          }
-          return session;
-        } catch (error) {
-          console.warn("Sesión admin inválida, limpiando.", error);
-          sessionStorage.removeItem(ADMIN_SESSION_KEY);
-          return null;
-        }
-      };
-
-      const setAdminSession = ({ sessionId, expiresAt }) => {
-        sessionStorage.setItem(
-          ADMIN_SESSION_KEY,
-          JSON.stringify({ sessionId, expiresAt })
-        );
-      };
-
-      const clearAdminSession = () => {
-        sessionStorage.removeItem(ADMIN_SESSION_KEY);
-      };
+      const isAllowlistedAdmin = (email) =>
+        ADMIN_ALLOWLIST.has(safeString(email).trim().toLowerCase());
 
       const getAdminViewEnabled = () =>
         sessionStorage.getItem(ADMIN_VIEW_KEY) === "1";
@@ -2758,12 +2815,6 @@
         adminLoginStatus.className = `status ${type}`.trim();
       };
 
-      const setAdminBackfillStatus = (message, type = "") => {
-        if (!adminBackfillStatus) return;
-        adminBackfillStatus.textContent = message;
-        adminBackfillStatus.className = `status ${type}`.trim();
-      };
-
       let adminPanelVisible = false;
 
       const setAdminPanelVisible = (visible) => {
@@ -2776,71 +2827,66 @@
         }
       };
 
-      const applyAdminUI = () => {
-        const session = getAdminSession();
-        const sessionActive = Boolean(session);
-        if (!sessionActive) {
-          setAdminViewEnabled(false);
-        }
-        const enabled = sessionActive && getAdminViewEnabled();
+      const applyAdminUI = ({ refresh = true } = {}) => {
+        const byAuth = Boolean(prendasState.adminByAuth);
+        const visualPasswordOk =
+          !prendasState.adminByAuth ||
+          !adminPasswordInput ||
+          safeString(adminPasswordInput.value).trim() === ADMIN_VISUAL_PASSWORD;
+        const enabled = byAuth && getAdminViewEnabled() && visualPasswordOk;
         prendasState.isAdmin = enabled;
         if (dbCodigosSection) {
           dbCodigosSection.classList.toggle("admin-enabled", enabled);
         }
         if (adminToggleDb) {
           adminToggleDb.checked = enabled;
-          adminToggleDb.disabled = !sessionActive;
+          adminToggleDb.disabled = !byAuth;
         }
         if (adminActions) {
-          adminActions.classList.toggle("hidden", !sessionActive);
+          adminActions.classList.toggle("hidden", !byAuth);
         }
         if (adminLoginButton) {
-          adminLoginButton.classList.toggle("hidden", sessionActive);
+          adminLoginButton.classList.toggle("hidden", byAuth);
         }
         if (adminLogoutButton) {
-          adminLogoutButton.classList.toggle("hidden", !sessionActive);
+          adminLogoutButton.classList.toggle("hidden", !byAuth);
         }
-        if (prendasState.filtered.length) {
-          renderDocs(prendasState.filtered);
+        if (byAuth) {
+          const pwdMsg = visualPasswordOk ? "" : " · Falta contraseña visual";
+          setAdminLoginStatus(`Admin autenticado: ${prendasState.adminEmail}${pwdMsg}`, visualPasswordOk ? "success" : "warning");
+        } else {
+          setAdminLoginStatus("Inicia sesión con un correo admin permitido.");
+          setAdminViewEnabled(false);
         }
         setAdminPanelVisible(adminPanelVisible);
+        if (refresh) {
+          loadPrendasPage({ reset: true, reason: "admin-toggle" });
+        }
       };
 
-      const handleAdminToggle = (event) => {
-        if (!getAdminSession()) return;
-        setAdminViewEnabled(event.target.checked);
+      const handleAdminToggle = () => {
+        if (!prendasState.adminByAuth) return;
+        setAdminViewEnabled(Boolean(adminToggleDb?.checked));
         applyAdminUI();
       };
 
       const handleAdminLogin = async () => {
-        const password = safeString(adminPasswordInput?.value).trim();
-        if (!password) {
-          setAdminLoginStatus("Ingresa la contraseña admin.", "error");
-          return;
-        }
         if (adminLoginButton) {
           adminLoginButton.disabled = true;
         }
-        setAdminLoginStatus("Verificando...", "");
         try {
-          const response = await verifyAdminPassword({ password });
-          const data = response?.data || {};
-          if (!data?.sessionId || !data?.expiresAt) {
-            throw new Error("Respuesta inválida del servidor.");
+          const response = await signInWithPopup(auth, googleProvider);
+          const email = safeString(response?.user?.email).trim().toLowerCase();
+          if (!isAllowlistedAdmin(email)) {
+            setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
+            await signOut(auth);
+            return;
           }
-          setAdminSession({ sessionId: data.sessionId, expiresAt: data.expiresAt });
           setAdminViewEnabled(true);
-          if (adminPasswordInput) {
-            adminPasswordInput.value = "";
-          }
-          setAdminLoginStatus("Modo admin habilitado.", "success");
           applyAdminUI();
         } catch (error) {
           console.error(error);
-          setAdminLoginStatus(
-            "Servicio admin no disponible / Falta desplegar functions.",
-            "error"
-          );
+          setAdminLoginStatus("No se pudo iniciar sesión con Google.", "error");
         } finally {
           if (adminLoginButton) {
             adminLoginButton.disabled = false;
@@ -2848,66 +2894,28 @@
         }
       };
 
-      const handleAdminLogout = () => {
-        clearAdminSession();
-        setAdminViewEnabled(false);
-        setAdminLoginStatus("Sesión cerrada.", "");
-        setAdminBackfillStatus("");
-        applyAdminUI();
-      };
-
-      const handleBackfill = async () => {
-        const session = getAdminSession();
-        if (!session) {
-          setAdminBackfillStatus("Inicia sesión admin para continuar.", "error");
-          return;
-        }
-        if (adminBackfillButton) {
-          adminBackfillButton.disabled = true;
-        }
-        setAdminBackfillStatus("Preparando buscador...", "");
-        let cursor = null;
-        let processed = 0;
-        let updated = 0;
-        let skipped = 0;
+      const handleAdminLogout = async () => {
         try {
-          let loops = 0;
-          while (loops < 200) {
-            const response = await backfillSearchTokens({
-              sessionId: session.sessionId,
-              cursor
-            });
-            const data = response?.data || {};
-            processed += Number(data.processed || 0);
-            updated += Number(data.updated || 0);
-            skipped += Number(data.skipped || 0);
-            cursor = data.lastDocId || null;
-            setAdminBackfillStatus(
-              `Procesados: ${processed} · Actualizados: ${updated} · Omitidos: ${skipped}`,
-              ""
-            );
-            if (!data.hasMore) {
-              break;
-            }
-            loops += 1;
-          }
-          setAdminBackfillStatus(
-            `Listo: ${updated} actualizados, ${skipped} omitidos.`,
-            "success"
-          );
+          await signOut(auth);
         } catch (error) {
           console.error(error);
-          setAdminBackfillStatus("Error al preparar el buscador.", "error");
-        } finally {
-          if (adminBackfillButton) {
-            adminBackfillButton.disabled = false;
-          }
         }
       };
+
+      onAuthStateChanged(auth, (user) => {
+        const email = safeString(user?.email).trim().toLowerCase();
+        prendasState.adminUser = user || null;
+        prendasState.adminEmail = email;
+        prendasState.adminByAuth = Boolean(user) && isAllowlistedAdmin(email);
+        if (!prendasState.adminByAuth) {
+          setAdminViewEnabled(false);
+        }
+        applyAdminUI();
+      });
 
       const handleTabChange = (hash) => {
         if (hash === DB_TAB_HASH) {
-          applyAdminUI();
+          applyAdminUI({ refresh: false });
         }
       };
 
@@ -2920,20 +2928,14 @@
       if (adminLogoutButton) {
         adminLogoutButton.addEventListener("click", handleAdminLogout);
       }
-      if (adminBackfillButton) {
-        adminBackfillButton.addEventListener("click", handleBackfill);
-      }
       if (adminOptionalToggle) {
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
         });
       }
       if (adminPasswordInput) {
-        adminPasswordInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            handleAdminLogin();
-          }
+        adminPasswordInput.addEventListener("input", () => {
+          applyAdminUI();
         });
       }
 
@@ -3124,9 +3126,9 @@
           // ADMIN DB MODE END
           setSkuSearchMode(false);
           try {
-            const baseSnapshot = await getDocs(query(prendas2025Ref, limit(10)));
+            const baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
             console.log("[Prendas] Base query (sin filtros) docs", {
-              collection: PRENDAS_2025_COLLECTION,
+              collection: PRENDAS_PUBLIC_COLLECTION,
               docs: baseSnapshot.size
             });
           } catch (error) {
