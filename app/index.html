@@ -3050,6 +3050,7 @@
       }
 
       const init = async () => {
+        console.log("[Firebase] projectId:", firebaseConfig.projectId, "authDomain:", firebaseConfig.authDomain);
         isBooting = true;
         resetPrendasState();
         resetCounters();
