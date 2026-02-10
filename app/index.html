@@ -253,64 +253,177 @@
         white-space: nowrap;
       }
 
-      .th-filter-btn {
-        margin-left: 6px;
-        border: 1px solid #d1d5db;
+      .th-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .filter-btn {
+        position: relative;
+        border: 1px solid #d0d5dd;
         background: #fff;
-        border-radius: 6px;
-        font-size: 11px;
-        width: 20px;
-        height: 20px;
+        border-radius: 8px;
+        font-size: 12px;
+        width: 24px;
+        height: 24px;
         line-height: 1;
         color: #475467;
         cursor: pointer;
-        vertical-align: middle;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
       }
 
-      .th-filter-btn.active {
+      .filter-btn:hover {
+        border-color: #98a2b3;
+        background: #f9fafb;
+      }
+
+      .filter-btn:focus-visible {
+        outline: 3px solid #bfdbfe;
+        outline-offset: 1px;
+      }
+
+      .filter-btn.active {
         border-color: #2563eb;
         color: #2563eb;
         background: #eff6ff;
       }
 
-      .header-filter-popover {
+      .filter-btn.active::after {
+        content: "";
         position: absolute;
-        z-index: 50;
-        width: 260px;
-        max-height: 360px;
+        top: -2px;
+        right: -2px;
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #2563eb;
+        border: 2px solid #fff;
+      }
+
+      .filter-popover {
+        position: absolute;
+        z-index: 80;
+        width: 300px;
+        max-height: 420px;
         overflow: hidden;
-        border-radius: 10px;
-        border: 1px solid var(--border);
+        border-radius: 14px;
+        border: 1px solid #e4e7ec;
         background: #fff;
-        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
-        padding: 10px;
+        box-shadow: 0 18px 35px rgba(16, 24, 40, 0.16);
+        display: grid;
+        grid-template-rows: auto auto auto 1fr auto;
       }
 
-      .header-filter-popover .options {
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 8px;
-        max-height: 180px;
-        overflow: auto;
-        margin: 8px 0;
+      .filter-popover .popover-head {
+        padding: 12px 12px 8px;
+        border-bottom: 1px solid #f2f4f7;
       }
 
-      .header-filter-popover .option-row,
-      .header-filter-popover .option-all {
+      .filter-popover .popover-title {
+        margin: 0;
+        font-size: 13px;
+        color: #344054;
+        font-weight: 600;
+      }
+
+      .filter-popover .search-wrap {
+        position: relative;
+        padding: 10px 12px 0;
+      }
+
+      .filter-popover .search-wrap::before {
+        content: "🔎";
+        position: absolute;
+        left: 20px;
+        top: 19px;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+
+      .filter-popover input[type="text"],
+      .filter-popover input[type="number"] {
+        width: 100%;
+        border: 1px solid #d0d5dd;
+        border-radius: 10px;
+        font-size: 13px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+
+      .filter-popover .search-wrap input {
+        padding-left: 28px;
+      }
+
+      .filter-popover input:focus-visible {
+        outline: 3px solid #bfdbfe;
+        border-color: #93c5fd;
+      }
+
+      .filter-popover .meta {
+        font-size: 12px;
+        color: #667085;
+        padding: 8px 12px 0;
+      }
+
+      .filter-popover .option-all {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 4px 0;
+        padding: 8px 12px;
+        font-size: 13px;
+        border-bottom: 1px solid #f2f4f7;
       }
 
-      .header-filter-popover .actions {
+      .filter-popover .options {
+        padding: 8px;
+        max-height: 210px;
+        overflow: auto;
+      }
+
+      .filter-popover .option-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+
+      .filter-popover .option-row:hover {
+        background: #f2f4f7;
+      }
+
+      .filter-popover .actions {
+        position: sticky;
+        bottom: 0;
         display: flex;
         gap: 8px;
+        padding: 10px;
+        border-top: 1px solid #f2f4f7;
+        background: #fff;
       }
 
-      .header-filter-popover .meta {
+      .filter-popover .actions button {
+        flex: 1;
+        padding: 9px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      .filter-popover .range-fields {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+      }
+
+      .filter-popover .hint {
         font-size: 12px;
-        color: var(--muted);
+        color: #b45309;
+        padding: 0 12px 8px;
       }
 
       .panel-controls {
@@ -755,14 +868,14 @@
                   <tr>
                     <th>Código</th>
                     <th>Descripción</th>
-                    <th data-filter-key="tipo">Tipo <button type="button" class="th-filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></th>
-                    <th data-filter-key="color">Color <button type="button" class="th-filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></th>
-                    <th data-filter-key="talla">Talla <button type="button" class="th-filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></th>
-                    <th data-filter-key="proveedor">Proveedor <button type="button" class="th-filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></th>
-                    <th data-filter-key="status">Status <button type="button" class="th-filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></th>
-                    <th data-filter-key="disponibilidad">Disponibilidad <button type="button" class="th-filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></th>
+                    <th data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
+                    <th data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
+                    <th data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
+                    <th data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
+                    <th data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
+                    <th data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
                     <th>Fecha</th>
-                    <th>P. Venta</th>
+                    <th data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
                     <th class="admin-only">(Admin) Utilidad</th>
@@ -1169,13 +1282,16 @@
         "talla",
         "disponibilidad"
       ];
+      const HEADER_RANGE_KEY = "pventa";
       const createEmptyHeaderFilters = () => ({
         status: new Set(),
         proveedor: new Set(),
         tipo: new Set(),
         color: new Set(),
         talla: new Set(),
-        disponibilidad: new Set()
+        disponibilidad: new Set(),
+        pventaMin: null,
+        pventaMax: null
       });
       const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
@@ -1205,8 +1321,10 @@
         dictsLoaded: false,
         isDone: false,
         isLoadingInitial: false,
-        globalFilters: null,
-        headerFilters: createEmptyHeaderFilters(),
+        filters: {
+          global: null,
+          header: createEmptyHeaderFilters()
+        },
         filtersActive: false,
         renderToken: 0,
         searchToken: 0,
@@ -1754,7 +1872,7 @@
       };
 
       const clearHeaderFilters = () => {
-        prendasState.headerFilters = createEmptyHeaderFilters();
+        prendasState.filters.header = createEmptyHeaderFilters();
         updateHeaderFilterButtonsState();
       };
 
@@ -1774,11 +1892,19 @@
       });
 
       const getCurrentFilters = () => ({
-        globalFilters: getCurrentGlobalFilters(),
-        headerFilters: prendasState.headerFilters
+        global: getCurrentGlobalFilters(),
+        header: prendasState.filters.header
       });
 
-      const isHeaderFilterActive = (key) => (prendasState.headerFilters[key]?.size || 0) > 0;
+      const isHeaderFilterActive = (key) => {
+        if (key === HEADER_RANGE_KEY) {
+          return (
+            prendasState.filters.header.pventaMin !== null ||
+            prendasState.filters.header.pventaMax !== null
+          );
+        }
+        return (prendasState.filters.header[key]?.size || 0) > 0;
+      };
 
       const applyGlobalFilters = (rows, globalFilters) => {
         const searchText = normalizeText(globalFilters.searchText);
@@ -1807,34 +1933,44 @@
       };
 
       const applyHeaderFilters = (rows, headerFilters) =>
-        rows.filter((item) =>
-          HEADER_FILTER_KEYS.every((key) => {
+        rows.filter((item) => {
+          const hasChecklistMatch = HEADER_FILTER_KEYS.every((key) => {
             const selected = headerFilters[key];
             if (!selected || !selected.size) return true;
             const itemValue = normalizeFilterValue(item[key]);
             return selected.has(itemValue);
-          })
-        );
+          });
+          if (!hasChecklistMatch) return false;
+          const hasPriceRange = headerFilters.pventaMin != null || headerFilters.pventaMax != null;
+          if (!hasPriceRange) return true;
+          const price = toNum(item.pVenta);
+          if (price === null) return false;
+          if (headerFilters.pventaMin != null && price < headerFilters.pventaMin) return false;
+          if (headerFilters.pventaMax != null && price > headerFilters.pventaMax) return false;
+          return true;
+        });
 
       const applyAllFilters = (rows) => {
         const globalFilters = getCurrentGlobalFilters();
-        prendasState.globalFilters = globalFilters;
+        prendasState.filters.global = globalFilters;
         const rowsAfterGlobal = applyGlobalFilters(rows, globalFilters);
         prendasState.rowsAfterGlobal = rowsAfterGlobal;
-        const rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.headerFilters);
+        const rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
         prendasState.rowsAfterAll = rowsAfterAll;
         return rowsAfterAll;
       };
 
       const hasActiveFilters = (filters) => {
         if (!filters) return false;
-        const globalFilters = filters.globalFilters || {};
+        const globalFilters = filters.global || {};
+        const headerFilters = filters.header || {};
         const hasSearch = Boolean(safeString(globalFilters.searchText).trim());
         const hasDate = Boolean(globalFilters.year);
         const hasPriceRange = globalFilters.priceMin !== null || globalFilters.priceMax !== null;
         const excludeNoPrice = globalFilters.includeNoPrice === false;
-        const hasHeaderFilters = HEADER_FILTER_KEYS.some((key) => (filters.headerFilters?.[key]?.size || 0) > 0);
-        return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters;
+        const hasHeaderFilters = HEADER_FILTER_KEYS.some((key) => (headerFilters[key]?.size || 0) > 0);
+        const hasHeaderPrice = headerFilters.pventaMin !== null || headerFilters.pventaMax !== null;
+        return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters || hasHeaderPrice;
       };
 
       const getUniqueOptions = (rows, key) => {
@@ -1875,13 +2011,62 @@
 
       const renderHeaderFilterPopover = (key, anchorButton) => {
         closeHeaderPopover();
-        const options = prendasState.uniqueOptions[key] || [];
-        const selected = new Set(prendasState.headerFilters[key] || []);
-
         const container = document.createElement("div");
-        container.className = "header-filter-popover";
+        container.className = "filter-popover";
+
+        const rect = anchorButton.getBoundingClientRect();
+        container.style.top = `${window.scrollY + rect.bottom + 6}px`;
+        container.style.left = `${window.scrollX + rect.left}px`;
+
+        if (key === HEADER_RANGE_KEY) {
+          const currentMin = prendasState.filters.header.pventaMin;
+          const currentMax = prendasState.filters.header.pventaMax;
+          container.innerHTML = `
+            <div class="popover-head"><p class="popover-title">Filtrar P. Venta</p></div>
+            <div class="range-fields">
+              <input type="number" min="0" step="0.01" placeholder="Mínimo" value="${currentMin ?? ""}" data-range-min />
+              <input type="number" min="0" step="0.01" placeholder="Máximo" value="${currentMax ?? ""}" data-range-max />
+            </div>
+            <div class="hint" data-range-hint></div>
+            <div class="actions">
+              <button type="button" data-apply>Aplicar</button>
+              <button type="button" class="secondary" data-clear>Limpiar</button>
+            </div>
+          `;
+          document.body.appendChild(container);
+          const minInput = container.querySelector("[data-range-min]");
+          const maxInput = container.querySelector("[data-range-max]");
+          const hintEl = container.querySelector("[data-range-hint]");
+
+          container.querySelector("[data-clear]").addEventListener("click", async () => {
+            prendasState.filters.header.pventaMin = null;
+            prendasState.filters.header.pventaMax = null;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          container.querySelector("[data-apply]").addEventListener("click", async () => {
+            let minValue = toNumberOrNull(minInput.value);
+            let maxValue = toNumberOrNull(maxInput.value);
+            if (minValue !== null && maxValue !== null && minValue > maxValue) {
+              [minValue, maxValue] = [maxValue, minValue];
+              hintEl.textContent = "Se ajustó el rango automáticamente (mín ↔ máx).";
+            }
+            prendasState.filters.header.pventaMin = minValue;
+            prendasState.filters.header.pventaMax = maxValue;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          prendasState.headerPopover = { key, container };
+          return;
+        }
+
+        const options = prendasState.uniqueOptions[key] || [];
+        const selected = new Set(prendasState.filters.header[key] || []);
         container.innerHTML = `
-          <input type="text" placeholder="Buscar..." data-filter-search />
+          <div class="popover-head"><p class="popover-title">Filtrar ${key}</p></div>
+          <div class="search-wrap"><input type="text" placeholder="Buscar..." data-filter-search /></div>
           <div class="meta" data-filter-count></div>
           <label class="option-all"><input type="checkbox" data-select-all /> Seleccionar todo</label>
           <div class="options" data-options></div>
@@ -1890,16 +2075,19 @@
             <button type="button" class="secondary" data-clear>Limpiar</button>
           </div>
         `;
-
-        const rect = anchorButton.getBoundingClientRect();
-        container.style.top = `${window.scrollY + rect.bottom + 6}px`;
-        container.style.left = `${window.scrollX + rect.left}px`;
         document.body.appendChild(container);
 
         const optionsEl = container.querySelector("[data-options]");
         const searchEl = container.querySelector("[data-filter-search]");
         const selectAllEl = container.querySelector("[data-select-all]");
         const countEl = container.querySelector("[data-filter-count]");
+
+        const updateCounters = () => {
+          const total = options.length;
+          const selectedCount = selected.size;
+          countEl.textContent = `(${selectedCount} seleccionados / ${total} total)`;
+          selectAllEl.checked = total > 0 && selectedCount === total;
+        };
 
         const refreshList = () => {
           const q = normalizeText(searchEl.value);
@@ -1922,13 +2110,6 @@
           updateCounters();
         };
 
-        const updateCounters = () => {
-          const total = options.length;
-          const selectedCount = selected.size;
-          countEl.textContent = `(${selectedCount} seleccionados / ${total} total)`;
-          selectAllEl.checked = total > 0 && selectedCount === total;
-        };
-
         selectAllEl.addEventListener("change", () => {
           if (selectAllEl.checked) {
             options.forEach((value) => selected.add(normalizeFilterValue(value)));
@@ -1941,13 +2122,13 @@
         searchEl.addEventListener("input", refreshList);
 
         container.querySelector("[data-clear]").addEventListener("click", async () => {
-          prendasState.headerFilters[key] = new Set();
+          prendasState.filters.header[key] = new Set();
           closeHeaderPopover();
           await applyFilters();
         });
 
         container.querySelector("[data-apply]").addEventListener("click", async () => {
-          prendasState.headerFilters[key] = selected;
+          prendasState.filters.header[key] = selected;
           closeHeaderPopover();
           await applyFilters();
         });
@@ -1991,8 +2172,8 @@
         prendasState.queryKey = "";
         prendasState.pageIndex = 0;
         prendasState.hasNextPage = false;
-        prendasState.globalFilters = getCurrentGlobalFilters();
-        prendasState.headerFilters = createEmptyHeaderFilters();
+        prendasState.filters.global = getCurrentGlobalFilters();
+        prendasState.filters.header = createEmptyHeaderFilters();
         prendasState.uniqueOptions = {};
         closeHeaderPopover();
         resetCounters();
@@ -2720,12 +2901,21 @@
         button.addEventListener("click", (event) => {
           event.stopPropagation();
           const key = button.dataset.openHeaderFilter;
+          if (prendasState.headerPopover?.key === key) {
+            closeHeaderPopover();
+            return;
+          }
           renderHeaderFilterPopover(key, button);
         });
       });
       document.addEventListener("click", (event) => {
         const target = event.target;
         if (prendasState.headerPopover?.container && !prendasState.headerPopover.container.contains(target)) {
+          closeHeaderPopover();
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
           closeHeaderPopover();
         }
       });
