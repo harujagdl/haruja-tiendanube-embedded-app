@@ -2856,18 +2856,24 @@
           } catch (error) {
             console.warn("[Prendas] No se pudo medir query base sin filtros", error);
           }
-          if (typeof loadMetadataCounts === "function") {
-            void loadMetadataCounts().then((total) => {
+          try {
+            if (typeof loadMetadataCounts === "function") {
+              const total = await loadMetadataCounts();
               if (Number.isFinite(total) && !hasActiveFilters(getCurrentFilters())) {
                 prendasState.showingTotal = total;
                 setCounter(prendasState.filtered.length, total);
               }
-            });
-          } else {
-            console.warn("loadMetadataCounts() no existe, se omite.");
+            } else {
+              console.warn("loadMetadataCounts() no existe, se omite.");
+            }
+          } catch (error) {
+            console.warn("[Prendas] loadMetadataCounts falló", error);
           }
           try {
+            console.log("query filters", getCurrentFilters());
+            console.log("baseRows", prendasState.baseRows?.length ?? 0, "filtered", prendasState.filtered?.length ?? 0);
             await loadPrendasPage({ reset: true, reason: "init" });
+            console.log("baseRows", prendasState.baseRows?.length ?? 0, "filtered", prendasState.filtered?.length ?? 0);
           } finally {
             prendasState.isLoadingInitial = false;
             setLoading(false);
