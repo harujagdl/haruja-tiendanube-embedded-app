@@ -243,9 +243,74 @@
         text-align: left;
       }
 
+
       th {
         color: var(--muted);
         font-weight: 600;
+      }
+
+      th[data-filter-key] {
+        white-space: nowrap;
+      }
+
+      .th-filter-btn {
+        margin-left: 6px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+        border-radius: 6px;
+        font-size: 11px;
+        width: 20px;
+        height: 20px;
+        line-height: 1;
+        color: #475467;
+        cursor: pointer;
+        vertical-align: middle;
+      }
+
+      .th-filter-btn.active {
+        border-color: #2563eb;
+        color: #2563eb;
+        background: #eff6ff;
+      }
+
+      .header-filter-popover {
+        position: absolute;
+        z-index: 50;
+        width: 260px;
+        max-height: 360px;
+        overflow: hidden;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+        padding: 10px;
+      }
+
+      .header-filter-popover .options {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 8px;
+        max-height: 180px;
+        overflow: auto;
+        margin: 8px 0;
+      }
+
+      .header-filter-popover .option-row,
+      .header-filter-popover .option-all {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+      }
+
+      .header-filter-popover .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .header-filter-popover .meta {
+        font-size: 12px;
+        color: var(--muted);
       }
 
       .panel-controls {
@@ -591,38 +656,6 @@
                   <input id="prendas-search" type="text" placeholder="Ej: HA12A003 o sudadera" />
                 </div>
                 <div>
-                  <label for="prendas-status">Status</label>
-                  <select id="prendas-status">
-                    <option value="todos">Todos</option>
-                    <option value="Disponible">Disponible</option>
-                    <option value="Vendido">Vendido</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="prendas-proveedor">Proveedor</label>
-                  <select id="prendas-proveedor">
-                    <option value="todos">Todos</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="prendas-tipo">Tipo</label>
-                  <select id="prendas-tipo">
-                    <option value="todos">Todos</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="prendas-color">Color</label>
-                  <select id="prendas-color">
-                    <option value="todos">Todos</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="prendas-talla">Talla</label>
-                  <select id="prendas-talla">
-                    <option value="todos">Todos</option>
-                  </select>
-                </div>
-                <div>
                   <label for="prendas-year">Año alta</label>
                   <select id="prendas-year">
                     <option value="">Todos</option>
@@ -722,11 +755,12 @@
                   <tr>
                     <th>Código</th>
                     <th>Descripción</th>
-                    <th>Color</th>
-                    <th>Talla</th>
-                    <th>Proveedor</th>
-                    <th>Status</th>
-                    <th>Disponibilidad</th>
+                    <th data-filter-key="tipo">Tipo <button type="button" class="th-filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></th>
+                    <th data-filter-key="color">Color <button type="button" class="th-filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></th>
+                    <th data-filter-key="talla">Talla <button type="button" class="th-filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></th>
+                    <th data-filter-key="proveedor">Proveedor <button type="button" class="th-filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></th>
+                    <th data-filter-key="status">Status <button type="button" class="th-filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></th>
+                    <th data-filter-key="disponibilidad">Disponibilidad <button type="button" class="th-filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></th>
                     <th>Fecha</th>
                     <th>P. Venta</th>
                     <th class="admin-only">(Admin) Costo</th>
@@ -738,7 +772,7 @@
               </table>
               <template id="noResultsRow" data-empty-row>
                 <tr>
-                  <td colspan="12">No hay resultados con los filtros actuales.</td>
+                  <td colspan="13">No hay resultados con los filtros actuales.</td>
                 </tr>
               </template>
             </div>
@@ -834,11 +868,7 @@
       const zplCopy = document.getElementById("zpl-copy");
 
       const prendasSearch = document.getElementById("prendas-search");
-      const prendasStatus = document.getElementById("prendas-status");
-      const prendasProveedor = document.getElementById("prendas-proveedor");
-      const prendasTipo = document.getElementById("prendas-tipo");
-      const prendasColor = document.getElementById("prendas-color");
-      const prendasTalla = document.getElementById("prendas-talla");
+      const headerFilterButtons = document.querySelectorAll("[data-open-header-filter]");
       const prendasYear = document.getElementById("prendas-year");
       const prendasMonth = document.getElementById("prendas-month");
       const prendasPrecioMin = document.getElementById("prendas-precio-min");
@@ -1131,6 +1161,22 @@
         { value: 11, label: "Noviembre" },
         { value: 12, label: "Diciembre" }
       ];
+      const HEADER_FILTER_KEYS = [
+        "status",
+        "proveedor",
+        "tipo",
+        "color",
+        "talla",
+        "disponibilidad"
+      ];
+      const createEmptyHeaderFilters = () => ({
+        status: new Set(),
+        proveedor: new Set(),
+        tipo: new Set(),
+        color: new Set(),
+        talla: new Set(),
+        disponibilidad: new Set()
+      });
       const ADMIN_SESSION_KEY = "haruja_admin_session";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const ADMIN_SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -1143,9 +1189,12 @@
       const prendas2025Ref = collection(db, PRENDAS_2025_COLLECTION);
       const prendasState = {
         filtered: [],
+        baseRows: [],
+        rowsAfterGlobal: [],
+        rowsAfterAll: [],
+        uniqueOptions: {},
         isAdmin: false,
         pageIndex: 0,
-        pageCursors: [null],
         hasNextPage: false,
         dicts: {
           proveedores: [],
@@ -1156,7 +1205,8 @@
         dictsLoaded: false,
         isDone: false,
         isLoadingInitial: false,
-        filters: null,
+        globalFilters: null,
+        headerFilters: createEmptyHeaderFilters(),
         filtersActive: false,
         renderToken: 0,
         searchToken: 0,
@@ -1166,7 +1216,8 @@
         reqId: 0,
         countToken: 0,
         metadataTotal: null,
-        metadataLoaded: false
+        metadataLoaded: false,
+        headerPopover: null
       };
       let isBooting = true;
 
@@ -1467,6 +1518,17 @@
         return `${(ratio * 100).toFixed(1)}%`;
       };
 
+      const formatMoney = (value) => {
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) return "--";
+        return formatCurrency(amount);
+      };
+
+      const formatDateCell = (item) => {
+        const date = getPrendaDate(item);
+        return date ? formatDateDDMMYYYY(date) : "--";
+      };
+
       const buildSearchKey = (data) => {
         const codigo = safeString(data.codigo || data.code || data.Codigo || data.Code);
         const descripcion = safeString(data.descripcion || data.Descripcion || data.detalles);
@@ -1683,11 +1745,6 @@
 
       const clearFiltersUi = () => {
         prendasSearch.value = "";
-        prendasStatus.value = "todos";
-        prendasProveedor.value = "todos";
-        prendasTipo.value = "todos";
-        prendasColor.value = "todos";
-        prendasTalla.value = "todos";
         if (prendasYear) prendasYear.value = "";
         if (prendasMonth) prendasMonth.value = "";
         prendasPrecioMin.value = "";
@@ -1696,42 +1753,97 @@
         syncDateFilterUi();
       };
 
+      const clearHeaderFilters = () => {
+        prendasState.headerFilters = createEmptyHeaderFilters();
+        updateHeaderFilterButtonsState();
+      };
+
       const looksLikeCodeSearch = (value) => {
         const raw = safeString(value).trim().toUpperCase();
         if (!raw) return false;
         return raw.startsWith("HA") || raw.includes("/") || raw.includes("-");
       };
 
-      const getCurrentFilters = () => {
-        const priceMin = toNumberOrNull(prendasPrecioMin.value);
-        const priceMax = toNumberOrNull(prendasPrecioMax.value);
-        const searchRaw = getSearchRaw();
-        const year = safeString(prendasYear?.value).trim();
-        const month = year ? safeString(prendasMonth?.value).trim() : "";
-        const dateRange = getDateRangeFromFilters(year, month);
-        const hasDateRange = Boolean(dateRange?.start && dateRange?.end);
-        const hasPriceRange = priceMin !== null || priceMax !== null;
-        if (hasDateRange && hasPriceRange) {
-          console.warn("[Prendas] Se prioriza rango de fechaAlta y se ignora rango de pVenta en la query.");
-        }
-        return {
-          status: normalizeSelectValue(prendasStatus.value),
-          proveedor: normalizeSelectValue(prendasProveedor.value),
-          tipo: normalizeSelectValue(prendasTipo.value),
-          color: normalizeSelectValue(prendasColor.value),
-          talla: normalizeSelectValue(prendasTalla.value),
-          year,
-          month,
-          dateRange,
-          priceMin,
-          priceMax,
-          minPrice: priceMin,
-          maxPrice: priceMax,
-          includeNoPrice: prendasPrecioSin?.checked ?? true,
-          searchTerm: getSearchTerm(),
-          searchRaw,
-          query: searchRaw
-        };
+      const getCurrentGlobalFilters = () => ({
+        searchText: getSearchRaw(),
+        year: safeString(prendasYear?.value).trim(),
+        month: safeString(prendasMonth?.value).trim(),
+        priceMin: toNumberOrNull(prendasPrecioMin.value),
+        priceMax: toNumberOrNull(prendasPrecioMax.value),
+        includeNoPrice: prendasPrecioSin?.checked ?? true
+      });
+
+      const getCurrentFilters = () => ({
+        globalFilters: getCurrentGlobalFilters(),
+        headerFilters: prendasState.headerFilters
+      });
+
+      const isHeaderFilterActive = (key) => (prendasState.headerFilters[key]?.size || 0) > 0;
+
+      const applyGlobalFilters = (rows, globalFilters) => {
+        const searchText = normalizeText(globalFilters.searchText);
+        const dateRange = getDateRangeFromFilters(globalFilters.year, globalFilters.month);
+        return rows.filter((item) => {
+          const precio = toNum(item.pVenta);
+          const isNoPrice = precio === null || precio === 0;
+          if (isNoPrice && !globalFilters.includeNoPrice) {
+            return false;
+          }
+          if (!isNoPrice) {
+            if (globalFilters.priceMin != null && precio < globalFilters.priceMin) return false;
+            if (globalFilters.priceMax != null && precio > globalFilters.priceMax) return false;
+          }
+          if (dateRange?.start && dateRange?.end && !isInDateRange(item, dateRange)) {
+            return false;
+          }
+          if (!searchText) return true;
+          const codigo = normalizeFilterValue(item.codigo);
+          const descripcion = normalizeFilterValue(item.descripcion);
+          if (looksLikeCodeSearch(searchText)) {
+            return codigo.toUpperCase().startsWith(searchText.toUpperCase());
+          }
+          return descripcion.includes(searchText);
+        });
+      };
+
+      const applyHeaderFilters = (rows, headerFilters) =>
+        rows.filter((item) =>
+          HEADER_FILTER_KEYS.every((key) => {
+            const selected = headerFilters[key];
+            if (!selected || !selected.size) return true;
+            const itemValue = normalizeFilterValue(item[key]);
+            return selected.has(itemValue);
+          })
+        );
+
+      const applyAllFilters = (rows) => {
+        const globalFilters = getCurrentGlobalFilters();
+        prendasState.globalFilters = globalFilters;
+        const rowsAfterGlobal = applyGlobalFilters(rows, globalFilters);
+        prendasState.rowsAfterGlobal = rowsAfterGlobal;
+        const rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.headerFilters);
+        prendasState.rowsAfterAll = rowsAfterAll;
+        return rowsAfterAll;
+      };
+
+      const hasActiveFilters = (filters) => {
+        if (!filters) return false;
+        const globalFilters = filters.globalFilters || {};
+        const hasSearch = Boolean(safeString(globalFilters.searchText).trim());
+        const hasDate = Boolean(globalFilters.year);
+        const hasPriceRange = globalFilters.priceMin !== null || globalFilters.priceMax !== null;
+        const excludeNoPrice = globalFilters.includeNoPrice === false;
+        const hasHeaderFilters = HEADER_FILTER_KEYS.some((key) => (filters.headerFilters?.[key]?.size || 0) > 0);
+        return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters;
+      };
+
+      const getUniqueOptions = (rows, key) => {
+        const set = new Set();
+        rows.forEach((row) => {
+          const value = safeString(row[key]).trim();
+          if (value) set.add(value);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
       };
 
       const handleIndexError = (error) => {
@@ -1747,601 +1859,142 @@
         return true;
       };
 
-      const setFilterSelectLoading = (selectEl, message) => {
-        selectEl.innerHTML = "";
-        const option = document.createElement("option");
-        option.value = "todos";
-        option.textContent = message;
-        selectEl.appendChild(option);
-        selectEl.disabled = true;
+      const updateHeaderFilterButtonsState = () => {
+        headerFilterButtons.forEach((button) => {
+          const key = button.dataset.openHeaderFilter;
+          button.classList.toggle("active", isHeaderFilterActive(key));
+        });
       };
 
-      const loadFilterDictionaries = async () => {
-        setFilterSelectLoading(prendasProveedor, "Cargando opciones...");
-        setFilterSelectLoading(prendasTipo, "Cargando opciones...");
-        setFilterSelectLoading(prendasColor, "Cargando opciones...");
-        setFilterSelectLoading(prendasTalla, "Cargando opciones...");
-        const dicts = await loadDictionariesOnce();
-        fillSelect(prendasProveedor, dicts.proveedores);
-        fillSelect(prendasTipo, dicts.tipos);
-        fillSelect(prendasColor, dicts.colores);
-        fillSelect(prendasTalla, dicts.tallas);
+      const closeHeaderPopover = () => {
+        if (prendasState.headerPopover?.container) {
+          prendasState.headerPopover.container.remove();
+        }
+        prendasState.headerPopover = null;
       };
 
-      const renderRowsChunked = (
-        rows,
-        tbody,
-        chunkSize = PRENDAS_RENDER_CHUNK,
-        token
-      ) =>
-        new Promise((resolve) => {
-          let index = 0;
-          const renderStart = performance.now();
+      const renderHeaderFilterPopover = (key, anchorButton) => {
+        closeHeaderPopover();
+        const options = prendasState.uniqueOptions[key] || [];
+        const selected = new Set(prendasState.headerFilters[key] || []);
 
-          const appendChunk = () => {
-            if (token && token !== prendasState.renderToken) {
-              resolve(0);
-              return;
-            }
-            const fragment = document.createDocumentFragment();
-            for (let i = 0; i < chunkSize && index < rows.length; i += 1) {
-              fragment.appendChild(createPrendaRow(rows[index]));
-              index += 1;
-            }
-            tbody.appendChild(fragment);
-            if (index < rows.length) {
-              requestAnimationFrame(appendChunk);
-              return;
-            }
-            const totalMs = performance.now() - renderStart;
-            console.info("[Prendas] Render DOM", {
-              rows: rows.length,
-              totalInDom: tbody.children.length,
-              ms: Number(totalMs.toFixed(1))
+        const container = document.createElement("div");
+        container.className = "header-filter-popover";
+        container.innerHTML = `
+          <input type="text" placeholder="Buscar..." data-filter-search />
+          <div class="meta" data-filter-count></div>
+          <label class="option-all"><input type="checkbox" data-select-all /> Seleccionar todo</label>
+          <div class="options" data-options></div>
+          <div class="actions">
+            <button type="button" data-apply>Aplicar</button>
+            <button type="button" class="secondary" data-clear>Limpiar</button>
+          </div>
+        `;
+
+        const rect = anchorButton.getBoundingClientRect();
+        container.style.top = `${window.scrollY + rect.bottom + 6}px`;
+        container.style.left = `${window.scrollX + rect.left}px`;
+        document.body.appendChild(container);
+
+        const optionsEl = container.querySelector("[data-options]");
+        const searchEl = container.querySelector("[data-filter-search]");
+        const selectAllEl = container.querySelector("[data-select-all]");
+        const countEl = container.querySelector("[data-filter-count]");
+
+        const refreshList = () => {
+          const q = normalizeText(searchEl.value);
+          const visible = options.filter((value) => normalizeText(value).includes(q));
+          optionsEl.textContent = "";
+          visible.forEach((value) => {
+            const row = document.createElement("label");
+            row.className = "option-row";
+            const checked = selected.has(normalizeFilterValue(value));
+            row.innerHTML = `<input type="checkbox" value="${value}" ${checked ? "checked" : ""} /> ${value}`;
+            const checkbox = row.querySelector("input");
+            checkbox.addEventListener("change", () => {
+              const normalized = normalizeFilterValue(value);
+              if (checkbox.checked) selected.add(normalized);
+              else selected.delete(normalized);
+              updateCounters();
             });
-            resolve(Number(totalMs.toFixed(1)));
-          };
-
-          requestAnimationFrame(appendChunk);
-        });
-
-      const buildBadge = (text, className) => {
-        const badge = document.createElement("span");
-        badge.className = `badge ${className}`;
-        badge.textContent = text;
-        return badge;
-      };
-
-      const createPrendaRow = (item) => {
-        const codigo = safeString(item.codigo || item.code) || "--";
-        const descripcion = safeString(item.descripcion) || "--";
-        const color = safeString(item.color || item.colorNombre) || "--";
-        const talla = safeString(item.talla || item.tallaNombre) || "--";
-        const proveedor = safeString(item.proveedor || item.proveedorNombre) || "--";
-        const status = normalizeStatus(item.statusCanon || item.status);
-        const disponibilidad = normalizeDisponibilidad(
-          item.disponibilidadCanon || item.disponibilidad,
-          status
-        );
-        const fechaAltaTexto = safeString(item.fechaAltaTexto).trim();
-        const fechaAltaFormateada = formatDateDDMMYYYY(toDateValue(item.fechaAlta));
-        const fechaLegacyTexto = safeString(item.fechaTexto).trim();
-        const createdAtFormateado = formatDateDDMMYYYY(toDateValue(item.createdAt));
-        const fecha =
-          fechaAltaTexto ||
-          (fechaAltaFormateada !== "--" ? fechaAltaFormateada : "") ||
-          fechaLegacyTexto ||
-          (createdAtFormateado !== "--" ? createdAtFormateado : "--");
-        const dateValue = getPrendaDate(item);
-        const pVenta = Number.isFinite(item.pVenta)
-          ? formatCurrency(item.pVenta)
-          : "--";
-        const costo = Number.isFinite(item.costo)
-          ? formatCurrency(item.costo)
-          : "--";
-        const margen = Number.isFinite(item.margen) ? formatPercent(item.margen) : "--";
-        const utilidad = Number.isFinite(item.utilidad)
-          ? formatCurrency(item.utilidad)
-          : "--";
-        const isNewItem = isNew(dateValue);
-
-        const row = document.createElement("tr");
-        row.className = isNewItem ? "row-new" : "row-old";
-
-        const statusCell = renderStatusCell(status);
-        const disponibilidadCell = renderDisponibilidadCell(disponibilidad, status);
-
-        const cells = [
-          codigo,
-          descripcion,
-          color,
-          talla,
-          proveedor,
-          statusCell,
-          disponibilidadCell,
-          fecha,
-          pVenta,
-          costo,
-          margen,
-          utilidad
-        ];
-
-        cells.forEach((value, index) => {
-          if (value instanceof HTMLElement) {
-            if (index >= 9) {
-              value.classList.add("admin-only");
-            }
-            row.appendChild(value);
-            return;
-          }
-          const cell = document.createElement("td");
-          cell.textContent = value;
-          if (index >= 9) {
-            cell.classList.add("admin-only");
-          }
-          row.appendChild(cell);
-        });
-
-        return row;
-      };
-
-      const renderDocs = async (rows) => {
-        const renderStart = performance.now();
-        console.assert(prendasTbody, "tbody no encontrado");
-        prendasState.renderToken += 1;
-        const token = prendasState.renderToken;
-
-        const showingTotal = Number.isFinite(prendasState.showingTotal)
-          ? prendasState.showingTotal
-          : null;
-        setCounter(rows.length, showingTotal);
-        updatePaginationUi();
-
-        prendasTbody.textContent = "";
-        if (!rows.length) {
-          let emptyNode = null;
-          if (prendasEmptyRow) {
-            if (prendasEmptyRow instanceof HTMLTemplateElement) {
-              emptyNode = prendasEmptyRow.content.cloneNode(true);
-            } else {
-              emptyNode = prendasEmptyRow.cloneNode(true);
-            }
-          }
-          if (!emptyNode) {
-            const emptyRow = document.createElement("tr");
-            const cell = document.createElement("td");
-            cell.colSpan = 12;
-            cell.textContent = "No hay resultados con los filtros actuales.";
-            emptyRow.appendChild(cell);
-            emptyNode = emptyRow;
-          }
-          prendasTbody.appendChild(emptyNode);
-          setCounter(0, showingTotal);
-          return Number((performance.now() - renderStart).toFixed(1));
-        }
-
-        await renderRowsChunked(
-          rows,
-          prendasTbody,
-          PRENDAS_RENDER_CHUNK,
-          token
-        );
-        return Number((performance.now() - renderStart).toFixed(1));
-      };
-
-      const isAllFilter = (value) => !value || normalizeText(value) === "todos";
-
-      const hasActiveFilters = (filters) => {
-        if (!filters) return false;
-        const hasStatus = Boolean(filters.status);
-        const hasProveedor = Boolean(filters.proveedor);
-        const hasTipo = Boolean(filters.tipo);
-        const hasColor = Boolean(filters.color);
-        const hasTalla = Boolean(filters.talla);
-        const hasSearch = Boolean(
-          safeString(filters.query || filters.searchRaw).trim()
-        );
-        const hasDate = Boolean(filters.dateRange?.start && filters.dateRange?.end);
-        const hasPriceRange = filters.minPrice !== null || filters.maxPrice !== null;
-        const excludeNoPrice = filters.includeNoPrice === false;
-        return (
-          hasStatus ||
-          hasProveedor ||
-          hasTipo ||
-          hasColor ||
-          hasTalla ||
-          hasSearch ||
-          hasDate ||
-          hasPriceRange ||
-          excludeNoPrice
-        );
-      };
-
-      const setSkuSearchMode = (enabled) => {
-        prendasState.isSkuSearch = enabled;
-        if (!enabled) {
-          prendasState.showingTotal = null;
-        }
-        updatePaginationUi();
-      };
-
-      const fetchBySku = async (rawInput) => {
-        const rawUpper = safeString(rawInput).trim().toUpperCase();
-        const normalizedSku = normalizeSku(rawUpper);
-        if (!rawUpper) {
-          return null;
-        }
-
-        const directSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, normalizedSku));
-        if (directSnap.exists()) {
-          return normalizeDoc(directSnap);
-        }
-
-        const altSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, rawUpper));
-        if (altSnap.exists()) {
-          return normalizeDoc(altSnap);
-        }
-
-        const fallbackFields = [
-          { field: "docId", value: normalizedSku },
-          { field: "codigo", value: rawUpper },
-          { field: "code", value: rawUpper }
-        ];
-
-        for (const { field, value } of fallbackFields) {
-          const fallbackQuery = query(prendas2025Ref, where(field, "==", value), limit(1));
-          const fallbackSnap = await getDocs(fallbackQuery);
-          if (!fallbackSnap.empty) {
-            return normalizeDoc(fallbackSnap.docs[0]);
-          }
-        }
-
-        return null;
-      };
-
-      const runSkuSearch = async (rawInput) => {
-        const rawUpper = safeString(rawInput).trim().toUpperCase();
-        if (!rawUpper) {
-          return;
-        }
-        const token = prendasState.searchToken + 1;
-        prendasState.searchToken = token;
-        setSkuSearchMode(true);
-        prendasState.filtersActive = true;
-        setPrendasAlert("");
-        prendasState.isLoadingInitial = true;
-        setLoading(true, "Buscando código...");
-        try {
-          const result = await fetchBySku(rawUpper);
-          if (token !== prendasState.searchToken) {
-            return;
-          }
-          const items = result ? [result] : [];
-          prendasState.filtered = items;
-          prendasState.showingTotal = items.length;
-          prendasState.pageIndex = 0;
-          prendasState.hasNextPage = false;
-          await renderDocs(items);
-          setExactCountsFromItems(items);
-          if (!items.length) {
-            setPrendasAlert("No se encontró ese código. Revisa formato.");
-          }
-        } catch (error) {
-          if (token !== prendasState.searchToken) {
-            return;
-          }
-          console.error(error);
-          setPrendasAlert("No se pudo buscar el código en Firestore.");
-          prendasState.filtered = [];
-          prendasState.showingTotal = 0;
-          resetCounters();
-          await renderDocs([]);
-        } finally {
-          prendasState.isLoadingInitial = false;
-          setLoading(false);
-        }
-      };
-
-      const buildQueryKey = (filters, pageSize) =>
-        JSON.stringify({
-          filtersActive: hasActiveFilters(filters),
-          status: normalizeFilterValue(filters?.status ?? ""),
-          proveedor: normalizeFilterValue(filters?.proveedor ?? ""),
-          tipo: normalizeFilterValue(filters?.tipo ?? ""),
-          color: normalizeFilterValue(filters?.color ?? ""),
-          talla: normalizeFilterValue(filters?.talla ?? ""),
-          year: filters?.year ?? "",
-          month: filters?.month ?? "",
-          dateGranularity: filters?.dateRange?.granularity ?? "",
-          minPrice: filters?.minPrice ?? null,
-          maxPrice: filters?.maxPrice ?? null,
-          includeNoPrice: filters?.includeNoPrice ?? null,
-          query: normalizeFilterValue(filters?.query ?? filters?.searchRaw ?? ""),
-          pageSize
-        });
-
-      const getPageSize = () => {
-        const selected = Number(prendasPageSize?.value);
-        if (Number.isFinite(selected) && selected > 0) {
-          return selected;
-        }
-        return PRENDAS_PAGE_SIZE_DEFAULT;
-      };
-
-      const normalizeExact = (value) => safeString(value).trim();
-      const normalizeFilterValue = (value) => normalizeText(value);
-      const toNum = (value) => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
-      };
-
-      const matchFilters = (item, filters) => {
-        if (
-          filters.status &&
-          normalizeFilterValue(item.statusCanon || item.status) !==
-            normalizeFilterValue(filters.status)
-        ) {
-          return false;
-        }
-        if (
-          filters.proveedor &&
-          normalizeFilterValue(item.proveedor) !== normalizeFilterValue(filters.proveedor)
-        ) {
-          return false;
-        }
-        if (
-          filters.tipo &&
-          normalizeFilterValue(item.tipo) !== normalizeFilterValue(filters.tipo)
-        ) {
-          return false;
-        }
-        if (
-          filters.color &&
-          normalizeFilterValue(item.color) !== normalizeFilterValue(filters.color)
-        ) {
-          return false;
-        }
-        if (
-          filters.talla &&
-          normalizeFilterValue(item.talla) !== normalizeFilterValue(filters.talla)
-        ) {
-          return false;
-        }
-
-        const precio = toNum(item.pVenta);
-        const isNoPrice = precio === null || precio === 0;
-        if (isNoPrice) {
-          if (!filters.includeNoPrice) return false;
-        } else {
-          if (filters.minPrice != null && precio < filters.minPrice) return false;
-          if (filters.maxPrice != null && precio > filters.maxPrice) return false;
-        }
-
-        const q = normalizeExact(filters.query || filters.searchRaw);
-        if (q) {
-          const codigo = normalizeFilterValue(item.codigo);
-          const descripcion = normalizeFilterValue(item.descripcion);
-          const qTrim = normalizeFilterValue(q);
-          const qUpper = qTrim.toUpperCase();
-          const qLower = qTrim.toLowerCase();
-          if (looksLikeCodeSearch(qTrim)) {
-            if (!codigo.toUpperCase().startsWith(qUpper)) return false;
-          } else if (!descripcion.includes(qLower)) {
-            return false;
-          }
-        }
-        return true;
-      };
-
-      const getQueryMode = (filters) => {
-        const hasDateRange = Boolean(filters?.dateRange?.start && filters?.dateRange?.end);
-        const hasPriceRange = filters?.minPrice != null || filters?.maxPrice != null;
-
-        if (hasDateRange) {
-          return QUERY_MODE_DATE;
-        }
-        if (hasPriceRange) {
-          return QUERY_MODE_PRICE;
-        }
-        return QUERY_MODE_EQUALITY;
-      };
-
-      const buildBaseConstraints = (filters) => {
-        const constraints = [];
-        if (filters?.status) {
-          if (filters.status === "Disponible") {
-            constraints.push(where("status", "in", ["Disponible", "Existente", "En stock", "Activo"]));
-          } else if (filters.status === "Vendido") {
-            constraints.push(where("status", "==", "Vendido"));
-          }
-        }
-        if (filters?.proveedor) {
-          constraints.push(where("proveedor", "==", filters.proveedor));
-        }
-        if (filters?.tipo) {
-          constraints.push(where("tipo", "==", filters.tipo));
-        }
-        if (filters?.color) {
-          constraints.push(where("color", "==", filters.color));
-        }
-        if (filters?.talla) {
-          constraints.push(where("talla", "==", filters.talla));
-        }
-        return constraints;
-      };
-
-      const buildScanQuery = ({
-        cursor,
-        batchSize,
-        filters,
-        mode,
-        dateField = DATE_FIELD_PRIMARY
-      }) => {
-        const constraints = buildBaseConstraints(filters);
-
-        if (mode === QUERY_MODE_DATE && filters?.dateRange?.start && filters?.dateRange?.end) {
-          constraints.push(where(dateField, ">=", filters.dateRange.start));
-          constraints.push(where(dateField, "<", filters.dateRange.end));
-          constraints.push(orderBy(dateField, "desc"), orderBy(documentId(), "asc"));
-        } else if (mode === QUERY_MODE_PRICE) {
-          if (filters?.minPrice != null) {
-            constraints.push(where("pVenta", ">=", filters.minPrice));
-          }
-          if (filters?.maxPrice != null) {
-            constraints.push(where("pVenta", "<=", filters.maxPrice));
-          }
-          constraints.push(orderBy("pVenta", "asc"), orderBy(documentId(), "asc"));
-        } else {
-          constraints.push(orderBy(documentId(), "asc"));
-        }
-
-        if (cursor) {
-          constraints.push(startAfter(cursor));
-        }
-        constraints.push(limit(batchSize));
-        return query(prendas2025Ref, ...constraints);
-      };
-
-      const fetchScanBatch = async ({
-        cursor,
-        batchSize,
-        filters,
-        mode = QUERY_MODE_EQUALITY,
-        dateField = DATE_FIELD_PRIMARY
-      }) => {
-        const snap = await getDocs(
-          buildScanQuery({ cursor, batchSize, filters, mode, dateField })
-        );
-        return { snap };
-      };
-
-      const fetchDateHybridPage = async ({ filters, pageSize, pageIndex = 0, dateField = DATE_FIELD_PRIMARY }) => {
-        const dateQuerySnap = await getDocs(
-          buildScanQuery({
-            cursor: null,
-            batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
-            filters,
-            mode: QUERY_MODE_DATE,
-            dateField
-          })
-        );
-        const withDate = dateQuerySnap.docs.map((docSnap) => normalizeDoc(docSnap));
-
-        const baseSnap = await getDocs(
-          buildScanQuery({
-            cursor: null,
-            batchSize: PRENDAS_DATE_FALLBACK_LIMIT,
-            filters,
-            mode: QUERY_MODE_EQUALITY
-          })
-        );
-        const withoutDate = baseSnap.docs
-          .map((docSnap) => normalizeDoc(docSnap))
-          .filter((item) => !toDateValue(item[dateField]) && isInDateRange(item, filters?.dateRange));
-
-        const mergedMap = new Map();
-        [...withDate, ...withoutDate].forEach((item) => {
-          const key = safeString(item?.id || item?.codigo).trim();
-          if (!key || mergedMap.has(key)) return;
-          if (!matchFilters(item, filters)) return;
-          mergedMap.set(key, item);
-        });
-
-        const merged = [...mergedMap.values()].sort(compareItemsByDateDesc);
-        const startIndex = pageIndex * pageSize;
-        const endIndex = startIndex + pageSize;
-        const items = merged.slice(startIndex, endIndex);
-        const hasMore = endIndex < merged.length;
-
-        console.log("[Prendas] Date hybrid query", {
-          dateField,
-          withDateDocs: withDate.length,
-          withoutDateDocs: withoutDate.length,
-          mergedDocs: merged.length,
-          pageIndex,
-          pageSize
-        });
-
-        return { items, hasMore, totalMerged: merged.length };
-      };
-
-      const fetchPageByScan = async ({ cursor, filters, pageSize, pageIndex = 0 }) => {
-        const mode = getQueryMode(filters);
-        if (mode === QUERY_MODE_DATE) {
-          let activeDateField = DATE_FIELD_PRIMARY;
-          let hybrid = await fetchDateHybridPage({
-            filters,
-            pageSize,
-            pageIndex,
-            dateField: activeDateField
+            optionsEl.appendChild(row);
           });
-          if (!hybrid.totalMerged) {
-            activeDateField = DATE_FIELD_FALLBACK;
-            hybrid = await fetchDateHybridPage({
-              filters,
-              pageSize,
-              pageIndex,
-              dateField: activeDateField
-            });
-          }
-          console.log("[Prendas] Date filter field selected", {
-            requested: DATE_FIELD_PRIMARY,
-            used: activeDateField,
-            totalMerged: hybrid.totalMerged
-          });
-          return {
-            items: hybrid.items,
-            cursor,
-            hasMore: hybrid.hasMore,
-            pagesScanned: 1
-          };
-        }
+          updateCounters();
+        };
 
-        let currentCursor = cursor;
+        const updateCounters = () => {
+          const total = options.length;
+          const selectedCount = selected.size;
+          countEl.textContent = `(${selectedCount} seleccionados / ${total} total)`;
+          selectAllEl.checked = total > 0 && selectedCount === total;
+        };
+
+        selectAllEl.addEventListener("change", () => {
+          if (selectAllEl.checked) {
+            options.forEach((value) => selected.add(normalizeFilterValue(value)));
+          } else {
+            selected.clear();
+          }
+          refreshList();
+        });
+
+        searchEl.addEventListener("input", refreshList);
+
+        container.querySelector("[data-clear]").addEventListener("click", async () => {
+          prendasState.headerFilters[key] = new Set();
+          closeHeaderPopover();
+          await applyFilters();
+        });
+
+        container.querySelector("[data-apply]").addEventListener("click", async () => {
+          prendasState.headerFilters[key] = selected;
+          closeHeaderPopover();
+          await applyFilters();
+        });
+
+        prendasState.headerPopover = { key, container };
+        refreshList();
+      };
+
+      const loadBaseRows = async () => {
+        if (prendasState.baseRows.length) {
+          return prendasState.baseRows;
+        }
+        let cursor = null;
         let hasMore = true;
-        let pagesScanned = 0;
-        const items = [];
-
-        while (items.length < pageSize && hasMore && pagesScanned < PRENDAS_SCAN_MAX_PAGES) {
-          const { snap } = await fetchScanBatch({
-            cursor: currentCursor,
-            batchSize: PRENDAS_SCAN_PAGE_SIZE,
-            filters,
-            mode
-          });
-          const docsFetched = snap.docs.length;
-          pagesScanned += 1;
-          if (!docsFetched) {
+        const rows = [];
+        while (hasMore) {
+          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (cursor) constraints.splice(1, 0, startAfter(cursor));
+          const snap = await getDocs(query(prendas2025Ref, ...constraints));
+          if (snap.empty) {
             hasMore = false;
             break;
           }
-
-          const normalized = snap.docs.map((docSnap) => normalizeDoc(docSnap));
-          normalized.forEach((item) => {
-            if (items.length >= pageSize) return;
-            if (matchFilters(item, filters)) {
-              items.push(item);
-            }
-          });
-
-          currentCursor = snap.docs[docsFetched - 1];
-          if (docsFetched < PRENDAS_SCAN_PAGE_SIZE) {
+          snap.docs.forEach((docSnap) => rows.push(normalizeDoc(docSnap)));
+          cursor = snap.docs[snap.docs.length - 1];
+          if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
             hasMore = false;
           }
         }
-
-        return { items, cursor: currentCursor, hasMore, pagesScanned };
+        prendasState.baseRows = rows.sort(compareItemsByDateDesc);
+        return prendasState.baseRows;
       };
 
       const resetPrendasState = () => {
         prendasState.filtered = [];
+        prendasState.rowsAfterGlobal = [];
+        prendasState.rowsAfterAll = [];
         prendasState.isDone = false;
         prendasState.filtersActive = false;
         prendasState.showingTotal = null;
         prendasState.queryKey = "";
         prendasState.pageIndex = 0;
-        prendasState.pageCursors = [null];
         prendasState.hasNextPage = false;
+        prendasState.globalFilters = getCurrentGlobalFilters();
+        prendasState.headerFilters = createEmptyHeaderFilters();
+        prendasState.uniqueOptions = {};
+        closeHeaderPopover();
         resetCounters();
       };
 
@@ -2350,113 +2003,18 @@
         prendasTbody.textContent = "";
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 11;
+        cell.colSpan = 13;
         cell.textContent = "Cargando base de datos...";
         row.appendChild(cell);
         prendasTbody.appendChild(row);
         setCounter(0, prendasState.showingTotal);
       };
 
-      const refreshApproxCounts = async (filters) => {
-        const token = ++prendasState.countToken;
-        if (prendasCountNote) {
-          prendasCountNote.textContent = "Calculando conteos aproximados...";
-        }
-        let cursor = null;
-        let scanned = 0;
-        let total = 0;
-        let nuevos = 0;
-        let existentes = 0;
-        let hasMore = true;
-
-        while (hasMore && scanned < PRENDAS_COUNT_SCAN_LIMIT) {
-          const { snap } = await fetchScanBatch({
-            cursor,
-            batchSize: PRENDAS_COUNT_BATCH_SIZE,
-            filters,
-            mode: getQueryMode(filters)
-          });
-          if (token !== prendasState.countToken) {
-            return;
-          }
-          const docsFetched = snap.docs.length;
-          if (!docsFetched) {
-            hasMore = false;
-            break;
-          }
-
-          for (const docSnap of snap.docs) {
-            if (scanned >= PRENDAS_COUNT_SCAN_LIMIT) {
-              break;
-            }
-            const item = normalizeDoc(docSnap);
-            scanned += 1;
-            if (!matchFilters(item, filters)) {
-              continue;
-            }
-            total += 1;
-            if (isNew(getPrendaDate(item))) {
-              nuevos += 1;
-            } else {
-              existentes += 1;
-            }
-          }
-
-          cursor = snap.docs[docsFetched - 1];
-          if (docsFetched < PRENDAS_COUNT_BATCH_SIZE) {
-            hasMore = false;
-          }
-        }
-
-        const isApprox = scanned >= PRENDAS_COUNT_SCAN_LIMIT && hasMore;
-        if (token !== prendasState.countToken) {
-          return;
-        }
-        setApproxCounts({
-          total,
-          nuevos,
-          existentes,
-          isApprox,
-          preferMetadata: !hasActiveFilters(filters)
-        });
-      };
-
-      const loadMetadataCounts = async () => {
-        if (prendasState.metadataLoaded) {
-          return prendasState.metadataTotal;
-        }
-        prendasState.metadataLoaded = true;
-        try {
-          const snapshot = await getDoc(
-            doc(db, METADATA_COUNTS_DOC.collection, METADATA_COUNTS_DOC.doc)
-          );
-          if (!snapshot.exists()) {
-            return null;
-          }
-          const data = snapshot.data() || {};
-          const candidates = [
-            data.prendas_2025_total,
-            data.prendas2025Total,
-            data.HarujaPrendas_2025_total,
-            data.total,
-            data.prendasTotal
-          ];
-          const total = candidates.find((value) => Number.isFinite(Number(value)));
-          prendasState.metadataTotal = Number.isFinite(Number(total))
-            ? Number(total)
-            : null;
-          return prendasState.metadataTotal;
-        } catch (error) {
-          console.warn("[Prendas] No se pudo leer metadata de conteos.", error);
-          return null;
-        }
-      };
-
-      const getMetadataTotalForDisplay = (filters) => {
-        if (hasActiveFilters(filters)) return null;
-        return Number.isFinite(prendasState.metadataTotal)
-          ? prendasState.metadataTotal
-          : null;
+      const refreshExactCounts = (rowsAfterAll) => {
+        const total = rowsAfterAll.length;
+        const nuevos = rowsAfterAll.filter((item) => isNew(getPrendaDate(item))).length;
+        const existentes = total - nuevos;
+        setApproxCounts({ total, nuevos, existentes, isApprox: false });
       };
 
       const getLoadingMessageByReason = (reason) => {
@@ -2484,74 +2042,39 @@
         setPrendasAlert("");
         prendasState.isLoadingInitial = true;
         setLoading(true, getLoadingMessageByReason(reason));
-        const rid = ++prendasState.reqId;
         try {
           if (reset) {
-            resetPrendasState();
+            prendasState.pageIndex = 0;
             renderLoadingPlaceholder();
           }
-          const filters = getCurrentFilters();
-          const pageSize = getPageSize();
-          const queryKey = buildQueryKey(filters, pageSize);
-          const isNewQuery = reset || queryKey !== prendasState.queryKey;
-          if (isNewQuery) {
-            prendasState.pageCursors = [null];
-            pageIndex = 0;
-            prendasState.queryKey = queryKey;
-          }
-          if (pageIndex > 0 && !prendasState.pageCursors[pageIndex]) {
-            return;
-          }
-          prendasState.filters = filters;
-          prendasState.filtersActive = hasActiveFilters(filters);
-          if (reason === "init") {
-            console.log("[Prendas] Init filters", {
-              ...filters,
-              applyDateRange: Boolean(filters?.dateRange?.start && filters?.dateRange?.end)
-            });
-          }
-          const cursor = prendasState.pageCursors[pageIndex] ?? null;
-          const { items, cursor: nextCursor, hasMore } = await fetchPageByScan({
-            cursor,
-            filters,
-            pageSize,
-            pageIndex
+          const baseRows = await loadBaseRows();
+          const rowsAfterAll = applyAllFilters(baseRows);
+          HEADER_FILTER_KEYS.forEach((key) => {
+            prendasState.uniqueOptions[key] = getUniqueOptions(prendasState.rowsAfterGlobal, key);
           });
-          if (rid !== prendasState.reqId) {
-            return;
-          }
+          updateHeaderFilterButtonsState();
+          const pageSize = getPageSize();
+          const totalRows = rowsAfterAll.length;
+          const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+          const safePageIndex = Math.min(Math.max(pageIndex, 0), totalPages - 1);
+          const start = safePageIndex * pageSize;
+          const items = rowsAfterAll.slice(start, start + pageSize);
 
           prendasState.filtered = items;
-          prendasState.showingTotal = getMetadataTotalForDisplay(filters);
-          prendasState.pageIndex = pageIndex;
-          prendasState.hasNextPage = hasMore && items.length === pageSize;
-          prendasState.pageCursors[pageIndex + 1] = nextCursor ?? null;
+          prendasState.pageIndex = safePageIndex;
+          prendasState.hasNextPage = safePageIndex < totalPages - 1;
+          prendasState.filtersActive = hasActiveFilters(getCurrentFilters());
+          prendasState.showingTotal = totalRows;
+
           await renderDocs(items);
+          refreshExactCounts(rowsAfterAll);
 
-          if (prendasState.filtersActive) {
-            setPrendasAlert(
-              items.length
-                ? `Mostrando ${items.length} resultados en esta página.`
-                : "No hay resultados con los filtros actuales."
-            );
-          } else {
-            setPrendasAlert("");
+          if (prendasState.filtersActive && !items.length) {
+            setPrendasAlert("No hay resultados con los filtros actuales.");
           }
-
-          if (isNewQuery) {
-            void refreshApproxCounts(filters);
-          }
-
-          console.log("[Prendas] Página cargada", {
-            reason,
-            pageIndex,
-            docs: items.length
-          });
         } catch (error) {
-          if (!handleIndexError(error)) {
-            console.error(error);
-            setPrendasAlert("No se pudo cargar la base de datos de códigos.");
-          }
+          console.error(error);
+          setPrendasAlert("No se pudo cargar la base de datos de códigos.");
         } finally {
           prendasState.isLoadingInitial = false;
           setLoading(false);
@@ -2561,6 +2084,155 @@
 
       const applyFilters = async () => {
         await loadPrendasPage({ reset: true, reason: "filters" });
+      };
+
+
+      const normalizeFilterValue = (value) => normalizeText(value);
+      const toNum = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+
+      const getPageSize = () => {
+        const selected = Number(prendasPageSize?.value);
+        if (Number.isFinite(selected) && selected > 0) {
+          return selected;
+        }
+        return PRENDAS_PAGE_SIZE_DEFAULT;
+      };
+
+      const renderRowsChunked = (
+        rows,
+        tbody,
+        chunkSize = PRENDAS_RENDER_CHUNK,
+        token
+      ) =>
+        new Promise((resolve) => {
+          let index = 0;
+          const appendChunk = () => {
+            if (token && token !== prendasState.renderToken) {
+              resolve(0);
+              return;
+            }
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < chunkSize && index < rows.length; i += 1) {
+              fragment.appendChild(createPrendaRow(rows[index]));
+              index += 1;
+            }
+            tbody.appendChild(fragment);
+            if (index < rows.length) {
+              requestAnimationFrame(appendChunk);
+              return;
+            }
+            resolve(0);
+          };
+          requestAnimationFrame(appendChunk);
+        });
+
+      const buildBadge = (text, className) => {
+        const badge = document.createElement("span");
+        badge.className = `badge ${className}`;
+        badge.textContent = text;
+        return badge;
+      };
+
+      const createPrendaRow = (item) => {
+        const codigo = safeString(item.codigo || item.code) || "--";
+        const descripcion = safeString(item.descripcion) || "--";
+        const tipo = safeString(item.tipo) || "--";
+        const color = safeString(item.color) || "--";
+        const talla = safeString(item.talla) || "--";
+        const proveedor = safeString(item.proveedor) || "--";
+        const statusCell = renderStatusCell(item.statusCanon || item.status);
+        const disponibilidadCell = renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status);
+        const fecha = formatDateCell(item);
+        const pVenta = formatMoney(item.pVenta);
+        const costo = formatMoney(item.costo);
+        const margen = formatPercent(item.margen);
+        const utilidad = formatMoney(item.utilidad);
+
+        const row = document.createElement("tr");
+        row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
+        const cells = [codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
+        cells.forEach((value, index) => {
+          if (value instanceof HTMLElement) {
+            if (index >= 10) value.classList.add("admin-only");
+            row.appendChild(value);
+            return;
+          }
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          if (index >= 10) cell.classList.add("admin-only");
+          row.appendChild(cell);
+        });
+        return row;
+      };
+
+      const renderDocs = async (rows) => {
+        prendasState.renderToken += 1;
+        const token = prendasState.renderToken;
+        const showingTotal = Number.isFinite(prendasState.showingTotal)
+          ? prendasState.showingTotal
+          : null;
+        setCounter(rows.length, showingTotal);
+        updatePaginationUi();
+
+        prendasTbody.textContent = "";
+        if (!rows.length) {
+          let emptyNode = null;
+          if (prendasEmptyRow) {
+            emptyNode = prendasEmptyRow instanceof HTMLTemplateElement
+              ? prendasEmptyRow.content.cloneNode(true)
+              : prendasEmptyRow.cloneNode(true);
+          }
+          if (!emptyNode) {
+            const emptyRow = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = 13;
+            cell.textContent = "No hay resultados con los filtros actuales.";
+            emptyRow.appendChild(cell);
+            emptyNode = emptyRow;
+          }
+          prendasTbody.appendChild(emptyNode);
+          setCounter(0, showingTotal);
+          return;
+        }
+        await renderRowsChunked(rows, prendasTbody, PRENDAS_RENDER_CHUNK, token);
+      };
+
+      const setSkuSearchMode = (enabled) => {
+        prendasState.isSkuSearch = enabled;
+        updatePaginationUi();
+      };
+
+      const fetchBySku = async (rawInput) => {
+        const rawUpper = safeString(rawInput).trim().toUpperCase();
+        const normalizedSku = normalizeSku(rawUpper);
+        if (!rawUpper) return null;
+        const directSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, normalizedSku));
+        if (directSnap.exists()) return normalizeDoc(directSnap);
+        const altSnap = await getDoc(doc(db, PRENDAS_2025_COLLECTION, rawUpper));
+        if (altSnap.exists()) return normalizeDoc(altSnap);
+        return null;
+      };
+
+      const runSkuSearch = async (rawInput) => {
+        const rawUpper = safeString(rawInput).trim().toUpperCase();
+        if (!rawUpper) return;
+        setSkuSearchMode(true);
+        setLoading(true, "Buscando código...");
+        try {
+          const result = await fetchBySku(rawUpper);
+          const items = result ? [result] : [];
+          prendasState.filtered = items;
+          prendasState.showingTotal = items.length;
+          prendasState.pageIndex = 0;
+          prendasState.hasNextPage = false;
+          await renderDocs(items);
+          refreshExactCounts(items);
+        } finally {
+          setLoading(false);
+        }
       };
 
       const ensureRequired = () => {
@@ -3039,10 +2711,24 @@
         if (isBooting) return;
         setSkuSearchMode(false);
         clearFiltersUi();
+        clearHeaderFilters();
         await loadPrendasPage({ reset: true, reason: "filters-clear" });
       };
 
       prendasSearch.addEventListener("input", handleSearchInput);
+      headerFilterButtons.forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const key = button.dataset.openHeaderFilter;
+          renderHeaderFilterPopover(key, button);
+        });
+      });
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (prendasState.headerPopover?.container && !prendasState.headerPopover.container.contains(target)) {
+          closeHeaderPopover();
+        }
+      });
       prendasPrecioApply.addEventListener("click", handleFilterApply);
       if (prendasFiltersClear) {
         prendasFiltersClear.addEventListener("click", handleFilterClear);
@@ -3177,10 +2863,6 @@
             }
           });
           try {
-            await loadFilterDictionaries();
-            await loadPrendasPage({ reset: true, reason: "init" });
-          } catch (error) {
-            console.warn("No se pudieron cargar los filtros completos.", error);
             await loadPrendasPage({ reset: true, reason: "init" });
           } finally {
             prendasState.isLoadingInitial = false;
