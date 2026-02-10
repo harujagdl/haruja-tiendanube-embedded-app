@@ -254,6 +254,7 @@
       }
 
       .th-filter {
+        position: relative;
         display: inline-flex;
         align-items: center;
         gap: 8px;
@@ -262,23 +263,25 @@
       .filter-btn {
         position: relative;
         border: 1px solid #d0d5dd;
-        background: #fff;
-        border-radius: 8px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border-radius: 10px;
         font-size: 12px;
-        width: 24px;
-        height: 24px;
+        width: 26px;
+        height: 26px;
         line-height: 1;
         color: #475467;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
         transition: all 0.2s ease;
       }
 
       .filter-btn:hover {
         border-color: #98a2b3;
-        background: #f9fafb;
+        background: #f8fafc;
+        transform: translateY(-1px);
       }
 
       .filter-btn:focus-visible {
@@ -305,17 +308,25 @@
       }
 
       .filter-popover {
-        position: absolute;
-        z-index: 80;
+        position: fixed;
+        z-index: 9999;
         width: 300px;
-        max-height: 420px;
+        max-height: min(430px, calc(100vh - 24px));
         overflow: hidden;
-        border-radius: 14px;
+        border-radius: 16px;
         border: 1px solid #e4e7ec;
         background: #fff;
-        box-shadow: 0 18px 35px rgba(16, 24, 40, 0.16);
+        box-shadow:
+          0 20px 36px rgba(16, 24, 40, 0.14),
+          0 4px 10px rgba(16, 24, 40, 0.08);
         display: grid;
         grid-template-rows: auto auto auto 1fr auto;
+        font-size: 13px;
+      }
+
+      .filter-popover.range-popover {
+        width: clamp(280px, 30vw, 320px);
+        grid-template-rows: auto auto auto;
       }
 
       .filter-popover .popover-head {
@@ -336,11 +347,11 @@
       }
 
       .filter-popover .search-wrap::before {
-        content: "🔎";
+        content: "⌕";
         position: absolute;
-        left: 20px;
-        top: 19px;
-        font-size: 12px;
+        left: 21px;
+        top: 18px;
+        font-size: 14px;
         opacity: 0.7;
       }
 
@@ -380,7 +391,7 @@
 
       .filter-popover .options {
         padding: 8px;
-        max-height: 210px;
+        max-height: 220px;
         overflow: auto;
       }
 
@@ -391,6 +402,14 @@
         padding: 7px 8px;
         border-radius: 8px;
         font-size: 13px;
+        cursor: pointer;
+      }
+
+      .filter-popover .option-row input {
+        margin: 0;
+        width: 15px;
+        height: 15px;
+        flex: 0 0 auto;
       }
 
       .filter-popover .option-row:hover {
@@ -416,8 +435,20 @@
 
       .filter-popover .range-fields {
         display: grid;
-        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
         padding: 10px 12px;
+      }
+
+      .filter-popover .range-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .filter-popover .range-field label {
+        margin: 0;
+        font-size: 12px;
+        color: #667085;
       }
 
       .filter-popover .hint {
@@ -1283,6 +1314,8 @@
         "disponibilidad"
       ];
       const HEADER_RANGE_KEY = "pventa";
+      const HEADER_POPOVER_MARGIN = 12;
+      const HEADER_POPOVER_OFFSET = 8;
       const createEmptyHeaderFilters = () => ({
         status: new Set(),
         proveedor: new Set(),
@@ -2003,10 +2036,60 @@
       };
 
       const closeHeaderPopover = () => {
+        if (prendasState.headerPopover?.cleanup) {
+          prendasState.headerPopover.cleanup();
+        }
         if (prendasState.headerPopover?.container) {
           prendasState.headerPopover.container.remove();
         }
         prendasState.headerPopover = null;
+      };
+
+      const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+      const positionHeaderPopover = () => {
+        if (!prendasState.headerPopover?.container || !prendasState.headerPopover?.anchorButton) {
+          return;
+        }
+        const { container, anchorButton } = prendasState.headerPopover;
+        const anchorRect = anchorButton.getBoundingClientRect();
+        const popoverRect = container.getBoundingClientRect();
+
+        let left = anchorRect.right - popoverRect.width;
+        let top = anchorRect.bottom + HEADER_POPOVER_OFFSET;
+
+        const maxLeft = window.innerWidth - popoverRect.width - HEADER_POPOVER_MARGIN;
+        const maxTop = window.innerHeight - popoverRect.height - HEADER_POPOVER_MARGIN;
+
+        if (top + popoverRect.height > window.innerHeight - HEADER_POPOVER_MARGIN) {
+          top = anchorRect.top - popoverRect.height - HEADER_POPOVER_OFFSET;
+        }
+
+        left = clamp(left, HEADER_POPOVER_MARGIN, maxLeft);
+        top = clamp(top, HEADER_POPOVER_MARGIN, maxTop);
+
+        container.style.left = `${left}px`;
+        container.style.top = `${top}px`;
+      };
+
+      const bindHeaderPopoverPositioning = (container, anchorButton, key) => {
+        const handleResize = () => positionHeaderPopover();
+        const handleScroll = () => positionHeaderPopover();
+
+        window.addEventListener("resize", handleResize);
+        window.addEventListener("scroll", handleScroll, true);
+
+        prendasState.headerPopover = {
+          key,
+          container,
+          anchorButton,
+          cleanup: () => {
+            window.removeEventListener("resize", handleResize);
+            window.removeEventListener("scroll", handleScroll, true);
+          }
+        };
+
+        requestAnimationFrame(positionHeaderPopover);
       };
 
       const renderHeaderFilterPopover = (key, anchorButton) => {
@@ -2014,18 +2097,21 @@
         const container = document.createElement("div");
         container.className = "filter-popover";
 
-        const rect = anchorButton.getBoundingClientRect();
-        container.style.top = `${window.scrollY + rect.bottom + 6}px`;
-        container.style.left = `${window.scrollX + rect.left}px`;
-
         if (key === HEADER_RANGE_KEY) {
+          container.classList.add("range-popover");
           const currentMin = prendasState.filters.header.pventaMin;
           const currentMax = prendasState.filters.header.pventaMax;
           container.innerHTML = `
             <div class="popover-head"><p class="popover-title">Filtrar P. Venta</p></div>
             <div class="range-fields">
-              <input type="number" min="0" step="0.01" placeholder="Mínimo" value="${currentMin ?? ""}" data-range-min />
-              <input type="number" min="0" step="0.01" placeholder="Máximo" value="${currentMax ?? ""}" data-range-max />
+              <div class="range-field">
+                <label for="range-min">Mínimo</label>
+                <input id="range-min" type="number" min="0" step="0.01" placeholder="0.00" value="${currentMin ?? ""}" data-range-min />
+              </div>
+              <div class="range-field">
+                <label for="range-max">Máximo</label>
+                <input id="range-max" type="number" min="0" step="0.01" placeholder="0.00" value="${currentMax ?? ""}" data-range-max />
+              </div>
             </div>
             <div class="hint" data-range-hint></div>
             <div class="actions">
@@ -2058,7 +2144,7 @@
             await applyFilters();
           });
 
-          prendasState.headerPopover = { key, container };
+          bindHeaderPopoverPositioning(container, anchorButton, key);
           return;
         }
 
@@ -2133,7 +2219,7 @@
           await applyFilters();
         });
 
-        prendasState.headerPopover = { key, container };
+        bindHeaderPopoverPositioning(container, anchorButton, key);
         refreshList();
       };
 
