@@ -123,6 +123,62 @@ npm run deploy
 
 > El backfill es idempotente: si un documento ya tiene `searchTokens` con `searchVersion` actualizado, se omite.
 
+## Plan de deploy de Functions sin "cobros sorpresa" (Cloud Billing API)
+
+Si el deploy falla con error `403` relacionado a **Cloud Billing API**, sigue este plan operativo (copy/paste friendly):
+
+```text
+OBJETIVO
+- Terminar el deploy de Firebase Functions para poder importar el XLSX y crear:
+  - HarujaPrendas_2025_public
+  - HarujaPrendas_2025_admin
+- Entender impacto de costos:
+  - Activar APIs NO cobra
+  - Cobran los USOS del servicio
+
+FASE 1 — Aclaración rápida (costos)
+1) Activar una API (Enable) = NO genera cargos por sí mismo.
+2) Cargos solo ocurren si:
+   - Ejecutas Cloud Functions (invocaciones/tiempo)
+   - Lees/escribes Firestore (lecturas/escrituras/almacenamiento)
+   - Usas Cloud Run (si aplica, en 2nd gen)
+3) Nuestro uso aquí es BAJO:
+   - 1 importación inicial (una vez)
+   - Lecturas normales del panel
+
+FASE 2 — Resolver el bloqueo actual (Cloud Billing API 403)
+4) Abrir el link del error y habilitar la API:
+   - cloudbilling.googleapis.com
+   (solo habilitar API, NO crear cuenta de billing si no te lo pide explícitamente)
+5) Reintentar el deploy en GitHub Actions.
+
+FASE 3 — Si vuelve a fallar por “Billing account required” (plan Spark)
+6) Si el error cambia a algo tipo:
+   - “Cloud Functions requires billing account / Blaze”
+   Entonces hay dos rutas:
+
+   RUTA A (sin billing, recomendada si NO quieres pagar):
+   - NO usar Cloud Functions para importar
+   - Importar el XLSX desde tu PC con un script (Node) usando credenciales de service account
+   - Subir docs directo a Firestore (una sola vez)
+   - El panel ya funciona solo con Firestore
+
+   RUTA B (con billing, para funciones y futuro):
+   - Activar Blaze y vincular billing
+   - Limitar costos con:
+     - presupuestos y alertas
+     - límites y buenas prácticas
+
+FASE 4 — Importación (si Functions ya despliega)
+7) Confirmar que existe la function:
+   - importPrendasFromXlsx
+8) Ejecutar:
+   - curl -X POST "URL_DE_LA_FUNCTION"
+9) Confirmar creación:
+   - HarujaPrendas_2025_public
+   - HarujaPrendas_2025_admin
+```
+
 ---
 
 # Conteos aproximados en la base de datos de códigos
