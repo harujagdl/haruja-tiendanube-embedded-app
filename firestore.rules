@@ -1,10 +1,6 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isSignedIn() {
-      return request.auth != null;
-    }
 
     function isAdmin() {
       return request.auth != null
@@ -15,34 +11,45 @@ service cloud.firestore {
         ];
     }
 
-    // ✅ LISTADO PÚBLICO (sin costo/margen/iva)
+    // ✅ Público: listado sin datos sensibles
     match /HarujaPrendas_2025_public/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // 🔒 DATOS SENSIBLES SOLO ADMIN
+    // 🔒 Privado: datos reales (solo admin)
     match /HarujaPrendas_2025/{docId} {
       allow read, write: if isAdmin();
     }
 
-    // (Opcional) diccionarios públicos
-    match /diccionario_{any}/{docId} {
+    // ✅ Diccionarios (si existen como colecciones exactas)
+    match /diccionario_colores/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
+    match /diccionario_tallas/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /diccionario_tipos/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /diccionario_proveedores/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ✅ counters
     match /counters/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    match /metadata/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // Bloquea todo lo demás por defecto
+    // 🚫 Default deny (siempre al final)
     match /{document=**} {
       allow read, write: if false;
     }
