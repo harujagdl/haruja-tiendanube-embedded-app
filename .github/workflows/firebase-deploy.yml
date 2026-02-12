@@ -33,6 +33,6 @@ jobs:
         run: |
           firebase deploy \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
-            --only firestore:indexes,firestore:rules,hosting \
+            --only firestore:indexes,firestore:rules,hosting,functions \
             --force \
             --non-interactive
