@@ -958,15 +958,21 @@
         signOut
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-      // TODO: Reemplazar estos valores con la configuración real del proyecto Firebase.
+      const runtimeFirebaseConfig = globalThis.__HARUJA_FIREBASE_CONFIG__ || {};
       const firebaseConfig = {
-        apiKey: "REEMPLAZAR_API_KEY",
-        authDomain: "haruja-tiendanube.firebaseapp.com",
-        projectId: "haruja-tiendanube",
-        storageBucket: "haruja-tiendanube.appspot.com",
-        messagingSenderId: "REEMPLAZAR_SENDER_ID",
-        appId: "REEMPLAZAR_APP_ID"
+        apiKey: runtimeFirebaseConfig.apiKey || "",
+        authDomain: runtimeFirebaseConfig.authDomain || "haruja-tiendanube.firebaseapp.com",
+        projectId: runtimeFirebaseConfig.projectId || "haruja-tiendanube",
+        storageBucket: runtimeFirebaseConfig.storageBucket || "haruja-tiendanube.appspot.com",
+        messagingSenderId: runtimeFirebaseConfig.messagingSenderId || "",
+        appId: runtimeFirebaseConfig.appId || ""
       };
+
+      if (!firebaseConfig.apiKey || !firebaseConfig.appId || !firebaseConfig.messagingSenderId) {
+        console.warn(
+          "[Firebase] Config incompleta. Define window.__HARUJA_FIREBASE_CONFIG__ con apiKey/appId/messagingSenderId válidos."
+        );
+      }
 
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
@@ -2886,6 +2892,8 @@
           applyAdminUI();
         } catch (error) {
           console.error(error);
+          setAdminViewEnabled(false);
+          setAdminPanelVisible(false);
           setAdminLoginStatus("No se pudo iniciar sesión con Google.", "error");
         } finally {
           if (adminLoginButton) {
