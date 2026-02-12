@@ -7,7 +7,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn()
+      return request.auth != null
         && request.auth.token.email in [
           "yair.tenorio.silva@gmail.com",
           "harujagdl@gmail.com",
@@ -22,7 +22,7 @@ service cloud.firestore {
     }
 
     // 🔒 DATOS SENSIBLES SOLO ADMIN
-    match /HarujaPrendas_2025_admin/{docId} {
+    match /HarujaPrendas_2025/{docId} {
       allow read, write: if isAdmin();
     }
 
