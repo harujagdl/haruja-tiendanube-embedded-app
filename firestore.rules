@@ -1,4 +1,4 @@
-rules_version='2';
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -6,53 +6,43 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdminEmail() {
-      return isSignedIn() && request.auth.token.email != null && (
-        request.auth.token.email == "yair.tenorio.silva@gmail.com" ||
-        request.auth.token.email == "harujagdl@gmail.com" ||
-        request.auth.token.email == "harujagdl.ventas@gmail.com"
-      );
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email in [
+          "yair.tenorio.silva@gmail.com",
+          "harujagdl@gmail.com",
+          "harujagdl.ventas@gmail.com"
+        ];
     }
 
-    match /diccionario_tipos/{docId} {
-      allow read: if true;
-      allow write: if isAdminEmail();
-    }
-
-    match /diccionario_proveedores/{docId} {
-      allow read: if true;
-      allow write: if isAdminEmail();
-    }
-
-    match /diccionario_colores/{docId} {
-      allow read: if true;
-      allow write: if isAdminEmail();
-    }
-
-    match /diccionario_tallas/{docId} {
-      allow read: if true;
-      allow write: if isAdminEmail();
-    }
-
+    // ✅ LISTADO PÚBLICO (sin costo/margen/iva)
     match /HarujaPrendas_2025_public/{docId} {
       allow read: if true;
-      allow write: if isAdminEmail();
+      allow write: if isAdmin();
     }
 
+    // 🔒 DATOS SENSIBLES SOLO ADMIN
     match /HarujaPrendas_2025_admin/{docId} {
-      allow read, write: if isAdminEmail();
+      allow read, write: if isAdmin();
+    }
+
+    // (Opcional) diccionarios públicos
+    match /diccionario_{any}/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /counters/{docId} {
       allow read: if true;
-      allow write: if isAdminEmail();
+      allow write: if isAdmin();
     }
 
     match /metadata/{docId} {
       allow read: if true;
-      allow write: if isAdminEmail();
+      allow write: if isAdmin();
     }
 
+    // Bloquea todo lo demás por defecto
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1295,17 +1295,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
-      // 🔧 Colecciones candidatas (incluye nombres históricos)
-      const PRENDAS_COLLECTION_CANDIDATES = [
-        "prendas",
-        "Prendas",
-        "prendas_2025",
-        "HarujaPrendas_2025",
-        "productos",
-        "Products",
-        PRENDAS_PUBLIC_COLLECTION,
-        PRENDAS_ADMIN_COLLECTION
-      ];
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -1411,19 +1400,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         headerPopover: null
       };
       let isBooting = true;
-
-      async function pickWorkingCollection(dbInstance, candidates) {
-        for (const name of candidates) {
-          try {
-            const snap = await getDocs(query(collection(dbInstance, name), limit(1)));
-            console.log(`[Prendas] Probe collection="${name}" size=${snap.size}`);
-            if (snap.size > 0) return name;
-          } catch (error) {
-            console.warn(`[Prendas] Probe FAILED collection="${name}"`, error?.code || error);
-          }
-        }
-        return null;
-      }
 
       const setPrendasCollections = ({ publicCollection, adminCollection }) => {
         activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
@@ -2302,15 +2278,20 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const loadAdminCostMap = async () => {
         const adminCostMap = new Map();
-        let cursor = null;
-        let hasMore = true;
-        while (hasMore) {
-          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          if (cursor) constraints.splice(1, 0, startAfter(cursor));
-          const snap = await getDocs(query(prendasAdminRef, ...constraints));
+        const visibleDocIds = (prendasState.filtered || [])
+          .map((item) => safeString(item.docId || item.id).trim())
+          .filter(Boolean);
+        if (!visibleDocIds.length || !auth.currentUser || !prendasState.isAdmin) {
+          return adminCostMap;
+        }
+
+        for (let i = 0; i < visibleDocIds.length; i += 10) {
+          const chunk = visibleDocIds.slice(i, i + 10);
+          const snap = await getDocs(
+            query(prendasAdminRef, where(documentId(), "in", chunk))
+          );
           if (snap.empty) {
-            hasMore = false;
-            break;
+            continue;
           }
           snap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
@@ -2319,17 +2300,12 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
               adminCostMap.set(docSnap.id, costo);
             }
           });
-          cursor = snap.docs[snap.docs.length - 1];
-          if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
-            hasMore = false;
-          }
         }
         return adminCostMap;
       };
 
       const loadBaseRows = async () => {
-        const shouldIncludeAdmin = Boolean(prendasState.isAdmin);
-        const cacheKey = shouldIncludeAdmin ? "admin" : "public";
+        const cacheKey = "public";
         if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
           return prendasState.baseRows;
         }
@@ -2352,29 +2328,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           }
         }
 
-        if (shouldIncludeAdmin) {
-          const adminCostMap = await loadAdminCostMap();
-          rows.forEach((row) => {
-            const costo = adminCostMap.get(row.id);
-            if (Number.isFinite(costo)) {
-              row.costo = costo;
-              const basePrice = Number.isFinite(row.pVenta) ? Number((row.pVenta / 1.16).toFixed(2)) : null;
-              row.utilidad = Number.isFinite(basePrice)
-                ? Number((basePrice - costo).toFixed(2))
-                : null;
-              row.margen =
-                Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(row.utilidad)
-                  ? Number((row.utilidad / basePrice).toFixed(3))
-                  : null;
-            }
-          });
-        } else {
-          rows.forEach((row) => {
-            row.costo = null;
-            row.utilidad = null;
-            row.margen = null;
-          });
-        }
+        rows.forEach((row) => {
+          row.costo = null;
+          row.utilidad = null;
+          row.margen = null;
+        });
 
         prendasState.baseRows = rows.sort(compareItemsByDateDesc);
         prendasState.baseRowsCacheKey = cacheKey;
@@ -2464,6 +2422,30 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const items = rowsAfterAll.slice(start, start + pageSize);
 
           prendasState.filtered = items;
+
+          if (prendasState.isAdmin && auth.currentUser && items.length) {
+            const adminCostMap = await loadAdminCostMap();
+            items.forEach((row) => {
+              const lookupId = safeString(row.docId || row.id).trim();
+              const costo = adminCostMap.get(lookupId);
+              if (Number.isFinite(costo)) {
+                row.costo = costo;
+                const basePrice = Number.isFinite(row.pVenta)
+                  ? Number((row.pVenta / 1.16).toFixed(2))
+                  : null;
+                row.utilidad = Number.isFinite(basePrice)
+                  ? Number((basePrice - costo).toFixed(2))
+                  : null;
+                row.margen =
+                  Number.isFinite(basePrice) &&
+                  basePrice !== 0 &&
+                  Number.isFinite(row.utilidad)
+                    ? Number((row.utilidad / basePrice).toFixed(3))
+                    : null;
+              }
+            });
+          }
+
           prendasState.pageIndex = safePageIndex;
           prendasState.hasNextPage = safePageIndex < totalPages - 1;
           prendasState.filtersActive = hasActiveFilters(getCurrentFilters());
@@ -3199,19 +3181,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           // ADMIN DB MODE END
           setSkuSearchMode(false);
 
-          const picked = await pickWorkingCollection(db, PRENDAS_COLLECTION_CANDIDATES);
-          if (!picked) {
-            console.error("[Prendas] ❌ No encontré ninguna colección con datos. Revisa nombres o proyecto Firebase.");
-            setPrendasAlert("No se encontró la colección de prendas. Revisa configuración de Firebase o el nombre de la colección.");
-            return;
-          }
-
-          const adminPicked = picked.endsWith("_public")
-            ? `${picked.slice(0, -"_public".length)}_admin`
-            : PRENDAS_ADMIN_COLLECTION;
           setPrendasCollections({
-            publicCollection: picked,
-            adminCollection: adminPicked
+            publicCollection: PRENDAS_PUBLIC_COLLECTION,
+            adminCollection: PRENDAS_ADMIN_COLLECTION
           });
 
           try {
@@ -3222,7 +3194,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             });
             console.log("[Prendas] snapshot size:", baseSnapshot.size);
           } catch (error) {
-            console.warn("[Prendas] No se pudo medir query base sin filtros", error);
+            console.error("[Prendas] ❌ No se pudo leer la colección pública", error);
+            setPrendasAlert("No se encontró la colección pública o las reglas de Firestore la están bloqueando.");
+            return;
           }
           try {
             if (typeof loadMetadataCounts === "function") {
