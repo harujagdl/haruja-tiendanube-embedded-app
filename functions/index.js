@@ -6,8 +6,10 @@ const {randomUUID} = require("crypto");
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
+const db = admin.firestore();
 
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
+const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -27,6 +29,59 @@ const STOPWORDS = new Set([
   "una"
 ]);
 const adminSessions = new Map();
+
+const stripSensitive = (data = {}) => {
+  const copy = {...data};
+  delete copy.costo;
+  delete copy.iva;
+  delete copy.margen;
+  delete copy.utilidad;
+  return copy;
+};
+
+exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
+  try {
+    const snapshot = await db.collection(PRENDAS_COLLECTION).get();
+    const total = snapshot.size;
+
+    if (total === 0) {
+      return res.status(200).json({ok: true, total: 0, message: "SRC empty"});
+    }
+
+    let batch = db.batch();
+    let batchCount = 0;
+    let written = 0;
+
+    for (const docSnap of snapshot.docs) {
+      const data = stripSensitive(docSnap.data());
+      const destRef = db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id);
+
+      batch.set(destRef, data, {merge: true});
+      batchCount += 1;
+      written += 1;
+
+      if (batchCount >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    return res.status(200).json({
+      ok: true,
+      total,
+      written,
+      dest: PRENDAS_PUBLIC_COLLECTION
+    });
+  } catch (error) {
+    logger.error("syncPublicPrendas2025 failed", error);
+    return res.status(500).json({ok: false, error: String(error)});
+  }
+});
 
 const safeString = (value) => {
   if (value === null || value === undefined) return "";
