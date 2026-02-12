@@ -3,6 +3,8 @@ const {setGlobalOptions} = require("firebase-functions");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
+const path = require("path");
+const XLSX = require("xlsx");
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -10,6 +12,7 @@ const db = admin.firestore();
 
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
 const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
+const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -29,6 +32,19 @@ const STOPWORDS = new Set([
   "una"
 ]);
 const adminSessions = new Map();
+
+const safeDocId = (val) => String(val ?? "").trim().replaceAll("/", "_");
+
+const getCell = (sheet, col, row) => {
+  const cell = sheet[`${col}${row}`];
+  return cell ? cell.v : "";
+};
+
+const toNumber = (v) => {
+  if (!v) return null;
+  const n = Number(String(v).replace(/[,$\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
 
 const stripSensitive = (data = {}) => {
   const copy = {...data};
@@ -80,6 +96,69 @@ exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
   } catch (error) {
     logger.error("syncPublicPrendas2025 failed", error);
     return res.status(500).json({ok: false, error: String(error)});
+  }
+});
+
+exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
+  try {
+    const filePath = path.join(__dirname, "data", "HarujaPrendas_2025.xlsx");
+    const wb = XLSX.readFile(filePath);
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+
+    let batch = db.batch();
+    let ops = 0;
+    let count = 0;
+
+    for (let r = 2; r <= range.e.r + 1; r++) {
+      const codigo = String(getCell(sheet, "B", r)).trim();
+      if (!codigo) continue;
+
+      const docId = safeDocId(codigo);
+
+      const publicObj = {
+        orden: toNumber(getCell(sheet, "A", r)),
+        codigo,
+        descripcion: String(getCell(sheet, "F", r)),
+        tipo: String(getCell(sheet, "C", r)),
+        color: String(getCell(sheet, "D", r)),
+        talla: String(getCell(sheet, "E", r)),
+        proveedor: String(getCell(sheet, "L", r)),
+        status: String(getCell(sheet, "J", r)),
+        disponibilidad: String(getCell(sheet, "K", r)),
+        fecha: String(getCell(sheet, "M", r)),
+        precio: toNumber(getCell(sheet, "G", r)),
+        pVenta: toNumber(getCell(sheet, "I", r)),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      const adminObj = {
+        ...publicObj,
+        costo: toNumber(getCell(sheet, "N", r)),
+        margen: toNumber(getCell(sheet, "Q", r))
+      };
+
+      batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicObj, {merge: true});
+      batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminObj, {merge: true});
+
+      ops += 2;
+      count += 1;
+
+      if (ops >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    }
+
+    if (ops > 0) {
+      await batch.commit();
+    }
+
+    res.json({ok: true, rows: count});
+  } catch (err) {
+    logger.error("importPrendasFromXlsx failed", err);
+    res.status(500).json({ok: false, error: String(err)});
   }
 });
 
