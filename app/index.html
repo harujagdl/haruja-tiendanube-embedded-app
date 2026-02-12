@@ -928,16 +928,21 @@
         </section>
       </main>
     </div>
+
+    <!-- 🔧 Firebase Config (edítalo y NO toques el resto) -->
     <script>
-window.__HARUJA_FIREBASE_CONFIG__ = {
-    apiKey: "AIzaSyAK5_MuMseQm58AeRZlrPtGyEZ216-Xkno",
-    authDomain: "haruja-tiendanube.firebaseapp.com",
-    projectId: "haruja-tiendanube",
-    storageBucket: "haruja-tiendanube.appspot.com",
-    messagingSenderId: "396461447684",
-    appId: "1:396461447684:web:770dc3bc9bbb40a2873351"
-  };
-</script>
+      // Si prefieres, pega aquí el objeto completo que te da Firebase Console.
+      // Deja las comillas tal cual. Ejemplo:
+      // window.__HARUJA_FIREBASE_CONFIG__ = { apiKey: "...", authDomain: "...", ... };
+      window.__HARUJA_FIREBASE_CONFIG__ = window.__HARUJA_FIREBASE_CONFIG__ || {
+        apiKey: "AIzaSyAK5_MuMseQm58AeRZlrPtGyEZ216-Xkno",
+        authDomain: "haruja-tiendanube.firebaseapp.com",
+        projectId: "haruja-tiendanube",
+        storageBucket: "haruja-tiendanube.firebasestorage.app",
+        messagingSenderId: "396461447684",
+        appId: "1:396461447684:web:770dc3bc9bbb40a2873351"
+      };
+    </script>
 
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -969,21 +974,21 @@ window.__HARUJA_FIREBASE_CONFIG__ = {
         signOut
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-      const runtimeFirebaseConfig = globalThis.__HARUJA_FIREBASE_CONFIG__ || {};
-      const firebaseConfig = {
-        apiKey: runtimeFirebaseConfig.apiKey || "",
-        authDomain: runtimeFirebaseConfig.authDomain || "haruja-tiendanube.firebaseapp.com",
-        projectId: runtimeFirebaseConfig.projectId || "haruja-tiendanube",
-        storageBucket: runtimeFirebaseConfig.storageBucket || "haruja-tiendanube.appspot.com",
-        messagingSenderId: runtimeFirebaseConfig.messagingSenderId || "",
-        appId: runtimeFirebaseConfig.appId || ""
-      };
+      // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
+// Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
+const firebaseConfig = window.__HARUJA_FIREBASE_CONFIG__ || {
+  apiKey: "PEGA_AQUI_TU_API_KEY",
+  authDomain: "haruja-tiendanube.firebaseapp.com",
+  projectId: "haruja-tiendanube",
+  // OJO: Firebase ahora puede mostrarlo como *.firebasestorage.app; cualquiera de los 2 suele funcionar.
+  storageBucket: "haruja-tiendanube.firebasestorage.app",
+  messagingSenderId: "PEGA_AQUI_TU_MESSAGING_SENDER_ID",
+  appId: "PEGA_AQUI_TU_APP_ID"
+};
 
-      if (!firebaseConfig.apiKey || !firebaseConfig.appId || !firebaseConfig.messagingSenderId) {
-        console.warn(
-          "[Firebase] Config incompleta. Define window.__HARUJA_FIREBASE_CONFIG__ con apiKey/appId/messagingSenderId válidos."
-        );
-      }
+if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || firebaseConfig.apiKey.includes("REEMPLAZAR")) {
+  console.error("[Firebase] Falta configurar firebaseConfig.apiKey (y/o appId/messagingSenderId).");
+}
 
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
@@ -2903,8 +2908,6 @@ window.__HARUJA_FIREBASE_CONFIG__ = {
           applyAdminUI();
         } catch (error) {
           console.error(error);
-          setAdminViewEnabled(false);
-          setAdminPanelVisible(false);
           setAdminLoginStatus("No se pudo iniciar sesión con Google.", "error");
         } finally {
           if (adminLoginButton) {
@@ -3069,7 +3072,6 @@ window.__HARUJA_FIREBASE_CONFIG__ = {
       }
 
       const init = async () => {
-        console.log("[Firebase] projectId:", firebaseConfig.projectId, "authDomain:", firebaseConfig.authDomain);
         isBooting = true;
         resetPrendasState();
         resetCounters();
