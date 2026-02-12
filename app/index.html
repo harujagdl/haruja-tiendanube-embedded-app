@@ -1972,11 +1972,8 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
         const dateRange = getDateRangeFromFilters(globalFilters.year, globalFilters.month);
         return rows.filter((item) => {
           const precio = toNum(item.pVenta);
-          const isNoPrice = precio === null || precio === 0;
-          if (isNoPrice && !globalFilters.includeNoPrice) {
-            return false;
-          }
-          if (!isNoPrice) {
+          if (globalFilters.priceMin != null || globalFilters.priceMax != null) {
+            if (!Number.isFinite(precio)) return false;
             if (globalFilters.priceMin != null && precio < globalFilters.priceMin) return false;
             if (globalFilters.priceMax != null && precio > globalFilters.priceMax) return false;
           }
@@ -2014,7 +2011,23 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
       const applyAllFilters = (rows) => {
         const globalFilters = getCurrentGlobalFilters();
         prendasState.filters.global = globalFilters;
-        const rowsAfterGlobal = applyGlobalFilters(rows, globalFilters);
+        const hasPrice = (row) => {
+          const p = row?.pVenta;
+          if (p === null || p === undefined) return false;
+          const n = Number(p);
+          return Number.isFinite(n) && n > 0;
+        };
+        let rowsAfterNoPrice = rows;
+        if (!globalFilters.includeNoPrice) {
+          rowsAfterNoPrice = rows.filter(hasPrice);
+        }
+        console.log(
+          "[Prendas] incluirSinPrecio:",
+          globalFilters.includeNoPrice,
+          "rows:",
+          rowsAfterNoPrice.length
+        );
+        const rowsAfterGlobal = applyGlobalFilters(rowsAfterNoPrice, globalFilters);
         prendasState.rowsAfterGlobal = rowsAfterGlobal;
         const rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
         prendasState.rowsAfterAll = rowsAfterAll;
@@ -2291,6 +2304,7 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
           const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
           if (cursor) constraints.splice(1, 0, startAfter(cursor));
           const snap = await getDocs(query(prendasPublicRef, ...constraints));
+          console.log("[Prendas] snapshot size:", snap.size);
           if (snap.empty) {
             hasMore = false;
             break;
@@ -2400,6 +2414,7 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
             renderLoadingPlaceholder();
           }
           const baseRows = await loadBaseRows();
+          console.log("[Prendas] baseRows:", baseRows.length);
           const rowsAfterAll = applyAllFilters(baseRows);
           HEADER_FILTER_KEYS.forEach((key) => {
             prendasState.uniqueOptions[key] = getUniqueOptions(prendasState.rowsAfterGlobal, key);
