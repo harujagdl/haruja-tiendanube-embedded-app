@@ -848,16 +848,10 @@
               </div>
               <div class="admin-panel" id="admin-panel">
                 <div>
-                  <label for="admin-password">Admin (Google + contraseña visual)</label>
+                  <label>Admin (solo Google)</label>
                   <div class="admin-login-row">
                     <button type="button" id="admin-login">Ingresar con Google</button>
                     <button type="button" id="admin-logout" class="secondary hidden">Salir</button>
-                    <input
-                      id="admin-password"
-                      type="password"
-                      placeholder="Contraseña visual opcional"
-                      autocomplete="current-password"
-                    />
                   </div>
                   <div id="admin-login-status" class="status"></div>
                 </div>
@@ -1064,7 +1058,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
-      const adminPasswordInput = document.getElementById("admin-password");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
       const adminLoginStatus = document.getElementById("admin-login-status");
@@ -1294,13 +1287,12 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
-      const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025";
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
         "harujagdl.ventas@gmail.com"
       ]);
-      const ADMIN_VISUAL_PASSWORD = "Ahsoka.2803";
       const PRENDAS_PAGE_SIZE_DEFAULT = 80;
       const PRENDAS_SCAN_PAGE_SIZE = 200;
       const PRENDAS_SCAN_MAX_PAGES = 12;
@@ -2884,11 +2876,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const applyAdminUI = ({ refresh = true } = {}) => {
         const byAuth = Boolean(prendasState.adminByAuth);
-        const visualPasswordOk =
-          !prendasState.adminByAuth ||
-          !adminPasswordInput ||
-          safeString(adminPasswordInput.value).trim() === ADMIN_VISUAL_PASSWORD;
-        const enabled = byAuth && getAdminViewEnabled() && visualPasswordOk;
+        const enabled = byAuth && getAdminViewEnabled();
         prendasState.isAdmin = enabled;
         if (dbCodigosSection) {
           dbCodigosSection.classList.toggle("admin-enabled", enabled);
@@ -2907,8 +2895,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           adminLogoutButton.classList.toggle("hidden", !byAuth);
         }
         if (byAuth) {
-          const pwdMsg = visualPasswordOk ? "" : " · Falta contraseña visual";
-          setAdminLoginStatus(`Admin autenticado: ${prendasState.adminEmail}${pwdMsg}`, visualPasswordOk ? "success" : "warning");
+          setAdminLoginStatus(`Admin autenticado: ${prendasState.adminEmail}`, "success");
         } else {
           setAdminLoginStatus("Inicia sesión con un correo admin permitido.");
           setAdminViewEnabled(false);
@@ -2957,8 +2944,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         }
       };
 
-      onAuthStateChanged(auth, (user) => {
+      onAuthStateChanged(auth, async (user) => {
         const email = safeString(user?.email).trim().toLowerCase();
+        if (user && !isAllowlistedAdmin(email)) {
+          setAdminLoginStatus("No autorizado", "error");
+          await signOut(auth);
+          return;
+        }
         prendasState.adminUser = user || null;
         prendasState.adminEmail = email;
         prendasState.adminByAuth = Boolean(user) && isAllowlistedAdmin(email);
@@ -2986,11 +2978,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       if (adminOptionalToggle) {
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
-        });
-      }
-      if (adminPasswordInput) {
-        adminPasswordInput.addEventListener("input", () => {
-          applyAdminUI();
         });
       }
 
