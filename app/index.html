@@ -989,6 +989,7 @@ const firebaseConfig = window.__HARUJA_FIREBASE_CONFIG__ || {
 if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || firebaseConfig.apiKey.includes("REEMPLAZAR")) {
   console.error("[Firebase] Falta configurar firebaseConfig.apiKey (y/o appId/messagingSenderId).");
 }
+console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
@@ -1009,7 +1010,7 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
           localCache: memoryLocalCache()
         });
       }
-      const prendasRef = collection(db, "prendas");
+      let prendasRef = collection(db, "prendas");
       const registroForm = document.getElementById("registro-form");
       const registroStatus = document.getElementById("registro-status");
       const registroResult = document.getElementById("registro-result");
@@ -1294,6 +1295,17 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      // 🔧 Colecciones candidatas (incluye nombres históricos)
+      const PRENDAS_COLLECTION_CANDIDATES = [
+        "prendas",
+        "Prendas",
+        "prendas_2025",
+        "HarujaPrendas_2025",
+        "productos",
+        "Products",
+        PRENDAS_PUBLIC_COLLECTION,
+        PRENDAS_ADMIN_COLLECTION
+      ];
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -1356,8 +1368,10 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
         doc: "counters"
       };
 
-      const prendasPublicRef = collection(db, PRENDAS_PUBLIC_COLLECTION);
-      const prendasAdminRef = collection(db, PRENDAS_ADMIN_COLLECTION);
+      let activePrendasPublicCollection = PRENDAS_PUBLIC_COLLECTION;
+      let activePrendasAdminCollection = PRENDAS_ADMIN_COLLECTION;
+      let prendasPublicRef = collection(db, activePrendasPublicCollection);
+      let prendasAdminRef = collection(db, activePrendasAdminCollection);
       const prendasState = {
         filtered: [],
         baseRows: [],
@@ -1397,6 +1411,28 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
         headerPopover: null
       };
       let isBooting = true;
+
+      async function pickWorkingCollection(dbInstance, candidates) {
+        for (const name of candidates) {
+          try {
+            const snap = await getDocs(query(collection(dbInstance, name), limit(1)));
+            console.log(`[Prendas] Probe collection="${name}" size=${snap.size}`);
+            if (snap.size > 0) return name;
+          } catch (error) {
+            console.warn(`[Prendas] Probe FAILED collection="${name}"`, error?.code || error);
+          }
+        }
+        return null;
+      }
+
+      const setPrendasCollections = ({ publicCollection, adminCollection }) => {
+        activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
+        activePrendasAdminCollection = adminCollection || PRENDAS_ADMIN_COLLECTION;
+        prendasRef = collection(db, activePrendasPublicCollection);
+        prendasPublicRef = collection(db, activePrendasPublicCollection);
+        prendasAdminRef = collection(db, activePrendasAdminCollection);
+        console.log("[Prendas] ✅ Usando colección:", activePrendasPublicCollection);
+      };
 
       const loadCategoryEntries = async (category, collectionName) => {
         const snapshot = await getDocs(collection(db, collectionName));
@@ -2576,15 +2612,15 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
         const rawUpper = safeString(rawInput).trim().toUpperCase();
         const normalizedSku = normalizeSku(rawUpper);
         if (!rawUpper) return null;
-        const directSnap = await getDoc(doc(db, PRENDAS_PUBLIC_COLLECTION, normalizedSku));
+        const directSnap = await getDoc(doc(db, activePrendasPublicCollection, normalizedSku));
         const altSnap = directSnap.exists()
           ? null
-          : await getDoc(doc(db, PRENDAS_PUBLIC_COLLECTION, rawUpper));
+          : await getDoc(doc(db, activePrendasPublicCollection, rawUpper));
         const baseSnap = directSnap.exists() ? directSnap : altSnap;
         if (!baseSnap?.exists()) return null;
         const item = normalizeDoc(baseSnap);
         if (prendasState.isAdmin) {
-          const adminSnap = await getDoc(doc(db, PRENDAS_ADMIN_COLLECTION, baseSnap.id));
+          const adminSnap = await getDoc(doc(db, activePrendasAdminCollection, baseSnap.id));
           if (adminSnap.exists()) {
             const costo = toNumberOrNull(adminSnap.data()?.costo);
             if (Number.isFinite(costo)) {
@@ -3162,12 +3198,29 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
           handleTabChange(window.location.hash);
           // ADMIN DB MODE END
           setSkuSearchMode(false);
+
+          const picked = await pickWorkingCollection(db, PRENDAS_COLLECTION_CANDIDATES);
+          if (!picked) {
+            console.error("[Prendas] ❌ No encontré ninguna colección con datos. Revisa nombres o proyecto Firebase.");
+            setPrendasAlert("No se encontró la colección de prendas. Revisa configuración de Firebase o el nombre de la colección.");
+            return;
+          }
+
+          const adminPicked = picked.endsWith("_public")
+            ? `${picked.slice(0, -"_public".length)}_admin`
+            : PRENDAS_ADMIN_COLLECTION;
+          setPrendasCollections({
+            publicCollection: picked,
+            adminCollection: adminPicked
+          });
+
           try {
             const baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
             console.log("[Prendas] Base query (sin filtros) docs", {
-              collection: PRENDAS_PUBLIC_COLLECTION,
+              collection: activePrendasPublicCollection,
               docs: baseSnapshot.size
             });
+            console.log("[Prendas] snapshot size:", baseSnapshot.size);
           } catch (error) {
             console.warn("[Prendas] No se pudo medir query base sin filtros", error);
           }
