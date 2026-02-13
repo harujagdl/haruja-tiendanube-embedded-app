@@ -4,6 +4,7 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
 const path = require("path");
+const fs = require("fs");
 const XLSX = require("xlsx");
 
 admin.initializeApp();
@@ -13,6 +14,11 @@ const db = admin.firestore();
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
 const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
 const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+const ADMIN_ALLOWLIST = new Set([
+  "yair.tenorio.silva@gmail.com",
+  "harujagdl@gmail.com",
+  "harujagdl.ventas@gmail.com"
+]);
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -44,6 +50,30 @@ const toNumber = (v) => {
   if (!v) return null;
   const n = Number(String(v).replace(/[,$\s]/g, ""));
   return Number.isFinite(n) ? n : null;
+};
+
+const getBearerToken = (authHeader = "") => {
+  if (!authHeader.startsWith("Bearer ")) return "";
+  return authHeader.slice(7).trim();
+};
+
+const requireAllowlistedAdmin = async (req) => {
+  const idToken = getBearerToken(String(req.headers?.authorization || ""));
+  if (!idToken) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Authorization Bearer token requerido."
+    );
+  }
+  const decoded = await admin.auth().verifyIdToken(idToken);
+  const email = String(decoded?.email || "").trim().toLowerCase();
+  if (!ADMIN_ALLOWLIST.has(email)) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Usuario no autorizado para importar."
+    );
+  }
+  return {uid: decoded.uid, email};
 };
 
 const stripSensitive = (data = {}) => {
@@ -105,15 +135,37 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
 
-    const filePath = path.join(__dirname, "data", "HarujaPrendas_2025.xlsx");
+    const adminSession = await requireAllowlistedAdmin(req);
+
+    const candidatePaths = [
+      path.join(__dirname, "data", "HarujaPrendas_2025.xlsx"),
+      path.join(__dirname, "..", "Data", "HarujaPrendas_2025.xlsx")
+    ];
+    const filePath = candidatePaths.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) {
+      return res.status(500).json({
+        ok: false,
+        error: "No se encontró HarujaPrendas_2025.xlsx en functions/data ni en Data/."
+      });
+    }
+
+    logger.info("START importPrendasFromXlsx", {
+      by: adminSession.email,
+      filePath
+    });
+
     const wb = XLSX.readFile(filePath);
     const firstSheetName = wb.SheetNames[0];
     const sheet = wb.Sheets[firstSheetName];
     const range = XLSX.utils.decode_range(sheet["!ref"]);
+    const rowsTotal = Math.max(0, range.e.r);
+    logger.info("rows total", {rowsTotal, sheet: firstSheetName});
 
     let batch = db.batch();
-    let ops = 0;
-    let count = 0;
+    let writesInBatch = 0;
+    let rowsImported = 0;
+    let writtenPublic = 0;
+    let writtenAdmin = 0;
 
     for (let r = 2; r <= range.e.r + 1; r++) {
       const codigo = String(getCell(sheet, "B", r)).trim();
@@ -128,10 +180,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
         tipo: String(getCell(sheet, "C", r)),
         color: String(getCell(sheet, "D", r)),
         talla: String(getCell(sheet, "E", r)),
-        proveedor: String(getCell(sheet, "L", r)),
-        status: String(getCell(sheet, "J", r)),
-        disponibilidad: String(getCell(sheet, "K", r)),
-        fecha: String(getCell(sheet, "M", r)),
+        proveedor: String(getCell(sheet, "M", r)),
         precio: toNumber(getCell(sheet, "G", r)),
         pVenta: toNumber(getCell(sheet, "I", r)),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -139,6 +188,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
 
       const adminObj = {
         ...publicObj,
+        status: String(getCell(sheet, "L", r)),
         costo: toNumber(getCell(sheet, "N", r)),
         margen: toNumber(getCell(sheet, "Q", r))
       };
@@ -146,28 +196,47 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicObj, {merge: true});
       batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminObj, {merge: true});
 
-      ops += 2;
-      count += 1;
+      writesInBatch += 2;
+      rowsImported += 1;
+      writtenPublic += 1;
+      writtenAdmin += 1;
 
-      if (ops >= 400) {
+      if (writesInBatch >= 500) {
+        logger.info("writing batch", {writesInBatch, rowsImported});
         await batch.commit();
         batch = db.batch();
-        ops = 0;
+        writesInBatch = 0;
       }
     }
 
-    if (ops > 0) {
+    if (writesInBatch > 0) {
+      logger.info("writing batch", {writesInBatch, rowsImported});
       await batch.commit();
     }
+
+    logger.info("DONE importPrendasFromXlsx", {
+      rowsImported,
+      writtenPublic,
+      writtenAdmin
+    });
 
     res.json({
       ok: true,
       sheet: firstSheetName,
-      rowsImported: count,
+      rowsTotal,
+      rowsImported,
+      writtenPublic,
+      writtenAdmin,
       publicCollection: PRENDAS_PUBLIC_COLLECTION,
       adminCollection: PRENDAS_ADMIN_COLLECTION
     });
   } catch (err) {
+    if (err instanceof functions.https.HttpsError) {
+      return res.status(err.httpErrorCode.status).json({
+        ok: false,
+        error: err.message
+      });
+    }
     logger.error("importPrendasFromXlsx failed", err);
     res.status(500).json({ok: false, error: String(err)});
   }

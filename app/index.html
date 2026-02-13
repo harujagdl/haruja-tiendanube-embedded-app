@@ -860,6 +860,7 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
+                  <button type="button" id="admin-import-xlsx">Importar XLSX a Firestore</button>
                 </div>
               </div>
               <div class="counters">
@@ -887,6 +888,7 @@
               <table id="tablaPrendas" data-prendas-table>
                 <thead>
                   <tr>
+                    <th>Orden</th>
                     <th>Código</th>
                     <th>Descripción</th>
                     <th data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
@@ -906,7 +908,7 @@
               </table>
               <template id="noResultsRow" data-empty-row>
                 <tr>
-                  <td colspan="13">No hay resultados con los filtros actuales.</td>
+                  <td colspan="14">No hay resultados con los filtros actuales.</td>
                 </tr>
               </template>
             </div>
@@ -1058,6 +1060,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
+      const adminImportButton = document.getElementById("admin-import-xlsx");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
       const adminLoginStatus = document.getElementById("admin-login-status");
@@ -1288,6 +1291,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      const IMPORT_FUNCTION_NAME = "importPrendasFromXlsx";
+      const IMPORT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${IMPORT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -1814,6 +1819,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
+        const orden = toNumberOrNull(data.orden ?? data.Orden);
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
         ).trim();
@@ -1824,6 +1830,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
         return {
           id: docSnap.id,
+          orden,
           codigo,
           descripcion,
           color,
@@ -2514,6 +2521,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const createPrendaRow = (item) => {
+        const ordenValue = Number(item.orden);
+        const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "--";
         const codigo = safeString(item.codigo || item.code) || "--";
         const descripcion = safeString(item.descripcion) || "--";
         const tipo = safeString(item.tipo) || "--";
@@ -2530,16 +2539,16 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
         const row = document.createElement("tr");
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
-        const cells = [codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
+        const cells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
         cells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
-            if (index >= 10) value.classList.add("admin-only");
+            if (index >= 11) value.classList.add("admin-only");
             row.appendChild(value);
             return;
           }
           const cell = document.createElement("td");
           cell.textContent = value;
-          if (index >= 10) cell.classList.add("admin-only");
+          if (index >= 11) cell.classList.add("admin-only");
           row.appendChild(cell);
         });
         return row;
@@ -2565,7 +2574,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           if (!emptyNode) {
             const emptyRow = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 13;
+            cell.colSpan = 14;
             cell.textContent = "No hay resultados con los filtros actuales.";
             emptyRow.appendChild(cell);
             emptyNode = emptyRow;
@@ -2944,6 +2953,49 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         }
       };
 
+      const handleAdminImportXlsx = async () => {
+        if (adminImportButton) {
+          adminImportButton.disabled = true;
+        }
+        try {
+          let user = auth.currentUser;
+          if (!user) {
+            const response = await signInWithPopup(auth, googleProvider);
+            user = response?.user || null;
+          }
+          const email = safeString(user?.email).trim().toLowerCase();
+          if (!isAllowlistedAdmin(email)) {
+            setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
+            await signOut(auth);
+            return;
+          }
+          const idToken = await user.getIdToken();
+          setAdminLoginStatus("Importando XLSX a Firestore...", "warning");
+          const response = await fetch(IMPORT_FUNCTION_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${idToken}`
+            }
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload?.ok) {
+            throw new Error(payload?.error || `HTTP ${response.status}`);
+          }
+          setAdminLoginStatus(
+            `Importación OK. rowsImported=${payload.rowsImported}, public=${payload.writtenPublic}, admin=${payload.writtenAdmin}`,
+            "success"
+          );
+          await loadPrendasPage({ reset: true, reason: "import-xlsx" });
+        } catch (error) {
+          console.error(error);
+          setAdminLoginStatus(`Error al importar XLSX: ${error.message || error}`, "error");
+        } finally {
+          if (adminImportButton) {
+            adminImportButton.disabled = false;
+          }
+        }
+      };
+
       onAuthStateChanged(auth, async (user) => {
         const email = safeString(user?.email).trim().toLowerCase();
         if (user && !isAllowlistedAdmin(email)) {
@@ -2979,6 +3031,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
         });
+      }
+      if (adminImportButton) {
+        adminImportButton.addEventListener("click", handleAdminImportXlsx);
       }
 
       window.addEventListener("hashchange", () => {
