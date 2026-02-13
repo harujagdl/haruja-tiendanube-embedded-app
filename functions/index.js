@@ -110,7 +110,10 @@ const resolvePVentaFromMaster = (data = {}) => {
 };
 
 const buildPublicPayloadFromMaster = (data = {}) => ({
+  docId: data.docId ?? data.codigo ?? null,
+  code: data.code ?? data.codigo ?? null,
   orden: resolveOrden(data),
+  seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
   codigo: data.codigo ?? null,
   descripcion: data.descripcion ?? null,
   tipo: data.tipo ?? null,
@@ -121,19 +124,22 @@ const buildPublicPayloadFromMaster = (data = {}) => ({
   disponibilidad: data.disponibilidad ?? null,
   fecha: data.fecha ?? null,
   fechaTexto: data.fechaTexto ?? null,
+  createdAt: data.createdAt ?? null,
   updatedAt: data.updatedAt ?? null,
+  source: data.source ?? PRENDAS_COLLECTION,
+  providerCode: data.providerCode ?? null,
+  typeCode: data.typeCode ?? null,
   pVenta: resolvePVentaFromMaster(data),
-  precio: toFixedNumber(data.precio)
+  precio: toFixedNumber(data.precio),
+  iva: toFixedNumber(data.iva, 4),
+  precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA)
 });
 
 const buildAdminPayloadFromMaster = (data = {}) => ({
   ...buildPublicPayloadFromMaster(data),
   costo: toFixedNumber(data.costo),
   margen: toFixedNumber(data.margen, 3),
-  iva: toFixedNumber(data.iva, 4),
-  precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA),
-  providerCode: data.providerCode ?? null,
-  typeCode: data.typeCode ?? null
+  utilidad: toFixedNumber(data.utilidad)
 });
 
 exports.splitPrendasToPublicAdmin = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
@@ -461,16 +467,13 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
         lastDocId = docSnap.id;
         totalRead += 1;
 
-        batch.set(
-          db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id),
-          buildPublicPayloadFromMaster(payload),
-          {merge: true}
-        );
-        batch.set(
-          db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id),
-          buildAdminPayloadFromMaster(payload),
-          {merge: true}
-        );
+        const publicPayload = buildPublicPayloadFromMaster(payload);
+        const adminPayload = buildAdminPayloadFromMaster(payload);
+        publicPayload.docId = publicPayload.docId ?? docSnap.id;
+        adminPayload.docId = adminPayload.docId ?? docSnap.id;
+
+        batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicPayload, {merge: true});
+        batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminPayload, {merge: true});
         publicWrites += 1;
         adminWrites += 1;
       });
@@ -482,15 +485,18 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
 
     console.info("migrateSplitCollections completed", {
       by: adminSession.email,
-      totalRead,
-      publicWrites,
-      adminWrites,
+      read: totalRead,
+      publicWritten: publicWrites,
+      adminWritten: adminWrites,
       firstDocId,
       lastDocId
     });
 
     return res.status(200).json({
       ok: true,
+      read: totalRead,
+      publicWritten: publicWrites,
+      adminWritten: adminWrites,
       totalRead,
       publicWrites,
       adminWrites,

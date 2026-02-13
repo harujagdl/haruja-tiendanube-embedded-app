@@ -860,7 +860,7 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
-                  <button type="button" id="admin-split-collections">Crear/Actualizar colecciones</button>
+                  <button type="button" id="admin-split-collections">Migrar ahora</button>
                 </div>
               </div>
               <div class="counters">
@@ -1291,7 +1291,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
-      const SPLIT_FUNCTION_NAME = "splitPrendasToPublicAdmin";
+      const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
       const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
@@ -2950,27 +2950,28 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             return;
           }
           const idToken = await user.getIdToken(true);
-          setAdminLoginStatus("Creando/actualizando colecciones public/admin...", "warning");
-          const response = await fetch(`${SPLIT_FUNCTION_URL}?dryRun=0`, {
+          setAdminLoginStatus("Migrando colección base a public/admin...", "warning");
+          const response = await fetch(SPLIT_FUNCTION_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`
             },
-            body: JSON.stringify({ sourceCollection: "HarujaPrendas_2025" })
+            body: JSON.stringify({})
           });
           const payload = await response.json();
           if (!response.ok || !payload?.ok) {
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
           setAdminLoginStatus(
-            `Split OK. source=${payload.processed}, public=${payload.writtenPublic}, admin=${payload.writtenAdmin}.`,
+            `Migración OK. leídos=${payload.read}, public=${payload.publicWritten}, admin=${payload.adminWritten}.`,
             "success"
           );
-          await loadPrendasPage({ reset: true, reason: "split-collections" });
+          setPrendasAlert("");
+          await loadPrendasPage({ reset: true, reason: "migrate-collections" });
         } catch (error) {
           console.error(error);
-          setAdminLoginStatus(`Error al crear/actualizar colecciones: ${error.message || error}`, "error");
+          setAdminLoginStatus(`Error al migrar colecciones: ${error.message || error}`, "error");
         } finally {
           if (adminSplitButton) {
             adminSplitButton.disabled = false;
@@ -3210,19 +3211,15 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           });
 
           try {
-            let baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
-            if (baseSnapshot.empty) {
-              console.warn("[Prendas] Colección pública vacía. Se usa fallback temporal a colección principal.");
-              setPrendasCollections({
-                publicCollection: PRENDAS_COLLECTION
-              });
-              baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
-            }
+            const baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
             console.log("[Prendas] Base query (sin filtros) docs", {
               collection: activePrendasPublicCollection,
               docs: baseSnapshot.size
             });
             console.log("[Prendas] snapshot size:", baseSnapshot.size);
+            if (baseSnapshot.empty) {
+              setPrendasAlert("Aún no se ha migrado la colección public. Entra a Admin y corre ‘Migrar ahora’.");
+            }
           } catch (error) {
             console.error("[Prendas] ❌ No se pudo leer la colección pública", error);
             setPrendasAlert("No se encontró la colección pública o las reglas de Firestore la están bloqueando.");
