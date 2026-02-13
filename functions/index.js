@@ -62,9 +62,41 @@ const safeDocId = (val) =>
     .replaceAll("/", "__");
 const normalizeCodigo = (val) => String(val ?? "").trim().toUpperCase();
 
-const getCell = (sheet, col, row) => {
-  const cell = sheet[`${col}${row}`];
-  return cell ? cell.v : "";
+const normalizeHeaderKey = (value) =>
+  String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const HEADER_ALIASES = {
+  orden: ["orden", "order", "#", "no", "num", "secuencia", "seq", "seqnumber"],
+  codigo: ["codigo", "código", "code", "sku"],
+  costo: ["costo", "cost", "costo$"],
+  precioConIva: ["precioconiva", "precio con iva", "pventa", "p.venta", "venta", "precioiva"],
+  margen: ["margen", "markup", "margen%"],
+  utilidad: ["utilidad", "profit"],
+  descripcion: ["descripcion", "descripción", "producto", "nombre", "item"],
+  tipo: ["tipo", "category", "categoria", "categoría"],
+  color: ["color"],
+  talla: ["talla", "size"],
+  proveedor: ["proveedor", "brand", "marca"],
+  status: ["status", "estado"],
+  disponibilidad: ["disponibilidad", "stock"],
+  fecha: ["fecha", "fechatexto", "fechaalta"],
+};
+
+const resolveColumnIndex = (headerMap, aliases = []) => {
+  for (const alias of aliases) {
+    const idx = headerMap.get(normalizeHeaderKey(alias));
+    if (Number.isInteger(idx)) return idx;
+  }
+  return -1;
+};
+
+const getRowValue = (row, index) => {
+  if (!Array.isArray(row) || index < 0) return "";
+  return row[index];
 };
 
 const parseMultipartFile = (req, fieldName = "file") =>
@@ -431,15 +463,8 @@ exports.syncPublicPrendas2025 = onRequest(RUNTIME_OPTS, async (req, res) => {
 });
 
 exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) => {
-  const allowOrigin = "https://haruja-tiendanube.web.app";
-  res.set("Access-Control-Allow-Origin", allowOrigin);
-  res.set("Access-Control-Allow-Methods", "POST,OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") {
-    return res.status(204).send("");
-  }
-
   try {
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
@@ -454,59 +479,112 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     const wb = XLSX.read(buffer, {type: "buffer"});
     const firstSheetName = wb.SheetNames[0];
     const sheet = wb.Sheets[firstSheetName];
-    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: true,
+      blankrows: false,
+    });
+    const headers = Array.isArray(rows[0]) ? rows[0] : [];
+    const headerMap = new Map();
+    headers.forEach((header, index) => {
+      const key = normalizeHeaderKey(header);
+      if (key && !headerMap.has(key)) headerMap.set(key, index);
+    });
+
+    const idxOrden = resolveColumnIndex(headerMap, HEADER_ALIASES.orden);
+    const idxCodigo = resolveColumnIndex(headerMap, HEADER_ALIASES.codigo);
+    const idxCosto = resolveColumnIndex(headerMap, HEADER_ALIASES.costo);
+    const idxPrecioConIva = resolveColumnIndex(headerMap, HEADER_ALIASES.precioConIva);
+    const idxMargen = resolveColumnIndex(headerMap, HEADER_ALIASES.margen);
+    const idxUtilidad = resolveColumnIndex(headerMap, HEADER_ALIASES.utilidad);
+    const idxDescripcion = resolveColumnIndex(headerMap, HEADER_ALIASES.descripcion);
+    const idxTipo = resolveColumnIndex(headerMap, HEADER_ALIASES.tipo);
+    const idxColor = resolveColumnIndex(headerMap, HEADER_ALIASES.color);
+    const idxTalla = resolveColumnIndex(headerMap, HEADER_ALIASES.talla);
+    const idxProveedor = resolveColumnIndex(headerMap, HEADER_ALIASES.proveedor);
+    const idxStatus = resolveColumnIndex(headerMap, HEADER_ALIASES.status);
+    const idxDisponibilidad = resolveColumnIndex(headerMap, HEADER_ALIASES.disponibilidad);
+    const idxFecha = resolveColumnIndex(headerMap, HEADER_ALIASES.fecha);
+
+    if (idxCodigo < 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se encontró columna de código (codigo/code/sku) en encabezados.",
+      });
+    }
 
     let batch = db.batch();
     let writesInBatch = 0;
     let updated = 0;
     const errors = [];
 
-    for (let r = 2; r <= range.e.r + 1; r++) {
+    for (let i = 1; i < rows.length; i++) {
       try {
-        const codigoRaw = String(getCell(sheet, "B", r)).trim();
+        const row = rows[i];
+        const codigoRaw = String(getRowValue(row, idxCodigo)).trim();
         const codigo = normalizeCodigo(codigoRaw);
         if (!codigo) continue;
 
         const docId = safeDocId(codigo);
-        const orden = numOrUndefined(getCell(sheet, "A", r));
-        const costo = numOrUndefined(getCell(sheet, "D", r)) ?? numOrUndefined(getCell(sheet, "N", r));
-        const precioConIva =
-          numOrUndefined(getCell(sheet, "G", r)) ??
-          numOrUndefined(getCell(sheet, "I", r)) ??
-          numOrUndefined(getCell(sheet, "E", r));
-        const utilidad =
+        const ordenFromAlias = numOrUndefined(getRowValue(row, idxOrden));
+        const ordenFromFirstCol = numOrUndefined(getRowValue(row, 0));
+        const orden = Number.isFinite(ordenFromAlias) ? ordenFromAlias : ordenFromFirstCol;
+
+        const costo = numOrUndefined(getRowValue(row, idxCosto));
+        const precioConIva = numOrUndefined(getRowValue(row, idxPrecioConIva));
+        const utilidadOverride = toFixedNumber(numOrUndefined(getRowValue(row, idxUtilidad)), 2);
+        const margenOverride = toFixedNumber(numOrUndefined(getRowValue(row, idxMargen)), 2);
+
+        const utilidadCalc =
           Number.isFinite(precioConIva) && Number.isFinite(costo)
-            ? Number((precioConIva - costo).toFixed(2))
-            : undefined;
-        const margenPct =
+            ? toFixedNumber(precioConIva - costo, 2)
+            : null;
+        const utilidad = Number.isFinite(utilidadOverride) ? utilidadOverride : utilidadCalc;
+
+        const margenCalc =
           Number.isFinite(utilidad) && Number.isFinite(costo) && costo > 0
-            ? Number(((utilidad / costo) * 100).toFixed(2))
-            : 0;
+            ? toFixedNumber((utilidad / costo) * 100, 2)
+            : null;
+        const margen = Number.isFinite(margenOverride) ? margenOverride : margenCalc;
+
+        const fechaValue = getRowValue(row, idxFecha);
+        const fechaTexto = String(fechaValue ?? "").trim();
+        const status = String(getRowValue(row, idxStatus) ?? "").trim();
+        const disponibilidad = String(getRowValue(row, idxDisponibilidad) ?? "").trim() || status;
 
         const masterObj = {
-          ...(orden !== undefined ? {orden} : {}),
+          ...(Number.isFinite(orden) ? {orden} : {}),
           docId,
           code: codigo,
           codigo,
-          ...(costo !== undefined ? {costo} : {}),
-          ...(precioConIva !== undefined ? {precioConIva, pVenta: precioConIva} : {}),
-          ...(utilidad !== undefined ? {utilidad} : {}),
-          margen: margenPct,
-          descripcion: String(getCell(sheet, "F", r)),
-          tipo: String(getCell(sheet, "C", r)),
-          color: String(getCell(sheet, "D", r)),
-          talla: String(getCell(sheet, "E", r)),
-          proveedor: String(getCell(sheet, "M", r)),
-          status: String(getCell(sheet, "L", r)),
-          disponibilidad: String(getCell(sheet, "L", r)),
-          fechaTexto: String(getCell(sheet, "J", r)),
-          fecha: getCell(sheet, "J", r) || null,
+          costo: Number.isFinite(costo) ? costo : null,
+          precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
+          pVenta: Number.isFinite(precioConIva) ? precioConIva : null,
+          utilidad,
+          margen,
+          descripcion: String(getRowValue(row, idxDescripcion) ?? "").trim(),
+          tipo: String(getRowValue(row, idxTipo) ?? "").trim(),
+          color: String(getRowValue(row, idxColor) ?? "").trim(),
+          talla: String(getRowValue(row, idxTalla) ?? "").trim(),
+          proveedor: String(getRowValue(row, idxProveedor) ?? "").trim(),
+          status,
+          disponibilidad,
+          fechaTexto,
+          fecha: fechaValue || null,
           source: "upload-xlsx",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         };
 
+        const publicObj = buildPublicPayloadFromMaster(masterObj);
+        const adminObj = buildAdminPayloadFromMaster(masterObj);
+        publicObj.docId = docId;
+        adminObj.docId = docId;
+
         batch.set(db.collection(PRENDAS_COLLECTION).doc(docId), masterObj, {merge: true});
-        writesInBatch += 1;
+        batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicObj, {merge: true});
+        batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminObj, {merge: true});
+        writesInBatch += 3;
         updated += 1;
 
         if (writesInBatch >= 500) {
@@ -515,7 +593,7 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
           writesInBatch = 0;
         }
       } catch (error) {
-        errors.push({row: r, error: String(error)});
+        errors.push({row: i + 1, error: String(error)});
       }
     }
 
