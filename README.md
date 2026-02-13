@@ -263,3 +263,35 @@ Si Firestore devuelve `requires an index`:
 3. Hacer deploy.
 
 No crear ese índice desde consola para evitar volver al conflicto `HTTP Error: 409, index already exists`.
+
+## Crear colecciones `HarujaPrendas_2025_public` y `HarujaPrendas_2025_admin` (sin XLSX)
+
+La función HTTP `splitPrendasToPublicAdmin` toma como fuente la colección `HarujaPrendas_2025` y escribe en lotes las colecciones derivadas:
+
+- `HarujaPrendas_2025_public` (campos públicos)
+- `HarujaPrendas_2025_admin` (campos públicos + costo/margen y metadatos admin)
+
+### Requisitos
+
+1. Haber hecho deploy de Functions.
+2. Iniciar sesión con Google usando un email admin permitido.
+
+### Ejecutar desde la UI
+
+1. Abrir **Base de datos códigos**.
+2. Iniciar sesión con **Ingresar con Google**.
+3. Presionar **Crear/Actualizar colecciones**.
+
+### Ejecutar manualmente (curl)
+
+```bash
+curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/splitPrendasToPublicAdmin?dryRun=0" \
+  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>"
+```
+
+Dry run (solo conteo, no escribe):
+
+```bash
+curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/splitPrendasToPublicAdmin?dryRun=1" \
+  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>"
+```
