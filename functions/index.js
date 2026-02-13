@@ -62,6 +62,12 @@ const toNumber = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(/[,$\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
+
 const getBearerToken = (authHeader = "") => {
   if (!authHeader.startsWith("Bearer ")) return "";
   return authHeader.slice(7).trim();
@@ -145,19 +151,28 @@ const buildPublicPayloadFromMaster = (data = {}) => {
   return payload;
 };
 
-const buildAdminPayloadFromMaster = (data = {}) => ({
-  ...buildPublicPayloadFromMaster(data),
-  seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
-  source: data.source ?? PRENDAS_COLLECTION,
-  providerCode: data.providerCode ?? null,
-  typeCode: data.typeCode ?? null,
-  createdAt: data.createdAt ?? null,
-  updatedAt: data.updatedAt ?? null,
-  iva: toFixedNumber(data.iva, 4),
-  costo: toFixedNumber(data.costo),
-  margen: toFixedNumber(data.margen, 3),
-  utilidad: toFixedNumber(data.utilidad)
-});
+function buildAdminPayloadFromMaster(masterData) {
+  const costo = toNumberOrNull(masterData.costo);
+  const pVenta =
+    toNumberOrNull(masterData.pVenta) ??
+    toNumberOrNull(masterData.precioConIva) ??
+    toNumberOrNull(masterData.precio);
+
+  // Reglas pedidas por ti:
+  // Utilidad = P.Venta - Costo
+  const utilidad = Number.isFinite(pVenta) && Number.isFinite(costo) ? (pVenta - costo) : null;
+
+  // Margen (elige UNA definición y la usamos en todo el sistema)
+  // Opción A (markup sobre costo): utilidad / costo
+  const margen = Number.isFinite(utilidad) && Number.isFinite(costo) && costo !== 0 ? (utilidad / costo) : null;
+
+  return {
+    costo,
+    utilidad,
+    margen,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+}
 
 exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
