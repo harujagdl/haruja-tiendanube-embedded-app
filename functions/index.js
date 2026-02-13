@@ -50,6 +50,7 @@ const STOPWORDS = new Set([
 const adminSessions = new Map();
 
 const safeDocId = (val) => String(val ?? "").trim().replaceAll("/", "_");
+const normalizeCodigo = (val) => String(val ?? "").trim().replaceAll("_", "/");
 
 const getCell = (sheet, col, row) => {
   const cell = sheet[`${col}${row}`];
@@ -60,6 +61,14 @@ const toNumber = (v) => {
   if (!v) return null;
   const n = Number(String(v).replace(/[,$\s]/g, ""));
   return Number.isFinite(n) ? n : null;
+};
+
+const firstNumber = (...values) => {
+  for (const value of values) {
+    const n = toNumber(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 };
 
 const toNumberOrNull = (value) => {
@@ -388,15 +397,30 @@ exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
     let writtenMaster = 0;
 
     for (let r = 2; r <= range.e.r + 1; r++) {
-      const codigo = String(getCell(sheet, "B", r)).trim();
+      const codigoRaw = String(getCell(sheet, "B", r)).trim();
+      const codigo = normalizeCodigo(codigoRaw);
       if (!codigo) continue;
 
       const docId = safeDocId(codigo);
+      const rawOrden = getCell(sheet, "A", r);
+      const rawCosto = getCell(sheet, "D", r);
+      const rawPrecio = getCell(sheet, "E", r);
+      const rawIva = getCell(sheet, "F", r);
+      const rawPrecioConIva = getCell(sheet, "G", r);
+      const orden = toNumber(rawOrden);
+      const costo = firstNumber(rawCosto, getCell(sheet, "N", r)) || 0;
+      const precio = firstNumber(rawPrecio, getCell(sheet, "G", r));
+      const iva = firstNumber(rawIva, 0.16);
+      const precioConIva = firstNumber(rawPrecioConIva, getCell(sheet, "I", r), rawPrecio);
+      const pVenta = toNumber(rawPrecioConIva ?? rawPrecio) || 0;
 
       const masterObj = {
-        orden: toNumber(getCell(sheet, "A", r)),
-        seqNumber: toNumber(getCell(sheet, "A", r)),
+        orden: Number.isFinite(orden) ? orden : r,
+        seqNumber: r,
+        docId,
+        code: codigo,
         codigo,
+        Código: codigo,
         descripcion: String(getCell(sheet, "F", r)),
         tipo: String(getCell(sheet, "C", r)),
         color: String(getCell(sheet, "D", r)),
@@ -406,12 +430,13 @@ exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
         disponibilidad: String(getCell(sheet, "L", r)),
         fechaTexto: String(getCell(sheet, "J", r)),
         fecha: getCell(sheet, "J", r) || null,
-        precio: toNumber(getCell(sheet, "G", r)),
-        precioConIva: toNumber(getCell(sheet, "I", r)),
-        pVenta: toNumber(getCell(sheet, "I", r)),
-        iva: 0.16,
-        costo: toNumber(getCell(sheet, "N", r)),
-        margen: toNumber(getCell(sheet, "Q", r)),
+        precio,
+        precioConIva,
+        pVenta,
+        iva,
+        costo,
+        utilidad: pVenta - costo,
+        margen: costo > 0 ? ((pVenta - costo) / costo) : null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
