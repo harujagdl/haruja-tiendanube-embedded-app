@@ -1,6 +1,5 @@
-const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
-const {setGlobalOptions} = require("firebase-functions/v2");
-const logger = require("firebase-functions/logger");
+const functions = require("firebase-functions");
+const {HttpsError} = functions.https;
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
 const path = require("path");
@@ -8,7 +7,6 @@ const fs = require("fs");
 const XLSX = require("xlsx");
 
 admin.initializeApp();
-setGlobalOptions({maxInstances: 10});
 const db = admin.firestore();
 
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
@@ -92,11 +90,11 @@ const toFixedNumber = (value, digits = 2) => {
 };
 
 const resolveOrden = (data = {}) => {
-  const orden = Number(data.orden);
+  const orden = Number(data.orden ?? data.Orden);
   if (Number.isFinite(orden)) return orden;
-  const seqNumber = Number(data.seqNumber);
+  const seqNumber = Number(data.seqNumber ?? data.seq ?? data.secuencia);
   if (Number.isFinite(seqNumber)) return seqNumber;
-  return null;
+  return 0;
 };
 
 const resolvePVentaFromMaster = (data = {}) => {
@@ -134,7 +132,7 @@ const buildAdminPayloadFromMaster = (data = {}) => ({
   typeCode: data.typeCode ?? null
 });
 
-exports.migrateFromMainCollection = onRequest(async (req, res) => {
+exports.migrateFromMainCollection = functions.https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -149,7 +147,7 @@ exports.migrateFromMainCollection = onRequest(async (req, res) => {
 
     while (hasMore) {
       let baseQuery = db
-        .collection(PRENDAS_COLLECTION)
+         .collection(sourceCollection)
         .orderBy(admin.firestore.FieldPath.documentId())
         .limit(DEFAULT_BATCH_SIZE);
       if (cursor) {
@@ -198,7 +196,7 @@ exports.migrateFromMainCollection = onRequest(async (req, res) => {
       hasMore = snapshot.size === DEFAULT_BATCH_SIZE;
     }
 
-    logger.info("migrateFromMainCollection completed", {
+    console.info("migrateFromMainCollection completed", {
       by: adminSession.email,
       totalRead,
       writtenPublic,
@@ -215,35 +213,37 @@ exports.migrateFromMainCollection = onRequest(async (req, res) => {
     if (error instanceof HttpsError) {
       return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
     }
-    logger.error("migrateFromMainCollection failed", error);
+    console.error("migrateFromMainCollection failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
 
-exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
+exports.splitPrendasToPublicAdmin = functions.https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
 
     const adminSession = await requireAllowlistedAdmin(req);
+    const sourceCollection = String(req.body?.sourceCollection || PRENDAS_COLLECTION).trim() || PRENDAS_COLLECTION;
     const dryRunRaw = req.query?.dryRun ?? req.body?.dryRun;
     const dryRun = [true, "true", "1", 1].includes(dryRunRaw);
     const limitRaw = Number(req.body?.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
     const startAfter = String(req.body?.startAfter || "").trim();
-    const chunkSize = 400;
+    const chunkSize = 200;
 
     let processed = 0;
     let writtenPublic = 0;
     let writtenAdmin = 0;
     let lastDocId = startAfter || null;
+    const firstProcessedIds = [];
     let cursor = null;
     let hasMore = true;
 
     while (hasMore) {
       let baseQuery = db
-        .collection(PRENDAS_COLLECTION)
+        .collection(sourceCollection)
         .orderBy(admin.firestore.FieldPath.documentId())
         .limit(chunkSize);
 
@@ -264,10 +264,14 @@ exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
       const batch = db.batch();
       for (const docSnap of rows) {
         const payload = docSnap.data() || {};
+        const docId = payload.docId || docSnap.id;
         const publicData = buildPublicPayloadFromMaster(payload);
         const adminData = buildAdminPayloadFromMaster(payload);
+        publicData.docId = docId;
+        adminData.docId = docId;
         processed += 1;
         lastDocId = docSnap.id;
+        if (firstProcessedIds.length < 3) firstProcessedIds.push(docSnap.id);
 
         if (!dryRun) {
           batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicData, {merge: true});
@@ -281,7 +285,7 @@ exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
         await batch.commit();
       }
 
-      logger.info("splitPrendasToPublicAdmin chunk", {
+      console.info("splitPrendasToPublicAdmin chunk", {
         by: adminSession.email,
         dryRun,
         processed,
@@ -297,23 +301,36 @@ exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
       }
     }
 
-    return res.status(200).json({
-      ok: true,
+    console.info("splitPrendasToPublicAdmin completed", {
+      by: adminSession.email,
+      sourceCollection,
+      dryRun,
       processed,
       writtenPublic,
       writtenAdmin,
+      firstProcessedIds,
+      lastDocId
+    });
+
+    return res.status(200).json({
+      ok: true,
+      sourceCollection,
+      processed,
+      writtenPublic,
+      writtenAdmin,
+      firstProcessedIds,
       lastDocId
     });
   } catch (error) {
     if (error instanceof HttpsError) {
       return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
     }
-    logger.error("splitPrendasToPublicAdmin failed", error);
+    console.error("splitPrendasToPublicAdmin failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
 
-exports.syncPublicPrendas2025 = onRequest(async (req, res) => {
+exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
   try {
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
     const total = snapshot.size;
@@ -352,12 +369,12 @@ exports.syncPublicPrendas2025 = onRequest(async (req, res) => {
       dest: PRENDAS_PUBLIC_COLLECTION
     });
   } catch (error) {
-    logger.error("syncPublicPrendas2025 failed", error);
+    console.error("syncPublicPrendas2025 failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
 
-exports.importPrendasFromXlsx = onRequest(async (req, res) => {
+exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -381,7 +398,7 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
     const foundCandidate = probeResults.find((candidate) => candidate.exists);
     const filePath = foundCandidate?.path || "";
 
-    logger.info("XLSX probe results", {
+    console.info("XLSX probe results", {
       by: adminSession.email,
       candidates: probeResults
     });
@@ -392,7 +409,7 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
       );
     }
 
-    logger.info("START importPrendasFromXlsx", {
+    console.info("START importPrendasFromXlsx", {
       by: adminSession.email,
       filePath,
       xlsxFound: true,
@@ -404,7 +421,7 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
     const sheet = wb.Sheets[firstSheetName];
     const range = XLSX.utils.decode_range(sheet["!ref"]);
     const rowsTotal = Math.max(0, range.e.r);
-    logger.info("rows total", {rowsTotal, sheet: firstSheetName});
+    console.info("rows total", {rowsTotal, sheet: firstSheetName});
 
     let batch = db.batch();
     let writesInBatch = 0;
@@ -446,7 +463,7 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
       writtenMaster += 1;
 
       if (writesInBatch >= 500) {
-        logger.info("writing batch", {writesInBatch, rowsImported});
+        console.info("writing batch", {writesInBatch, rowsImported});
         await batch.commit();
         batch = db.batch();
         writesInBatch = 0;
@@ -454,11 +471,11 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
     }
 
     if (writesInBatch > 0) {
-      logger.info("writing batch", {writesInBatch, rowsImported});
+      console.info("writing batch", {writesInBatch, rowsImported});
       await batch.commit();
     }
 
-    logger.info("DONE importPrendasFromXlsx", {
+    console.info("DONE importPrendasFromXlsx", {
       rowsImported,
       writtenMaster
     });
@@ -479,12 +496,12 @@ exports.importPrendasFromXlsx = onRequest(async (req, res) => {
         error: err.message
       });
     }
-    logger.error("importPrendasFromXlsx failed", err);
+    console.error("importPrendasFromXlsx failed", err);
     res.status(500).json({ok: false, error: String(err)});
   }
 });
 
-exports.migrateSplitCollections = onRequest(async (req, res) => {
+exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -542,7 +559,7 @@ exports.migrateSplitCollections = onRequest(async (req, res) => {
       hasMore = snapshot.size === DEFAULT_BATCH_SIZE;
     }
 
-    logger.info("migrateSplitCollections completed", {
+    console.info("migrateSplitCollections completed", {
       by: adminSession.email,
       totalRead,
       publicWrites,
@@ -563,7 +580,7 @@ exports.migrateSplitCollections = onRequest(async (req, res) => {
     if (error instanceof HttpsError) {
       return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
     }
-    logger.error("migrateSplitCollections failed", error);
+    console.error("migrateSplitCollections failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
@@ -631,8 +648,8 @@ const verifyAdminSession = async (sessionId) => {
   return session;
 };
 
-exports.verifyAdminPassword = onCall(async (request) => {
-  const data = request.data || {};
+exports.verifyAdminPassword = functions.https.onCall(async (data) => {
+  data = data || {};
   const password = safeString(data?.password).trim();
   if (!password) {
     throw new HttpsError(
@@ -650,12 +667,12 @@ exports.verifyAdminPassword = onCall(async (request) => {
   const expiresAtMs = Date.now() + SESSION_TTL_MS;
   const sessionId = randomUUID();
   adminSessions.set(sessionId, {expiresAt: expiresAtMs});
-  logger.info("Admin session creada", {sessionId});
+  console.info("Admin session creada", {sessionId});
   return {sessionId, expiresAt: expiresAtMs};
 });
 
-exports.backfillSearchTokens = onCall(async (request) => {
-  const data = request.data || {};
+exports.backfillSearchTokens = functions.https.onCall(async (data) => {
+  data = data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
   const cursor = safeString(data?.cursor).trim() || null;
@@ -761,8 +778,8 @@ const resolvePVenta = (data = {}) => {
   return null;
 };
 
-exports.normalizePrendasPVenta = onCall(async (request) => {
-  const data = request.data || {};
+exports.normalizePrendasPVenta = functions.https.onCall(async (data) => {
+  data = data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
 

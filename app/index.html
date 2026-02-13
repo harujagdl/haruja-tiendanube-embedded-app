@@ -1290,7 +1290,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
-      const SPLIT_FUNCTION_NAME = "migrateFromMainCollection";
+      const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      const SPLIT_FUNCTION_NAME = "splitPrendasToPublicAdmin";
       const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
@@ -1825,6 +1826,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
         return {
           id: docSnap.id,
+          docId: safeString(data.docId ?? docSnap.id),
           orden,
           codigo,
           descripcion,
@@ -2271,7 +2273,30 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const loadAdminCostMap = async () => {
-        return new Map();
+        const map = new Map();
+        let cursor = null;
+        let hasMore = true;
+
+        while (hasMore) {
+          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (cursor) constraints.splice(1, 0, startAfter(cursor));
+          const snap = await getDocs(query(collection(db, PRENDAS_ADMIN_COLLECTION), ...constraints));
+          if (snap.empty) break;
+
+          snap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            const lookupId = safeString(data.docId || docSnap.id).trim();
+            if (!lookupId) return;
+            const costo = toNumberOrNull(data.costo);
+            const margen = toNumberOrNull(data.margen);
+            map.set(lookupId, {costo, margen});
+          });
+
+          cursor = snap.docs[snap.docs.length - 1];
+          hasMore = snap.docs.length === PRENDAS_COUNT_BATCH_SIZE;
+        }
+
+        return map;
       };
 
       const loadBaseRows = async () => {
@@ -2397,7 +2422,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             const adminCostMap = await loadAdminCostMap();
             items.forEach((row) => {
               const lookupId = safeString(row.docId || row.id).trim();
-              const costo = adminCostMap.get(lookupId);
+              const adminExtra = adminCostMap.get(lookupId);
+              const costo = toNumberOrNull(adminExtra?.costo);
               if (Number.isFinite(costo)) {
                 row.costo = costo;
                 const basePrice = Number.isFinite(row.pVenta)
@@ -2407,11 +2433,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
                   ? Number((basePrice - costo).toFixed(2))
                   : null;
                 row.margen =
-                  Number.isFinite(basePrice) &&
-                  basePrice !== 0 &&
-                  Number.isFinite(row.utilidad)
-                    ? Number((row.utilidad / basePrice).toFixed(3))
-                    : null;
+                  Number.isFinite(adminExtra?.margen)
+                    ? Number(adminExtra.margen)
+                    : Number.isFinite(basePrice) &&
+                      basePrice !== 0 &&
+                      Number.isFinite(row.utilidad)
+                      ? Number((row.utilidad / basePrice).toFixed(3))
+                      : null;
               }
             });
           }
@@ -2926,8 +2954,10 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const response = await fetch(`${SPLIT_FUNCTION_URL}?dryRun=0`, {
             method: "POST",
             headers: {
+              "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`
-            }
+            },
+            body: JSON.stringify({ sourceCollection: "HarujaPrendas_2025" })
           });
           const payload = await response.json();
           if (!response.ok || !payload?.ok) {
