@@ -67,9 +67,13 @@ const pickPublicPayload = (sourceData, docId) => {
   return payload;
 };
 
-const toNumberOrNull = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+
+const pickFirstNumber = (...values) => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
 };
 
 const main = async () => {
@@ -89,18 +93,49 @@ const main = async () => {
     const publicPayload = pickPublicPayload(data, docId);
     publicCandidates += 1;
 
-    const costo = toNumberOrNull(data.costo);
-    const adminPayload = Number.isFinite(costo)
-      ? {
-          costo,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedBy: "migration-script",
-        }
-      : null;
+    const costo = pickFirstNumber(
+      data.costo,
+      data.costoUnitario,
+      data.costo_unitario,
+      data.costoTotal,
+      data.costo_total,
+      data.costoSinIva,
+      data.costo_sin_iva,
+      data.costoConIva,
+      data.costoConIVA
+    );
+    const margen = pickFirstNumber(
+      data.margen,
+      data.margenUtilidad,
+      data.margen_utilidad,
+      data.porcentajeMargen,
+      data.porcentaje_margen,
+      data.margenEstimado,
+      data.margen_estimado
+    );
+    const utilidad = pickFirstNumber(
+      data.utilidad,
+      data.utilidadNeta,
+      data.utilidad_neta,
+      data.ganancia,
+      data.gananciaNeta,
+      data.ganancia_neta
+    );
+    const iva = pickFirstNumber(data.iva);
+    const precioConIva = pickFirstNumber(data.precioConIva, data.precioConIVA, data.pVenta);
 
-    if (adminPayload) {
-      adminCandidates += 1;
-    }
+    const adminPayload = {
+      ...publicPayload,
+      costo: Number(costo ?? 0),
+      margen: Number(margen ?? 0),
+      utilidad: Number(utilidad ?? 0),
+      iva: Number(iva ?? 0),
+      precioConIva: Number(precioConIva ?? 0),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: "migration-script",
+    };
+
+    adminCandidates += 1;
 
     updates.push({ docId, publicPayload, adminPayload });
   });
@@ -115,7 +150,13 @@ const main = async () => {
       console.log(`${index + 1}. ${item.docId}`);
       console.log(`   public: ${JSON.stringify(item.publicPayload)}`);
       if (item.adminPayload) {
-        console.log(`   admin: ${JSON.stringify({ costo: item.adminPayload.costo })}`);
+        console.log(
+          `   admin: ${JSON.stringify({
+            costo: item.adminPayload.costo,
+            margen: item.adminPayload.margen,
+            utilidad: item.adminPayload.utilidad,
+          })}`
+        );
       }
     });
     return;

@@ -13,6 +13,14 @@ const toFixedNumber = (value, digits = 2) => {
   return Number(n.toFixed(digits));
 };
 
+const pickFirstNumber = (...values) => {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+};
+
 const resolveOrden = (data = {}) => {
   const orden = Number(data.orden ?? data.Orden);
   if (Number.isFinite(orden)) return orden;
@@ -57,19 +65,54 @@ const buildPublicPayloadFromMaster = (data = {}) => {
   return payload;
 };
 
-const buildAdminPayloadFromMaster = (data = {}) => ({
-  ...buildPublicPayloadFromMaster(data),
-  seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
-  source: data.source ?? SOURCE_COLLECTION,
-  providerCode: data.providerCode ?? null,
-  typeCode: data.typeCode ?? null,
-  createdAt: data.createdAt ?? null,
-  updatedAt: data.updatedAt ?? null,
-  iva: toFixedNumber(data.iva, 4),
-  costo: toFixedNumber(data.costo),
-  margen: toFixedNumber(data.margen, 3),
-  utilidad: toFixedNumber(data.utilidad),
-});
+const buildAdminPayloadFromMaster = (data = {}) => {
+  const publicPayload = buildPublicPayloadFromMaster(data);
+  const costo = pickFirstNumber(
+    data.costo,
+    data.costoUnitario,
+    data.costo_unitario,
+    data.costoTotal,
+    data.costo_total,
+    data.costoSinIva,
+    data.costo_sin_iva,
+    data.costoConIva,
+    data.costoConIVA
+  );
+  const margen = pickFirstNumber(
+    data.margen,
+    data.margenUtilidad,
+    data.margen_utilidad,
+    data.porcentajeMargen,
+    data.porcentaje_margen,
+    data.margenEstimado,
+    data.margen_estimado
+  );
+  const utilidad = pickFirstNumber(
+    data.utilidad,
+    data.utilidadNeta,
+    data.utilidad_neta,
+    data.ganancia,
+    data.gananciaNeta,
+    data.ganancia_neta
+  );
+  const iva = pickFirstNumber(data.iva);
+  const precioConIva = pickFirstNumber(data.precioConIva, data.precioConIVA, publicPayload.precioConIva);
+
+  return {
+    ...publicPayload,
+    seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
+    source: data.source ?? SOURCE_COLLECTION,
+    providerCode: data.providerCode ?? null,
+    typeCode: data.typeCode ?? null,
+    createdAt: data.createdAt ?? null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    iva: Number(iva ?? 0),
+    costo: Number(costo ?? 0),
+    margen: Number(margen ?? 0),
+    utilidad: Number(utilidad ?? 0),
+    precioConIva: Number(precioConIva ?? 0),
+  };
+};
 
 const loadServiceAccount = () => {
   const fromEnvJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GCP_SA_KEY;
