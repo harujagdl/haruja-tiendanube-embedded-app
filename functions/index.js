@@ -120,16 +120,112 @@ const buildPublicPayloadFromMaster = (data = {}) => ({
   disponibilidad: data.disponibilidad ?? null,
   fecha: data.fecha ?? null,
   fechaTexto: data.fechaTexto ?? null,
+  updatedAt: data.updatedAt ?? null,
   pVenta: resolvePVentaFromMaster(data),
   precio: toFixedNumber(data.precio)
 });
 
 const buildAdminPayloadFromMaster = (data = {}) => ({
+  ...buildPublicPayloadFromMaster(data),
   costo: toFixedNumber(data.costo),
   margen: toFixedNumber(data.margen, 3),
   iva: toFixedNumber(data.iva, 4),
   precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA),
-  precio: toFixedNumber(data.precio)
+  providerCode: data.providerCode ?? null,
+  typeCode: data.typeCode ?? null
+});
+
+exports.splitPrendasCollections = functionsV1.https.onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
+    }
+
+    const adminSession = await requireAllowlistedAdmin(req);
+    const dryRunRaw = req.body?.dryRun;
+    const dryRun = dryRunRaw === true || String(dryRunRaw).toLowerCase() === "true";
+    const limitRaw = Number(req.body?.limit);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
+    const startAfter = String(req.body?.startAfter || "").trim();
+    const chunkSize = 400;
+
+    let processed = 0;
+    let writtenPublic = 0;
+    let writtenAdmin = 0;
+    let lastDocId = startAfter || null;
+    let cursor = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let baseQuery = db
+        .collection(PRENDAS_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(chunkSize);
+
+      if (cursor) {
+        baseQuery = baseQuery.startAfter(cursor);
+      } else if (startAfter) {
+        baseQuery = baseQuery.startAfter(startAfter);
+      }
+
+      const snapshot = await baseQuery.get();
+      if (snapshot.empty) break;
+
+      const rows = limit > 0
+        ? snapshot.docs.slice(0, Math.max(0, limit - processed))
+        : snapshot.docs;
+      if (rows.length === 0) break;
+
+      const batch = db.batch();
+      for (const docSnap of rows) {
+        const payload = docSnap.data() || {};
+        const publicData = buildPublicPayloadFromMaster(payload);
+        const adminData = buildAdminPayloadFromMaster(payload);
+        processed += 1;
+        lastDocId = docSnap.id;
+
+        if (!dryRun) {
+          batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicData, {merge: true});
+          batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminData, {merge: true});
+          writtenPublic += 1;
+          writtenAdmin += 1;
+        }
+      }
+
+      if (!dryRun) {
+        await batch.commit();
+      }
+
+      logger.info("splitPrendasCollections chunk", {
+        by: adminSession.email,
+        dryRun,
+        processed,
+        writtenPublic,
+        writtenAdmin,
+        lastDocId
+      });
+
+      cursor = rows[rows.length - 1];
+      hasMore = rows.length === chunkSize;
+      if (limit > 0 && processed >= limit) {
+        hasMore = false;
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      processed,
+      writtenPublic,
+      writtenAdmin,
+      lastDocId
+    });
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) {
+      return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
+    }
+    logger.error("splitPrendasCollections failed", error);
+    return res.status(500).json({ok: false, error: String(error)});
+  }
 });
 
 exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
