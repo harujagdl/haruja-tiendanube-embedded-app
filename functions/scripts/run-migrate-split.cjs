@@ -1,6 +1,6 @@
-import fs from "node:fs";
-import process from "node:process";
-import admin from "firebase-admin";
+const fs = require("node:fs");
+const process = require("node:process");
+const admin = require("firebase-admin");
 
 const SOURCE_COLLECTION = "HarujaPrendas_2025";
 const PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
