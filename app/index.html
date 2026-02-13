@@ -2273,31 +2273,78 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         refreshList();
       };
 
-      const loadAdminCostMap = async () => {
+      const chunkArray = (items, size) => {
+        const chunks = [];
+        for (let i = 0; i < items.length; i += size) {
+          chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+      };
+
+      const loadAdminCostMap = async (rows = []) => {
         const map = new Map();
-        let cursor = null;
-        let hasMore = true;
+        const rowDocIds = rows
+          .map((row) => safeString(row.docId || row.id).trim())
+          .filter(Boolean);
 
-        while (hasMore) {
-          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          if (cursor) constraints.splice(1, 0, startAfter(cursor));
-          const snap = await getDocs(query(collection(db, PRENDAS_ADMIN_COLLECTION), ...constraints));
-          if (snap.empty) break;
+        if (!rowDocIds.length) {
+          return map;
+        }
 
+        const ids = [...new Set(rowDocIds)];
+        const chunks = chunkArray(ids, 30);
+
+        for (const chunk of chunks) {
+          const snap = await getDocs(
+            query(collection(db, PRENDAS_ADMIN_COLLECTION), where("docId", "in", chunk))
+          );
           snap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
             const lookupId = safeString(data.docId || docSnap.id).trim();
             if (!lookupId) return;
-            const costo = toNumberOrNull(data.costo);
-            const margen = toNumberOrNull(data.margen);
-            map.set(lookupId, {costo, margen});
+            map.set(lookupId, {
+              costo: toNumberOrNull(data.costo),
+              margen: toNumberOrNull(data.margen),
+              utilidad: toNumberOrNull(data.utilidad),
+            });
           });
-
-          cursor = snap.docs[snap.docs.length - 1];
-          hasMore = snap.docs.length === PRENDAS_COUNT_BATCH_SIZE;
         }
 
         return map;
+      };
+
+      const mergeAdminFields = async (rows = []) => {
+        if (!(prendasState.isAdmin && auth.currentUser && rows.length)) {
+          return rows;
+        }
+
+        const adminCostMap = await loadAdminCostMap(rows);
+        rows.forEach((row) => {
+          const lookupId = safeString(row.docId || row.id).trim();
+          const adminExtra = adminCostMap.get(lookupId);
+          if (!adminExtra) return;
+
+          const costo = toNumberOrNull(adminExtra.costo);
+          const utilidadFromAdmin = toNumberOrNull(adminExtra.utilidad);
+          const margenFromAdmin = toNumberOrNull(adminExtra.margen);
+          const basePrice = Number.isFinite(row.pVenta)
+            ? Number((row.pVenta / 1.16).toFixed(2))
+            : null;
+
+          row.costo = Number.isFinite(costo) ? costo : null;
+          row.utilidad = Number.isFinite(utilidadFromAdmin)
+            ? utilidadFromAdmin
+            : Number.isFinite(basePrice) && Number.isFinite(row.costo)
+            ? Number((basePrice - row.costo).toFixed(2))
+            : null;
+          row.margen = Number.isFinite(margenFromAdmin)
+            ? margenFromAdmin
+            : Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(row.utilidad)
+            ? Number((row.utilidad / basePrice).toFixed(3))
+            : null;
+        });
+
+        return rows;
       };
 
       const loadBaseRows = async () => {
@@ -2457,31 +2504,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
           prendasState.filtered = items;
 
-          if (prendasState.isAdmin && auth.currentUser && items.length) {
-            const adminCostMap = await loadAdminCostMap();
-            items.forEach((row) => {
-              const lookupId = safeString(row.docId || row.id).trim();
-              const adminExtra = adminCostMap.get(lookupId);
-              const costo = toNumberOrNull(adminExtra?.costo);
-              if (Number.isFinite(costo)) {
-                row.costo = costo;
-                const basePrice = Number.isFinite(row.pVenta)
-                  ? Number((row.pVenta / 1.16).toFixed(2))
-                  : null;
-                row.utilidad = Number.isFinite(basePrice)
-                  ? Number((basePrice - costo).toFixed(2))
-                  : null;
-                row.margen =
-                  Number.isFinite(adminExtra?.margen)
-                    ? Number(adminExtra.margen)
-                    : Number.isFinite(basePrice) &&
-                      basePrice !== 0 &&
-                      Number.isFinite(row.utilidad)
-                      ? Number((row.utilidad / basePrice).toFixed(3))
-                      : null;
-              }
-            });
-          }
+          await mergeAdminFields(items);
 
           prendasState.pageIndex = safePageIndex;
           prendasState.hasNextPage = safePageIndex < totalPages - 1;
@@ -2651,6 +2674,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         try {
           const result = await fetchBySku(rawUpper);
           const items = result ? [result] : [];
+          await mergeAdminFields(items);
           prendasState.filtered = items;
           prendasState.showingTotal = items.length;
           prendasState.pageIndex = 0;
