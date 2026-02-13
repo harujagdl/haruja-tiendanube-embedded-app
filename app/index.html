@@ -1697,10 +1697,14 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const formatCurrency = (value) => currencyFormatter.format(value);
 
       const formatPercent = (value) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return "--";
-        const ratio = numeric > 1 ? numeric / 100 : numeric;
-        return `${(ratio * 100).toFixed(1)}%`;
+        if (!Number.isFinite(value)) return "";
+        const n = Number(value);
+
+        // Si viene como ratio (ej 0.742 => 74.2% o 1.111 => 111.1%)
+        // Si viene como “porcentaje” (ej 74.2), lo detectamos y lo tratamos.
+        const ratio = (n > 5) ? (n / 100) : n;
+
+        return (ratio * 100).toFixed(1) + "%";
       };
 
       const formatMoney = (value) => {
@@ -1753,19 +1757,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const talla = safeString(data.talla || data.Talla || "").trim();
         const statusRaw = safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim();
         const statusCanon = normalizeStatus(statusRaw);
-        const costoRaw = pickFirstValue(
-          data.costo,
-          data.Costo,
-          data.cost,
-          data.costoUnitario,
-          data.costo_unitario,
-          data.costoTotal,
-          data.costo_total,
-          data.costoSinIva,
-          data.costo_sin_iva,
-          data.costoConIva,
-          data.costoConIVA
-        );
         const precioRaw = pickFirstValue(
           data.precio,
           data.Precio,
@@ -1773,46 +1764,24 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           data.precioFinal,
           data.precio_final
         );
-        const margenRaw = pickFirstValue(
-          data.margen,
-          data.Margen,
-          data.margenUtilidad,
-          data.margen_utilidad,
-          data.porcentajeMargen,
-          data.porcentaje_margen,
-          data.margenEstimado,
-          data.margen_estimado
-        );
-        const utilidadRaw = pickFirstValue(
-          data.utilidad,
-          data.Utilidad,
-          data.utilidadNeta,
-          data.utilidad_neta,
-          data.ganancia,
-          data.gananciaEstimada
-        );
         const precio = toNumberOrNull(precioRaw);
         const precioConIva = toNumberOrNull(
           pickFirstValue(data.precioConIva, data.precioConIVA)
         );
-        const pVenta = resolvePVenta(data);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
-        const costo = prendasState.isAdmin ? toNumberOrNull(costoRaw) : null;
-        const basePrice = Number.isFinite(pVenta) ? Number((pVenta / 1.16).toFixed(2)) : null;
-        const utilidadCalculada =
-          Number.isFinite(basePrice) || Number.isFinite(costo)
-            ? Number((basePrice ?? 0) - (costo ?? 0))
-            : null;
-        const utilidad = Number.isFinite(toNumberOrNull(utilidadRaw))
-          ? toNumberOrNull(utilidadRaw)
-          : utilidadCalculada;
-        const margenCalculado =
-          Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(utilidad)
-            ? Number((utilidad / basePrice).toFixed(3))
-            : null;
-        const margen = Number.isFinite(toNumberOrNull(margenRaw))
-          ? toNumberOrNull(margenRaw)
-          : margenCalculado;
+        const pVenta = toNumberOrNull(data.pVenta ?? data.precioConIva ?? data.precio);
+        const costo = toNumberOrNull(data.costo);
+
+        // SIEMPRE recalcular (admin)
+        const utilidadCalculada = (Number.isFinite(pVenta) && Number.isFinite(costo)) ? (pVenta - costo) : null;
+
+        // Margen consistente con Functions (markup sobre costo)
+        const margenCalculado = (Number.isFinite(utilidadCalculada) && Number.isFinite(costo) && costo !== 0)
+          ? (utilidadCalculada / costo)
+          : null;
+
+        const utilidad = utilidadCalculada; // no usar utilidad guardada si viene mal
+        const margen = margenCalculado;     // no usar margen guardado si viene mal
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
