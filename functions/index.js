@@ -2,8 +2,7 @@ const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
-const path = require("path");
-const fs = require("fs");
+const Busboy = require("busboy");
 const XLSX = require("xlsx");
 
 admin.initializeApp();
@@ -56,13 +55,61 @@ const STOPWORDS = new Set([
 ]);
 const adminSessions = new Map();
 
-const safeDocId = (val) => String(val ?? "").trim().replaceAll("/", "_");
-const normalizeCodigo = (val) => String(val ?? "").trim().replaceAll("_", "/");
+const safeDocId = (val) =>
+  String(val ?? "")
+    .trim()
+    .toUpperCase()
+    .replaceAll("/", "__");
+const normalizeCodigo = (val) => String(val ?? "").trim().toUpperCase();
 
 const getCell = (sheet, col, row) => {
   const cell = sheet[`${col}${row}`];
   return cell ? cell.v : "";
 };
+
+const parseMultipartFile = (req, fieldName = "file") =>
+  new Promise((resolve, reject) => {
+    const contentType = String(req.headers["content-type"] || "");
+    if (!contentType.toLowerCase().includes("multipart/form-data")) {
+      reject(new Error("Content-Type debe ser multipart/form-data."));
+      return;
+    }
+
+    const busboy = Busboy({headers: req.headers});
+    const chunks = [];
+    let matchedFile = false;
+    let filename = "";
+    let mimeType = "";
+
+    busboy.on("file", (name, stream, info) => {
+      if (name !== fieldName) {
+        stream.resume();
+        return;
+      }
+
+      matchedFile = true;
+      filename = String(info?.filename || "");
+      mimeType = String(info?.mimeType || "");
+
+      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("error", (error) => reject(error));
+    });
+
+    busboy.on("error", reject);
+    busboy.on("finish", () => {
+      if (!matchedFile) {
+        reject(new Error("Campo file requerido."));
+        return;
+      }
+      resolve({
+        buffer: Buffer.concat(chunks),
+        filename,
+        mimeType,
+      });
+    });
+
+    req.pipe(busboy);
+  });
 
 function applyCors(req, res) {
   const origin = req.get("origin");
@@ -195,6 +242,8 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 function buildAdminPayloadFromMaster(masterData) {
   const costo = numOrUndefined(masterData.costo);
   const precioConIva = numOrUndefined(masterData.precioConIva ?? masterData.pVenta);
+  const utilidadRaw = numOrUndefined(masterData.utilidad);
+  const margenRaw = numOrUndefined(masterData.margen);
 
   const utilidadCalc =
     Number.isFinite(precioConIva) && Number.isFinite(costo)
@@ -202,17 +251,20 @@ function buildAdminPayloadFromMaster(masterData) {
       : undefined;
 
   const margenCalc =
-    Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo !== 0
-      ? Number(utilidadCalc / costo)
+    Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo > 0
+      ? Number((utilidadCalc / costo) * 100)
       : undefined;
+
+  const utilidad = Number.isFinite(utilidadRaw) ? utilidadRaw : utilidadCalc;
+  const margen = Number.isFinite(margenRaw) ? margenRaw : margenCalc;
 
   return {
     ...buildPublicPayloadFromMaster(masterData),
     ...(costo !== undefined ? {costo} : {}),
     ...(precioConIva !== undefined ? {precioConIva} : {}),
     ...(precioConIva !== undefined ? {pVenta: precioConIva} : {}),
-    ...(utilidadCalc !== undefined ? {utilidad: utilidadCalc} : {}),
-    ...(margenCalc !== undefined ? {margen: margenCalc} : {}),
+    ...(utilidad !== undefined ? {utilidad} : {}),
+    ...(margen !== undefined ? {margen} : {}),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
@@ -267,7 +319,7 @@ exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => 
       const batch = db.batch();
       for (const docSnap of rows) {
         const payload = docSnap.data() || {};
-        const docId = payload.docId || docSnap.id;
+        const docId = safeDocId(payload.docId || payload.codigo || docSnap.id);
         const publicData = buildPublicPayloadFromMaster(payload);
         const adminData = buildAdminPayloadFromMaster(payload);
         publicData.docId = docId;
@@ -277,8 +329,8 @@ exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => 
         if (firstProcessedIds.length < 3) firstProcessedIds.push(docSnap.id);
 
         if (!dryRun) {
-          batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicData, {merge: true});
-          batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminData, {merge: true});
+          batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicData, {merge: true});
+          batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminData, {merge: true});
           writtenPublic += 1;
           writtenAdmin += 1;
         }
@@ -378,160 +430,118 @@ exports.syncPublicPrendas2025 = onRequest(RUNTIME_OPTS, async (req, res) => {
   }
 });
 
-exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
+exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) => {
+  const allowOrigin = "https://haruja-tiendanube.web.app";
+  res.set("Access-Control-Allow-Origin", allowOrigin);
+  res.set("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.status(204).send("");
+  }
+
   try {
-    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
 
     const adminSession = await requireAllowlistedAdmin(req);
+    const {buffer, filename} = await parseMultipartFile(req, "file");
 
-    const candidatePaths = [
-      path.join(__dirname, "data", "HarujaPrendas_2025.xlsx"),
-      path.join(__dirname, "..", "Data", "HarujaPrendas_2025.xlsx")
-    ];
-    const probeResults = candidatePaths.map((candidate) => {
-      const exists = fs.existsSync(candidate);
-      const bytes = exists ? fs.statSync(candidate).size : 0;
-      return {
-        path: candidate,
-        exists,
-        bytes
-      };
-    });
-    const foundCandidate = probeResults.find((candidate) => candidate.exists);
-    const filePath = foundCandidate?.path || "";
-
-    console.info("XLSX probe results", {
-      by: adminSession.email,
-      candidates: probeResults
-    });
-
-    if (!filePath) {
-      throw new Error(
-        "XLSX no encontrado en runtime. Revisa deploy de Functions y que el archivo exista en functions/data o Data/."
-      );
+    if (!buffer?.length) {
+      return res.status(400).json({ok: false, error: "Archivo XLSX vacío."});
     }
 
-    console.info("START importPrendasFromXlsx", {
-      by: adminSession.email,
-      filePath,
-      xlsxFound: true,
-      bytes: foundCandidate.bytes
-    });
-
-    const wb = XLSX.readFile(filePath);
+    const wb = XLSX.read(buffer, {type: "buffer"});
     const firstSheetName = wb.SheetNames[0];
     const sheet = wb.Sheets[firstSheetName];
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    const rowsTotal = Math.max(0, range.e.r);
-    console.info("rows total", {rowsTotal, sheet: firstSheetName});
+    const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
 
     let batch = db.batch();
     let writesInBatch = 0;
-    let rowsImported = 0;
-    let writtenMaster = 0;
+    let updated = 0;
+    const errors = [];
 
     for (let r = 2; r <= range.e.r + 1; r++) {
-      const codigoRaw = String(getCell(sheet, "B", r)).trim();
-      const codigo = normalizeCodigo(codigoRaw);
-      if (!codigo) continue;
+      try {
+        const codigoRaw = String(getCell(sheet, "B", r)).trim();
+        const codigo = normalizeCodigo(codigoRaw);
+        if (!codigo) continue;
 
-      const docId = safeDocId(codigo);
-      const rawOrden = getCell(sheet, "A", r);
-      const rawSeqNumber = getCell(sheet, "B", r);
-      const rawCosto = getCell(sheet, "D", r);
-      const rawPrecio = getCell(sheet, "E", r);
-      const rawIva = getCell(sheet, "F", r);
-      const rawPrecioConIva = getCell(sheet, "G", r);
-      const orden = numOrUndefined(rawOrden);
-      const seqNumber = numOrUndefined(rawSeqNumber) ?? r;
-      const costo = numOrUndefined(rawCosto) ?? numOrUndefined(getCell(sheet, "N", r));
-      const precio = firstNumber(rawPrecio, getCell(sheet, "G", r));
-      const iva = firstNumber(rawIva, 0.16);
-      const precioConIva = numOrUndefined(rawPrecioConIva) ?? numOrUndefined(getCell(sheet, "I", r)) ?? numOrUndefined(rawPrecio);
-      const pVenta = precioConIva;
+        const docId = safeDocId(codigo);
+        const orden = numOrUndefined(getCell(sheet, "A", r));
+        const costo = numOrUndefined(getCell(sheet, "D", r)) ?? numOrUndefined(getCell(sheet, "N", r));
+        const precioConIva =
+          numOrUndefined(getCell(sheet, "G", r)) ??
+          numOrUndefined(getCell(sheet, "I", r)) ??
+          numOrUndefined(getCell(sheet, "E", r));
+        const utilidad =
+          Number.isFinite(precioConIva) && Number.isFinite(costo)
+            ? Number((precioConIva - costo).toFixed(2))
+            : undefined;
+        const margenPct =
+          Number.isFinite(utilidad) && Number.isFinite(costo) && costo > 0
+            ? Number(((utilidad / costo) * 100).toFixed(2))
+            : 0;
 
-      const utilidadCalc =
-        Number.isFinite(precioConIva) && Number.isFinite(costo)
-          ? Number(precioConIva - costo)
-          : undefined;
-      const margenCalc =
-        Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo !== 0
-          ? Number(utilidadCalc / costo)
-          : undefined;
+        const masterObj = {
+          ...(orden !== undefined ? {orden} : {}),
+          docId,
+          code: codigo,
+          codigo,
+          ...(costo !== undefined ? {costo} : {}),
+          ...(precioConIva !== undefined ? {precioConIva, pVenta: precioConIva} : {}),
+          ...(utilidad !== undefined ? {utilidad} : {}),
+          margen: margenPct,
+          descripcion: String(getCell(sheet, "F", r)),
+          tipo: String(getCell(sheet, "C", r)),
+          color: String(getCell(sheet, "D", r)),
+          talla: String(getCell(sheet, "E", r)),
+          proveedor: String(getCell(sheet, "M", r)),
+          status: String(getCell(sheet, "L", r)),
+          disponibilidad: String(getCell(sheet, "L", r)),
+          fechaTexto: String(getCell(sheet, "J", r)),
+          fecha: getCell(sheet, "J", r) || null,
+          source: "upload-xlsx",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
 
-      const masterObj = {
-        ...(orden !== undefined ? {orden} : {}),
-        ...(seqNumber !== undefined ? {seqNumber} : {}),
-        docId,
-        code: codigo,
-        codigo,
-        Código: codigo,
-        descripcion: String(getCell(sheet, "F", r)),
-        tipo: String(getCell(sheet, "C", r)),
-        color: String(getCell(sheet, "D", r)),
-        talla: String(getCell(sheet, "E", r)),
-        proveedor: String(getCell(sheet, "M", r)),
-        status: String(getCell(sheet, "L", r)),
-        disponibilidad: String(getCell(sheet, "L", r)),
-        fechaTexto: String(getCell(sheet, "J", r)),
-        fecha: getCell(sheet, "J", r) || null,
-        precio,
-        ...(precioConIva !== undefined ? {precioConIva} : {}),
-        ...(pVenta !== undefined ? {pVenta} : {}),
-        iva,
-        ...(costo !== undefined ? {costo} : {}),
-        ...(utilidadCalc !== undefined ? {utilidad: utilidadCalc} : {}),
-        ...(margenCalc !== undefined ? {margen: margenCalc} : {}),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      };
+        batch.set(db.collection(PRENDAS_COLLECTION).doc(docId), masterObj, {merge: true});
+        writesInBatch += 1;
+        updated += 1;
 
-      batch.set(db.collection(PRENDAS_COLLECTION).doc(docId), masterObj, {merge: true});
-
-      writesInBatch += 1;
-      rowsImported += 1;
-      writtenMaster += 1;
-
-      if (writesInBatch >= 500) {
-        console.info("writing batch", {writesInBatch, rowsImported});
-        await batch.commit();
-        batch = db.batch();
-        writesInBatch = 0;
+        if (writesInBatch >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          writesInBatch = 0;
+        }
+      } catch (error) {
+        errors.push({row: r, error: String(error)});
       }
     }
 
     if (writesInBatch > 0) {
-      console.info("writing batch", {writesInBatch, rowsImported});
       await batch.commit();
     }
 
-    console.info("DONE importPrendasFromXlsx", {
-      rowsImported,
-      writtenMaster
+    console.info("importPrendasFromXlsxUpload completed", {
+      by: adminSession.email,
+      filename,
+      sheet: firstSheetName,
+      updated,
+      errors: errors.length
     });
 
-    res.json({
-      ok: true,
-      sheet: firstSheetName,
-      rowsTotal,
-      rowsImported,
-      writtenMaster,
-      publicCollection: PRENDAS_PUBLIC_COLLECTION,
-      adminCollection: PRENDAS_ADMIN_COLLECTION
-    });
+    return res.status(200).json({ok: true, updated, errors});
   } catch (err) {
     if (err instanceof HttpsError) {
-      return res.status(err.httpErrorCode.status).json({
-        ok: false,
-        error: err.message
-      });
+      return res.status(err.httpErrorCode.status).json({ok: false, error: err.message});
     }
-    console.error("importPrendasFromXlsx failed", err);
-    res.status(500).json({ok: false, error: String(err)});
+    console.error("importPrendasFromXlsxUpload failed", err);
+    return res.status(500).json({ok: false, error: String(err)});
   }
 });
+
+exports.importPrendasFromXlsx = exports.importPrendasFromXlsxUpload;
 
 exports.migrateSplitCollections = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
@@ -584,11 +594,12 @@ exports.migrateSplitCollections = onRequest(RUNTIME_OPTS, async (req, res) => {
       }
       const publicPayload = buildPublicPayloadFromMaster(payload);
       const adminPayload = buildAdminPayloadFromMaster(payload);
-      publicPayload.docId = publicPayload.docId ?? docSnap.id;
-      adminPayload.docId = adminPayload.docId ?? docSnap.id;
+      const docId = safeDocId(publicPayload.docId ?? adminPayload.docId ?? payload.codigo ?? docSnap.id);
+      publicPayload.docId = docId;
+      adminPayload.docId = docId;
 
-      batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicPayload, {merge: true});
-      batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminPayload, {merge: true});
+      batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicPayload, {merge: true});
+      batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminPayload, {merge: true});
       writtenPublic += 1;
       writtenAdmin += 1;
     });
