@@ -141,17 +141,34 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       path.join(__dirname, "data", "HarujaPrendas_2025.xlsx"),
       path.join(__dirname, "..", "Data", "HarujaPrendas_2025.xlsx")
     ];
-    const filePath = candidatePaths.find((candidate) => fs.existsSync(candidate));
+    const probeResults = candidatePaths.map((candidate) => {
+      const exists = fs.existsSync(candidate);
+      const bytes = exists ? fs.statSync(candidate).size : 0;
+      return {
+        path: candidate,
+        exists,
+        bytes
+      };
+    });
+    const foundCandidate = probeResults.find((candidate) => candidate.exists);
+    const filePath = foundCandidate?.path || "";
+
+    logger.info("XLSX probe results", {
+      by: adminSession.email,
+      candidates: probeResults
+    });
+
     if (!filePath) {
-      return res.status(500).json({
-        ok: false,
-        error: "No se encontró HarujaPrendas_2025.xlsx en functions/data ni en Data/."
-      });
+      throw new Error(
+        "XLSX no encontrado en runtime. Revisa deploy de Functions y que el archivo exista en functions/data o Data/."
+      );
     }
 
     logger.info("START importPrendasFromXlsx", {
       by: adminSession.email,
-      filePath
+      filePath,
+      xlsxFound: true,
+      bytes: foundCandidate.bytes
     });
 
     const wb = XLSX.readFile(filePath);
