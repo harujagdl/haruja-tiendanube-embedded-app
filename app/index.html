@@ -861,6 +861,7 @@
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
                   <button type="button" id="admin-import-xlsx">Reimportar XLSX (Master)</button>
+                  <input type="file" id="xlsxFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" />
                   <button type="button" id="admin-split-collections">Migrar a public/admin</button>
                 </div>
               </div>
@@ -1062,6 +1063,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
       const adminImportButton = document.getElementById("admin-import-xlsx");
+      const xlsxFileInput = document.getElementById("xlsxFile");
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
@@ -3008,12 +3010,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           adminSplitButton.disabled = true;
         }
         try {
-          const fileInput = document.createElement("input");
-          fileInput.type = "file";
-          fileInput.accept = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          if (!xlsxFileInput) {
+            throw new Error("No existe #xlsxFile para seleccionar XLSX.");
+          }
+          xlsxFileInput.value = "";
           const selectedFile = await new Promise((resolve) => {
-            fileInput.addEventListener("change", () => resolve(fileInput.files?.[0] || null), {once: true});
-            fileInput.click();
+            xlsxFileInput.addEventListener("change", () => resolve(xlsxFileInput.files?.[0] || null), {once: true});
+            xlsxFileInput.click();
           });
           if (!selectedFile) {
             setAdminLoginStatus("Importación cancelada: no seleccionaste archivo XLSX.", "warning");
