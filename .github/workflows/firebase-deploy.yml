@@ -47,7 +47,8 @@ jobs:
             --non-interactive
 
       - name: Run split migration (master -> public/admin)
+        working-directory: functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: node scripts/run-migrate-split.js
+        run: node scripts/run-migrate-split.cjs
