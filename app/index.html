@@ -1670,18 +1670,18 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         renderBadgeCell(normalizeDisponibilidad(disponibilidad, status));
 
       const resolvePVenta = (data) => {
+        const precioConIva = toNumberOrNull(
+          pickFirstValue(data?.precioConIva, data?.precioConIVA)
+        );
         const precioBase = toNumberOrNull(
           pickFirstValue(data?.precio, data?.Precio, data?.price)
         );
         const pVenta = toNumberOrNull(
           pickFirstValue(data?.pVenta, data?.PVenta, data?.p_venta)
         );
-        const precioConIvaLegacy = toNumberOrNull(
-          pickFirstValue(data?.precioConIva, data?.precioConIVA)
-        );
+        if (Number.isFinite(precioConIva)) return precioConIva;
+        if (Number.isFinite(precioBase)) return precioBase;
         if (Number.isFinite(pVenta)) return pVenta;
-        if (Number.isFinite(precioConIvaLegacy)) return precioConIvaLegacy;
-        if (Number.isFinite(precioBase)) return Number((precioBase * 1.16).toFixed(2));
         return null;
       };
 
