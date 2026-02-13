@@ -1,4 +1,5 @@
 const functions = require("firebase-functions");
+const functionsV1 = require("firebase-functions/v1");
 const {setGlobalOptions} = require("firebase-functions");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
@@ -386,7 +387,7 @@ exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => 
   }
 });
 
-exports.syncPrendasDerivedCollections = functions.firestore
+exports.syncPrendasDerivedCollections = functionsV1.firestore
   .document(`${PRENDAS_COLLECTION}/{docId}`)
   .onWrite(async (change, context) => {
     const docId = context.params.docId;
