@@ -1,0 +1,2 @@
+# Avoid noisy/broken binary diffs in PR previews for Excel sources used by imports
+*.xlsx binary -diff
