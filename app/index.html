@@ -1780,12 +1780,14 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           ? precioConIva
           : (Number.isFinite(pVenta) ? pVenta : null);
 
-        const utilidadCalculada = (Number.isFinite(precioConIvaFinal) && Number.isFinite(costo))
-          ? (precioConIvaFinal - costo)
-          : null;
-        const margenCalculado = (Number.isFinite(utilidadCalculada) && Number.isFinite(costo) && costo !== 0)
-          ? (utilidadCalculada / costo)
-          : null;
+        const utilidadCalculada =
+          (typeof precioConIvaFinal === "number" && typeof costo === "number")
+            ? (precioConIvaFinal - costo)
+            : 0;
+        const margenCalculado =
+          (typeof utilidadCalculada === "number" && typeof costo === "number" && costo !== 0)
+            ? ((utilidadCalculada / costo) * 100)
+            : 0;
 
         const utilidadRaw = toNumberOrNull(data.utilidad ?? data.Utilidad);
         const margenRaw = toNumberOrNull(data.margen ?? data.Margen);
@@ -1832,8 +1834,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           precioConIva: precioConIvaFinal,
           iva,
           costo,
-          margen,
-          utilidad,
+          margen: Number.isFinite(margen) ? margen : margenCalculado,
+          utilidad: Number.isFinite(utilidad) ? utilidad : utilidadCalculada,
           createdAt,
           fechaAlta,
           fecha,
@@ -2314,18 +2316,20 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const precioConIva = Number.isFinite(row.precioConIva)
             ? row.precioConIva
             : (Number.isFinite(row.pVenta) ? row.pVenta : null);
-          const utilidadCalculada = Number.isFinite(precioConIva) && Number.isFinite(row.costo)
-            ? Number((precioConIva - row.costo).toFixed(2))
-            : null;
-          const margenCalculado = Number.isFinite(utilidadCalculada) && Number.isFinite(row.costo) && row.costo !== 0
-            ? Number((utilidadCalculada / row.costo).toFixed(3))
-            : null;
+          const utilidadCalculada =
+            (typeof precioConIva === "number" && typeof row.costo === "number")
+              ? Number((precioConIva - row.costo).toFixed(2))
+              : 0;
+          const margenCalculado =
+            (typeof utilidadCalculada === "number" && typeof row.costo === "number" && row.costo !== 0)
+              ? Number(((utilidadCalculada / row.costo) * 100).toFixed(1))
+              : 0;
 
-          row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
+          row.utilidad = Number.isFinite(utilidadFromAdmin)
             ? utilidadFromAdmin
             : utilidadCalculada;
-          row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
-            ? margenFromAdmin
+          row.margen = Number.isFinite(margenFromAdmin)
+            ? (margenFromAdmin > 5 ? margenFromAdmin : Number((margenFromAdmin * 100).toFixed(1)))
             : margenCalculado;
         });
 

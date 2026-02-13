@@ -22,6 +22,13 @@ const DEFAULT_BATCH_SIZE = 200;
 const MIGRATE_MIN_BATCH_SIZE = 50;
 const MIGRATE_MAX_BATCH_SIZE = 400;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const ALLOWED_ORIGINS = new Set([
+  "https://haruja-tiendanube.web.app",
+  "https://haruja-tiendanube.firebaseapp.com",
+  "http://localhost:5000",
+  "http://localhost:5173",
+  "http://localhost:3000"
+]);
 const RUNTIME_OPTS = {
   memory: "1GiB",
   timeoutSeconds: 540
@@ -57,10 +64,33 @@ const getCell = (sheet, col, row) => {
   return cell ? cell.v : "";
 };
 
+function applyCors(req, res) {
+  const origin = req.get("origin");
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "https://haruja-tiendanube.web.app";
+  res.set("Access-Control-Allow-Origin", allowOrigin);
+  res.set("Vary", "Origin");
+  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return true;
+  }
+  return false;
+}
+
 const toNumber = (v) => {
   if (!v) return null;
   const n = Number(String(v).replace(/[,$\s]/g, ""));
   return Number.isFinite(n) ? n : null;
+};
+
+const numOrUndefined = (v) => {
+  if (v === null || v === undefined) return undefined;
+  const s = String(v).trim().replace(/[,$\s]/g, "");
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
 };
 
 const firstNumber = (...values) => {
@@ -163,34 +193,33 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 };
 
 function buildAdminPayloadFromMaster(masterData) {
-  const costo = toFixedNumber(masterData.costo);
-  const precioConIva = toFixedNumber(
-    masterData.precioConIva ?? masterData.pVenta ?? masterData.pVentaConIva ?? null
-  );
+  const costo = numOrUndefined(masterData.costo);
+  const precioConIva = numOrUndefined(masterData.precioConIva ?? masterData.pVenta);
 
   const utilidadCalc =
     Number.isFinite(precioConIva) && Number.isFinite(costo)
-      ? toFixedNumber(precioConIva - costo)
-      : null;
+      ? Number(precioConIva - costo)
+      : undefined;
 
   const margenCalc =
     Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo !== 0
-      ? toFixedNumber(utilidadCalc / costo, 4)
-      : null;
+      ? Number(utilidadCalc / costo)
+      : undefined;
 
   return {
     ...buildPublicPayloadFromMaster(masterData),
-    costo,
-    precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
-    pVenta: Number.isFinite(precioConIva) ? precioConIva : (toFixedNumber(masterData.pVenta) ?? null),
-    utilidad: toFixedNumber(masterData.utilidad ?? utilidadCalc),
-    margen: toFixedNumber(masterData.margen ?? margenCalc, 4),
+    ...(costo !== undefined ? {costo} : {}),
+    ...(precioConIva !== undefined ? {precioConIva} : {}),
+    ...(precioConIva !== undefined ? {pVenta: precioConIva} : {}),
+    ...(utilidadCalc !== undefined ? {utilidad: utilidadCalc} : {}),
+    ...(margenCalc !== undefined ? {margen: margenCalc} : {}),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
 
 exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
@@ -306,6 +335,7 @@ exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => 
 
 exports.syncPublicPrendas2025 = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
+    if (applyCors(req, res)) return;
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
     const total = snapshot.size;
 
@@ -350,6 +380,7 @@ exports.syncPublicPrendas2025 = onRequest(RUNTIME_OPTS, async (req, res) => {
 
 exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
@@ -409,20 +440,31 @@ exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
 
       const docId = safeDocId(codigo);
       const rawOrden = getCell(sheet, "A", r);
+      const rawSeqNumber = getCell(sheet, "B", r);
       const rawCosto = getCell(sheet, "D", r);
       const rawPrecio = getCell(sheet, "E", r);
       const rawIva = getCell(sheet, "F", r);
       const rawPrecioConIva = getCell(sheet, "G", r);
-      const orden = toNumber(rawOrden);
-      const costo = firstNumber(rawCosto, getCell(sheet, "N", r)) || 0;
+      const orden = numOrUndefined(rawOrden);
+      const seqNumber = numOrUndefined(rawSeqNumber) ?? r;
+      const costo = numOrUndefined(rawCosto) ?? numOrUndefined(getCell(sheet, "N", r));
       const precio = firstNumber(rawPrecio, getCell(sheet, "G", r));
       const iva = firstNumber(rawIva, 0.16);
-      const precioConIva = firstNumber(rawPrecioConIva, getCell(sheet, "I", r), rawPrecio);
-      const pVenta = toNumber(rawPrecioConIva ?? rawPrecio) || 0;
+      const precioConIva = numOrUndefined(rawPrecioConIva) ?? numOrUndefined(getCell(sheet, "I", r)) ?? numOrUndefined(rawPrecio);
+      const pVenta = precioConIva;
+
+      const utilidadCalc =
+        Number.isFinite(precioConIva) && Number.isFinite(costo)
+          ? Number(precioConIva - costo)
+          : undefined;
+      const margenCalc =
+        Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo !== 0
+          ? Number(utilidadCalc / costo)
+          : undefined;
 
       const masterObj = {
-        orden: Number.isFinite(orden) ? orden : r,
-        seqNumber: r,
+        ...(orden !== undefined ? {orden} : {}),
+        ...(seqNumber !== undefined ? {seqNumber} : {}),
         docId,
         code: codigo,
         codigo,
@@ -437,12 +479,12 @@ exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
         fechaTexto: String(getCell(sheet, "J", r)),
         fecha: getCell(sheet, "J", r) || null,
         precio,
-        precioConIva,
-        pVenta,
+        ...(precioConIva !== undefined ? {precioConIva} : {}),
+        ...(pVenta !== undefined ? {pVenta} : {}),
         iva,
-        costo,
-        utilidad: pVenta - costo,
-        margen: costo > 0 ? ((pVenta - costo) / costo) : null,
+        ...(costo !== undefined ? {costo} : {}),
+        ...(utilidadCalc !== undefined ? {utilidad: utilidadCalc} : {}),
+        ...(margenCalc !== undefined ? {margen: margenCalc} : {}),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
@@ -493,6 +535,7 @@ exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
 
 exports.migrateSplitCollections = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
+    if (applyCors(req, res)) return;
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
