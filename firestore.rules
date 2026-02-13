@@ -14,7 +14,7 @@ service cloud.firestore {
     // ✅ Público: listado sin datos sensibles
     match /HarujaPrendas_2025_public/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     // 🔒 Privado: datos reales (solo admin)
@@ -24,7 +24,8 @@ service cloud.firestore {
 
     // 🔒 Privado: costos y márgenes (solo admin)
     match /HarujaPrendas_2025_admin/{docId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ✅ Diccionarios (si existen como colecciones exactas)
