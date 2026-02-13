@@ -22,7 +22,7 @@ jobs:
 
       - name: Install functions dependencies
         working-directory: functions
-        run: npm ci
+        run: npm install
 
       # Escribe el service account desde el secret CORRECTO: GCP_SA_KEY
       - name: Write service account

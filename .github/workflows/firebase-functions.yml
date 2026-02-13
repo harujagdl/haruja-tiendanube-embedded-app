@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Dependencies (functions)
         working-directory: functions
-        run: npm ci
+        run: npm install
 
       - name: Auth to Google Cloud
         id: auth
