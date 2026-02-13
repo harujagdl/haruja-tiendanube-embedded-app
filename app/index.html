@@ -1203,6 +1203,21 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         return safeString(b?.codigo).localeCompare(safeString(a?.codigo));
       };
 
+      const compareItemsByOrdenDesc = (a, b) => {
+        const ordenA = toNumberOrNull(a?.orden);
+        const ordenB = toNumberOrNull(b?.orden);
+        const hasA = Number.isFinite(ordenA);
+        const hasB = Number.isFinite(ordenB);
+
+        if (hasA && hasB && ordenA !== ordenB) {
+          return ordenB - ordenA;
+        }
+        if (hasA && !hasB) return -1;
+        if (!hasA && hasB) return 1;
+
+        return compareItemsByDateDesc(a, b);
+      };
+
       const isNew = (createdAt, days = 7) => {
         const createdDate = toDateValue(createdAt);
         if (!createdDate) return false;
@@ -1296,7 +1311,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
       const API_BASE = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net`;
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
-      const IMPORT_XLSX_FUNCTION_NAME = "importPrendasFromXlsx";
+      const IMPORT_XLSX_FUNCTION_NAME = "importPrendasFromXlsxUpload";
       const SPLIT_FUNCTION_URL = `${API_BASE}/${SPLIT_FUNCTION_NAME}`;
       const IMPORT_XLSX_FUNCTION_URL = `${API_BASE}/${IMPORT_XLSX_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
@@ -2345,7 +2360,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         let hasMore = true;
         const rows = [];
         while (hasMore) {
-          const constraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          const constraints = [orderBy("orden", "desc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
           if (cursor) constraints.splice(1, 0, startAfter(cursor));
           const snap = await getDocs(query(prendasPublicRef, ...constraints));
           console.log("[Prendas] snapshot size:", snap.size);
@@ -2370,7 +2385,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
               hasMore = true;
 
               while (hasMore) {
-                const fallbackConstraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+                const fallbackConstraints = [orderBy("orden", "desc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
                 if (cursor) fallbackConstraints.splice(1, 0, startAfter(cursor));
                 const fallbackSnap = await getDocs(
                   query(collection(db, PRENDAS_MASTER_COLLECTION), ...fallbackConstraints)
@@ -2404,7 +2419,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           row.margen = null;
         });
 
-        prendasState.baseRows = rows.sort(compareItemsByDateDesc);
+        prendasState.baseRows = rows.sort(compareItemsByOrdenDesc);
         prendasState.baseRowsCacheKey = cacheKey;
         return prendasState.baseRows;
       };
@@ -2993,6 +3008,18 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           adminSplitButton.disabled = true;
         }
         try {
+          const fileInput = document.createElement("input");
+          fileInput.type = "file";
+          fileInput.accept = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          const selectedFile = await new Promise((resolve) => {
+            fileInput.addEventListener("change", () => resolve(fileInput.files?.[0] || null), {once: true});
+            fileInput.click();
+          });
+          if (!selectedFile) {
+            setAdminLoginStatus("Importación cancelada: no seleccionaste archivo XLSX.", "warning");
+            return;
+          }
+
           let user = auth.currentUser;
           if (!user) {
             const response = await signInWithPopup(auth, googleProvider);
@@ -3006,14 +3033,16 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           }
 
           const idToken = await user.getIdToken(true);
-          setAdminLoginStatus("Reimportando XLSX (master)...", "warning");
+          setAdminLoginStatus("Subiendo XLSX y reimportando master...", "warning");
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+
           const response = await fetch(IMPORT_XLSX_FUNCTION_URL, {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
               Authorization: `Bearer ${idToken}`
             },
-            body: JSON.stringify({})
+            body: formData
           });
 
           const payload = await response.json();
@@ -3021,8 +3050,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
 
-          const importedRows = Number(payload?.rowsImported || payload?.writtenMaster || 0);
-          setAdminLoginStatus(`Listo: ${importedRows} filas reimportadas en master.`, "success");
+          const importedRows = Number(payload?.updated || 0);
+          const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
+          setAdminLoginStatus(
+            `Importación OK: updated ${importedRows}${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
+            errorsCount ? "warning" : "success"
+          );
+          await handleAdminSplitCollections();
           setPrendasAlert("");
           await loadPrendasPage({ reset: true, reason: "import-xlsx-master" });
         } catch (error) {
