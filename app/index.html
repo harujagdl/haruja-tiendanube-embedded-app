@@ -1776,8 +1776,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const pVenta = toNumberOrNull(data.pVenta ?? data.precioConIva ?? data.precio);
         const costo = toNumberOrNull(data.costo);
+        const precioConIvaFinal = Number.isFinite(precioConIva)
+          ? precioConIva
+          : (Number.isFinite(pVenta) ? pVenta : null);
 
-        const utilidadCalculada = (Number.isFinite(pVenta) && Number.isFinite(costo)) ? (pVenta - costo) : null;
+        const utilidadCalculada = (Number.isFinite(precioConIvaFinal) && Number.isFinite(costo))
+          ? (precioConIvaFinal - costo)
+          : null;
         const margenCalculado = (Number.isFinite(utilidadCalculada) && Number.isFinite(costo) && costo !== 0)
           ? (utilidadCalculada / costo)
           : null;
@@ -1824,7 +1829,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           ),
           precio,
           pVenta,
-          precioConIva,
+          precioConIva: precioConIvaFinal,
           iva,
           costo,
           margen,
@@ -2306,8 +2311,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const margenFromAdmin = toNumberOrNull(adminExtra.margen);
 
           row.costo = Number.isFinite(costo) ? costo : null;
-          const utilidadCalculada = Number.isFinite(row.pVenta) && Number.isFinite(row.costo)
-            ? Number((row.pVenta - row.costo).toFixed(2))
+          const precioConIva = Number.isFinite(row.precioConIva)
+            ? row.precioConIva
+            : (Number.isFinite(row.pVenta) ? row.pVenta : null);
+          const utilidadCalculada = Number.isFinite(precioConIva) && Number.isFinite(row.costo)
+            ? Number((precioConIva - row.costo).toFixed(2))
             : null;
           const margenCalculado = Number.isFinite(utilidadCalculada) && Number.isFinite(row.costo) && row.costo !== 0
             ? Number((utilidadCalculada / row.costo).toFixed(3))

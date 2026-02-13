@@ -147,6 +147,8 @@ const buildPublicPayloadFromMaster = (data = {}) => {
     fecha: data.fecha ?? null,
     fechaTexto: data.fechaTexto ?? null,
     updatedAt: data.updatedAt ?? null,
+    orden: toNumber(data.orden) ?? null,
+    seqNumber: toNumber(data.seqNumber) ?? null,
     pVenta: resolvePVentaFromMaster(data),
     precio: toFixedNumber(data.precio),
     precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA)
@@ -161,24 +163,28 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 };
 
 function buildAdminPayloadFromMaster(masterData) {
-  const costo = toNumberOrNull(masterData.costo);
-  const pVenta =
-    toNumberOrNull(masterData.pVenta) ??
-    toNumberOrNull(masterData.precioConIva) ??
-    toNumberOrNull(masterData.precio);
+  const costo = toFixedNumber(masterData.costo);
+  const precioConIva = toFixedNumber(
+    masterData.precioConIva ?? masterData.pVenta ?? masterData.pVentaConIva ?? null
+  );
 
-  // Reglas pedidas por ti:
-  // Utilidad = P.Venta - Costo
-  const utilidad = Number.isFinite(pVenta) && Number.isFinite(costo) ? (pVenta - costo) : null;
+  const utilidadCalc =
+    Number.isFinite(precioConIva) && Number.isFinite(costo)
+      ? toFixedNumber(precioConIva - costo)
+      : null;
 
-  // Margen (elige UNA definición y la usamos en todo el sistema)
-  // Opción A (markup sobre costo): utilidad / costo
-  const margen = Number.isFinite(utilidad) && Number.isFinite(costo) && costo !== 0 ? (utilidad / costo) : null;
+  const margenCalc =
+    Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo !== 0
+      ? toFixedNumber(utilidadCalc / costo, 4)
+      : null;
 
   return {
+    ...buildPublicPayloadFromMaster(masterData),
     costo,
-    utilidad,
-    margen,
+    precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
+    pVenta: Number.isFinite(precioConIva) ? precioConIva : (toFixedNumber(masterData.pVenta) ?? null),
+    utilidad: toFixedNumber(masterData.utilidad ?? utilidadCalc),
+    margen: toFixedNumber(masterData.margen ?? margenCalc, 4),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
