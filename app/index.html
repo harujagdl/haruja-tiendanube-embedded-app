@@ -1290,8 +1290,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
-      const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
-      const SPLIT_FUNCTION_NAME = "splitPrendasToPublicAdmin";
+      const SPLIT_FUNCTION_NAME = "migrateFromMainCollection";
       const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
@@ -1355,9 +1354,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       let activePrendasPublicCollection = PRENDAS_PUBLIC_COLLECTION;
-      let activePrendasAdminCollection = PRENDAS_ADMIN_COLLECTION;
       let prendasPublicRef = collection(db, activePrendasPublicCollection);
-      let prendasAdminRef = collection(db, activePrendasAdminCollection);
       const prendasState = {
         filtered: [],
         baseRows: [],
@@ -1398,12 +1395,10 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
       let isBooting = true;
 
-      const setPrendasCollections = ({ publicCollection, adminCollection }) => {
+      const setPrendasCollections = ({ publicCollection }) => {
         activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
-        activePrendasAdminCollection = adminCollection || PRENDAS_ADMIN_COLLECTION;
         prendasRef = collection(db, activePrendasPublicCollection);
         prendasPublicRef = collection(db, activePrendasPublicCollection);
-        prendasAdminRef = collection(db, activePrendasAdminCollection);
         console.log("[Prendas] ✅ Usando colección:", activePrendasPublicCollection);
       };
 
@@ -2276,31 +2271,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const loadAdminCostMap = async () => {
-        const adminCostMap = new Map();
-        const visibleDocIds = (prendasState.filtered || [])
-          .map((item) => safeString(item.docId || item.id).trim())
-          .filter(Boolean);
-        if (!visibleDocIds.length || !auth.currentUser || !prendasState.isAdmin) {
-          return adminCostMap;
-        }
-
-        for (let i = 0; i < visibleDocIds.length; i += 10) {
-          const chunk = visibleDocIds.slice(i, i + 10);
-          const snap = await getDocs(
-            query(prendasAdminRef, where(documentId(), "in", chunk))
-          );
-          if (snap.empty) {
-            continue;
-          }
-          snap.docs.forEach((docSnap) => {
-            const data = docSnap.data() || {};
-            const costo = toNumberOrNull(data.costo);
-            if (Number.isFinite(costo)) {
-              adminCostMap.set(docSnap.id, costo);
-            }
-          });
-        }
-        return adminCostMap;
+        return new Map();
       };
 
       const loadBaseRows = async () => {
@@ -2602,25 +2573,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const baseSnap = directSnap.exists() ? directSnap : altSnap;
         if (!baseSnap?.exists()) return null;
         const item = normalizeDoc(baseSnap);
-        if (prendasState.isAdmin) {
-          const adminSnap = await getDoc(doc(db, activePrendasAdminCollection, baseSnap.id));
-          if (adminSnap.exists()) {
-            const costo = toNumberOrNull(adminSnap.data()?.costo);
-            if (Number.isFinite(costo)) {
-              item.costo = costo;
-              const precioSinIva = Number.isFinite(item.pVenta)
-                ? Number((item.pVenta / 1.16).toFixed(2))
-                : null;
-              item.utilidad = Number.isFinite(precioSinIva)
-                ? Number((precioSinIva - costo).toFixed(2))
-                : null;
-              item.margen =
-                Number.isFinite(precioSinIva) && precioSinIva !== 0 && Number.isFinite(item.utilidad)
-                  ? Number((item.utilidad / precioSinIva).toFixed(3))
-                  : null;
-            }
-          }
-        }
         return item;
       };
 
@@ -3224,8 +3176,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           setSkuSearchMode(false);
 
           setPrendasCollections({
-            publicCollection: PRENDAS_PUBLIC_COLLECTION,
-            adminCollection: PRENDAS_ADMIN_COLLECTION
+            publicCollection: PRENDAS_PUBLIC_COLLECTION
           });
 
           try {

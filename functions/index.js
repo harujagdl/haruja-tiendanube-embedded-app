@@ -134,6 +134,92 @@ const buildAdminPayloadFromMaster = (data = {}) => ({
   typeCode: data.typeCode ?? null
 });
 
+exports.migrateFromMainCollection = onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
+    }
+
+    const adminSession = await requireAllowlistedAdmin(req);
+    let totalRead = 0;
+    let writtenPublic = 0;
+    let writtenAdmin = 0;
+    let cursor = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let baseQuery = db
+        .collection(PRENDAS_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(DEFAULT_BATCH_SIZE);
+      if (cursor) {
+        baseQuery = baseQuery.startAfter(cursor);
+      }
+
+      const snapshot = await baseQuery.get();
+      if (snapshot.empty) {
+        hasMore = false;
+        break;
+      }
+
+      const batch = db.batch();
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        const precioPublico = toFixedNumber(data.precioConIva ?? data.precioConIVA);
+        const publicData = {
+          orden: data.orden ?? null,
+          codigo: data.codigo ?? null,
+          descripcion: data.descripcion ?? null,
+          tipo: data.tipo ?? null,
+          color: data.color ?? null,
+          talla: data.talla ?? null,
+          proveedor: data.proveedor ?? null,
+          status: data.status ?? null,
+          disponibilidad: data.disponibilidad ?? null,
+          precio: precioPublico,
+          fecha: data.fecha ?? null,
+          createdAt: data.createdAt ?? null,
+          updatedAt: data.updatedAt ?? null
+        };
+        const adminData = {
+          ...data,
+          precioPublico
+        };
+
+        batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicData, {merge: true});
+        batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminData, {merge: true});
+        totalRead += 1;
+        writtenPublic += 1;
+        writtenAdmin += 1;
+      });
+
+      await batch.commit();
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+      hasMore = snapshot.size === DEFAULT_BATCH_SIZE;
+    }
+
+    logger.info("migrateFromMainCollection completed", {
+      by: adminSession.email,
+      totalRead,
+      writtenPublic,
+      writtenAdmin
+    });
+
+    return res.status(200).json({
+      ok: true,
+      totalRead,
+      writtenPublic,
+      writtenAdmin
+    });
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
+    }
+    logger.error("migrateFromMainCollection failed", error);
+    return res.status(500).json({ok: false, error: String(error)});
+  }
+});
+
 exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
