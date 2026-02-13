@@ -16,6 +16,8 @@
 
 Si no aparece ninguna, el deploy está fallando y primero hay que resolver eso.
 
+> Importante: **deploy solo sube código**. La migración no corre sola; hay que ejecutar la función HTTP al menos una vez.
+
 ## PASO 2 — Ejecutar la función de migración
 Ejecutar una petición `POST` a la función desplegada.
 
@@ -64,9 +66,10 @@ La respuesta debe ser similar a:
 ```json
 {
   "ok": true,
-  "totalRead": 1398,
-  "publicWrites": 1398,
-  "adminWrites": 1398
+  "read": 1398,
+  "writtenPublic": 1398,
+  "writtenAdmin": 1398,
+  "hasMore": false
 }
 ```
 
@@ -75,7 +78,7 @@ Si responde `ok: true`, ir a Firestore y verificar que ya existen:
 - `HarujaPrendas_2025_public`
 - `HarujaPrendas_2025_admin`
 
-> Nota: las colecciones aparecen recién cuando se escribe el primer documento.
+> Nota: Firestore no “crea” una colección hasta que exista al menos 1 documento escrito.
 
 ## PASO 5 — Verificar que el panel consulte la colección correcta
 En frontend, confirmar que la lectura principal de prendas usa:

@@ -860,7 +860,7 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
-                  <button type="button" id="admin-split-collections">Migrar ahora</button>
+                  <button type="button" id="admin-split-collections">Migrar a public/admin</button>
                 </div>
               </div>
               <div class="counters">
@@ -1291,6 +1291,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+      const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
       const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
@@ -2323,6 +2324,44 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           }
         }
 
+        if (!rows.length) {
+          try {
+            const fallbackProbe = await getDocs(query(collection(db, PRENDAS_MASTER_COLLECTION), limit(1)));
+            if (!fallbackProbe.empty) {
+              setPrendasAlert("Colección public vacía: cargando respaldo temporal desde master.", "warning");
+              console.warn("[Prendas] fallback temporal activado desde master.");
+              cursor = null;
+              hasMore = true;
+
+              while (hasMore) {
+                const fallbackConstraints = [orderBy(documentId(), "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+                if (cursor) fallbackConstraints.splice(1, 0, startAfter(cursor));
+                const fallbackSnap = await getDocs(
+                  query(collection(db, PRENDAS_MASTER_COLLECTION), ...fallbackConstraints)
+                );
+                if (fallbackSnap.empty) {
+                  hasMore = false;
+                  break;
+                }
+                fallbackSnap.docs.forEach((docSnap) => {
+                  const row = normalizeDoc(docSnap);
+                  row.costo = null;
+                  row.iva = null;
+                  row.margen = null;
+                  row.utilidad = null;
+                  rows.push(row);
+                });
+                cursor = fallbackSnap.docs[fallbackSnap.docs.length - 1];
+                if (fallbackSnap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
+                  hasMore = false;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("[Prendas] fallback a master no disponible", error);
+          }
+        }
+
         rows.forEach((row) => {
           row.costo = null;
           row.utilidad = null;
@@ -3246,7 +3285,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             });
             console.log("[Prendas] snapshot size:", baseSnapshot.size);
             if (baseSnapshot.empty) {
-              setPrendasAlert("Aún no se ha migrado la colección public. Entra a Admin y corre ‘Migrar ahora’.");
+              setPrendasAlert("Aún no se ha migrado la colección public. Entra a Admin y corre ‘Migrar a public/admin’.");
             }
           } catch (error) {
             console.error("[Prendas] ❌ No se pudo leer la colección pública", error);
