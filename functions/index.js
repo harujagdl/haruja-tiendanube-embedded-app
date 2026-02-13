@@ -1,5 +1,5 @@
-const functions = require("firebase-functions/v1");
-const {HttpsError} = functions.https;
+const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
+const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
 const path = require("path");
@@ -22,10 +22,16 @@ const DEFAULT_BATCH_SIZE = 200;
 const MIGRATE_MIN_BATCH_SIZE = 50;
 const MIGRATE_MAX_BATCH_SIZE = 400;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const GEN1_RUNTIME_OPTS = {
-  memory: "1GB",
+const RUNTIME_OPTS = {
+  memory: "1GiB",
   timeoutSeconds: 540
 };
+
+setGlobalOptions({
+  region: "us-central1",
+  memory: RUNTIME_OPTS.memory,
+  timeoutSeconds: RUNTIME_OPTS.timeoutSeconds
+});
 const STOPWORDS = new Set([
   "de",
   "la",
@@ -115,7 +121,6 @@ const buildPublicPayloadFromMaster = (data = {}) => {
   const payload = {
     docId: data.docId ?? data.codigo ?? null,
     code: data.code ?? data.codigo ?? null,
-    seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
     codigo: data.codigo ?? null,
     descripcion: data.descripcion ?? null,
     tipo: data.tipo ?? null,
@@ -126,11 +131,7 @@ const buildPublicPayloadFromMaster = (data = {}) => {
     disponibilidad: data.disponibilidad ?? null,
     fecha: data.fecha ?? null,
     fechaTexto: data.fechaTexto ?? null,
-    createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
-    source: data.source ?? PRENDAS_COLLECTION,
-    providerCode: data.providerCode ?? null,
-    typeCode: data.typeCode ?? null,
     pVenta: resolvePVentaFromMaster(data),
     precio: toFixedNumber(data.precio),
     precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA)
@@ -146,13 +147,19 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 
 const buildAdminPayloadFromMaster = (data = {}) => ({
   ...buildPublicPayloadFromMaster(data),
+  seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
+  source: data.source ?? PRENDAS_COLLECTION,
+  providerCode: data.providerCode ?? null,
+  typeCode: data.typeCode ?? null,
+  createdAt: data.createdAt ?? null,
+  updatedAt: data.updatedAt ?? null,
   iva: toFixedNumber(data.iva, 4),
   costo: toFixedNumber(data.costo),
   margen: toFixedNumber(data.margen, 3),
   utilidad: toFixedNumber(data.utilidad)
 });
 
-exports.splitPrendasToPublicAdmin = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
+exports.splitPrendasToPublicAdmin = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -267,7 +274,7 @@ exports.splitPrendasToPublicAdmin = functions.runWith(GEN1_RUNTIME_OPTS).https.o
   }
 });
 
-exports.syncPublicPrendas2025 = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
+exports.syncPublicPrendas2025 = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
     const total = snapshot.size;
@@ -311,7 +318,7 @@ exports.syncPublicPrendas2025 = functions.runWith(GEN1_RUNTIME_OPTS).https.onReq
   }
 });
 
-exports.importPrendasFromXlsx = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
+exports.importPrendasFromXlsx = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -438,7 +445,7 @@ exports.importPrendasFromXlsx = functions.runWith(GEN1_RUNTIME_OPTS).https.onReq
   }
 });
 
-exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
+exports.migrateSplitCollections = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -473,13 +480,19 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
       });
     }
 
-    let processed = 0;
+    let read = 0;
+    let skipped = 0;
     let writtenPublic = 0;
     let writtenAdmin = 0;
     const batch = db.batch();
 
     snapshot.docs.forEach((docSnap) => {
       const payload = docSnap.data() || {};
+      read += 1;
+      if (!payload || Object.keys(payload).length === 0) {
+        skipped += 1;
+        return;
+      }
       const publicPayload = buildPublicPayloadFromMaster(payload);
       const adminPayload = buildAdminPayloadFromMaster(payload);
       publicPayload.docId = publicPayload.docId ?? docSnap.id;
@@ -487,7 +500,6 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
 
       batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicPayload, {merge: true});
       batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminPayload, {merge: true});
-      processed += 1;
       writtenPublic += 1;
       writtenAdmin += 1;
     });
@@ -500,18 +512,21 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
       by: adminSession.email,
       batchSize,
       startAfter: startAfterCursor || null,
-      processed,
+      read,
       publicWritten: writtenPublic,
       adminWritten: writtenAdmin,
+      skipped,
       lastDocCursor,
       hasMore
     });
 
     return res.status(200).json({
       ok: true,
-      processed,
+      read,
+      processed: read,
       writtenPublic,
       writtenAdmin,
+      skipped,
       lastDocCursor,
       hasMore,
       batchSize,
@@ -589,8 +604,8 @@ const verifyAdminSession = async (sessionId) => {
   return session;
 };
 
-exports.verifyAdminPassword = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
-  data = data || {};
+exports.verifyAdminPassword = onCall(RUNTIME_OPTS, async (request) => {
+  let data = request.data || {};
   const password = safeString(data?.password).trim();
   if (!password) {
     throw new HttpsError(
@@ -612,8 +627,8 @@ exports.verifyAdminPassword = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(
   return {sessionId, expiresAt: expiresAtMs};
 });
 
-exports.backfillSearchTokens = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
-  data = data || {};
+exports.backfillSearchTokens = onCall(RUNTIME_OPTS, async (request) => {
+  let data = request.data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
   const cursor = safeString(data?.cursor).trim() || null;
@@ -719,8 +734,8 @@ const resolvePVenta = (data = {}) => {
   return null;
 };
 
-exports.normalizePrendasPVenta = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
-  data = data || {};
+exports.normalizePrendasPVenta = onCall(RUNTIME_OPTS, async (request) => {
+  let data = request.data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
 
