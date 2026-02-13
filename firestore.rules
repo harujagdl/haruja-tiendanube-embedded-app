@@ -11,7 +11,7 @@ service cloud.firestore {
         ];
     }
 
-    // ✅ Público: listado sin datos sensibles
+    // ✅ Público: lectura abierta, sin escrituras directas
     match /HarujaPrendas_2025_public/{docId} {
       allow read: if true;
       allow write: if false;
@@ -22,7 +22,7 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // 🔒 Privado: costos y márgenes (solo admin)
+    // 🔒 Privado admin: lectura/escritura solo allowlist por email
     match /HarujaPrendas_2025_admin/{docId} {
       allow read, write: if isAdmin();
     }

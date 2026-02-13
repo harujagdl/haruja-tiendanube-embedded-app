@@ -860,7 +860,7 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
-                  <button type="button" id="admin-import-xlsx">Importar XLSX a Firestore</button>
+                  <button type="button" id="admin-split-collections">Crear/Actualizar colecciones</button>
                 </div>
               </div>
               <div class="counters">
@@ -1060,7 +1060,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
-      const adminImportButton = document.getElementById("admin-import-xlsx");
+      const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
       const adminLoginStatus = document.getElementById("admin-login-status");
@@ -1291,8 +1291,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
-      const IMPORT_FUNCTION_NAME = "importPrendasFromXlsx";
-      const IMPORT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${IMPORT_FUNCTION_NAME}`;
+      const SPLIT_FUNCTION_NAME = "splitPrendasToPublicAdmin";
+      const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -2953,9 +2953,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         }
       };
 
-      const handleAdminImportXlsx = async () => {
-        if (adminImportButton) {
-          adminImportButton.disabled = true;
+      const handleAdminSplitCollections = async () => {
+        if (adminSplitButton) {
+          adminSplitButton.disabled = true;
         }
         try {
           let user = auth.currentUser;
@@ -2970,8 +2970,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             return;
           }
           const idToken = await user.getIdToken();
-          setAdminLoginStatus("Importando XLSX a Firestore...", "warning");
-          const response = await fetch(IMPORT_FUNCTION_URL, {
+          setAdminLoginStatus("Creando/actualizando colecciones public/admin...", "warning");
+          const response = await fetch(`${SPLIT_FUNCTION_URL}?dryRun=0`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${idToken}`
@@ -2982,16 +2982,16 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
           setAdminLoginStatus(
-            `Importación OK. rowsImported=${payload.rowsImported}, master=${payload.writtenMaster}. El split a public/admin se sincroniza desde master.`,
+            `Split OK. source=${payload.processed}, public=${payload.writtenPublic}, admin=${payload.writtenAdmin}.`,
             "success"
           );
-          await loadPrendasPage({ reset: true, reason: "import-xlsx" });
+          await loadPrendasPage({ reset: true, reason: "split-collections" });
         } catch (error) {
           console.error(error);
-          setAdminLoginStatus(`Error al importar XLSX: ${error.message || error}`, "error");
+          setAdminLoginStatus(`Error al crear/actualizar colecciones: ${error.message || error}`, "error");
         } finally {
-          if (adminImportButton) {
-            adminImportButton.disabled = false;
+          if (adminSplitButton) {
+            adminSplitButton.disabled = false;
           }
         }
       };
@@ -3032,8 +3032,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           setAdminPanelVisible(!adminPanelVisible);
         });
       }
-      if (adminImportButton) {
-        adminImportButton.addEventListener("click", handleAdminImportXlsx);
+      if (adminSplitButton) {
+        adminSplitButton.addEventListener("click", handleAdminSplitCollections);
       }
 
       window.addEventListener("hashchange", () => {

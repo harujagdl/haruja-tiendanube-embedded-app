@@ -1,6 +1,5 @@
-const functions = require("firebase-functions");
-const functionsV1 = require("firebase-functions/v1");
-const {setGlobalOptions} = require("firebase-functions");
+const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
+const {setGlobalOptions} = require("firebase-functions/v2");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
@@ -61,7 +60,7 @@ const getBearerToken = (authHeader = "") => {
 const requireAllowlistedAdmin = async (req) => {
   const idToken = getBearerToken(String(req.headers?.authorization || ""));
   if (!idToken) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "unauthenticated",
       "Authorization Bearer token requerido."
     );
@@ -69,7 +68,7 @@ const requireAllowlistedAdmin = async (req) => {
   const decoded = await admin.auth().verifyIdToken(idToken);
   const email = String(decoded?.email || "").trim().toLowerCase();
   if (!ADMIN_ALLOWLIST.has(email)) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "permission-denied",
       "Usuario no autorizado para importar."
     );
@@ -135,15 +134,15 @@ const buildAdminPayloadFromMaster = (data = {}) => ({
   typeCode: data.typeCode ?? null
 });
 
-exports.splitPrendasCollections = functionsV1.https.onRequest(async (req, res) => {
+exports.splitPrendasToPublicAdmin = onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
     }
 
     const adminSession = await requireAllowlistedAdmin(req);
-    const dryRunRaw = req.body?.dryRun;
-    const dryRun = dryRunRaw === true || String(dryRunRaw).toLowerCase() === "true";
+    const dryRunRaw = req.query?.dryRun ?? req.body?.dryRun;
+    const dryRun = [true, "true", "1", 1].includes(dryRunRaw);
     const limitRaw = Number(req.body?.limit);
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : 0;
     const startAfter = String(req.body?.startAfter || "").trim();
@@ -196,7 +195,7 @@ exports.splitPrendasCollections = functionsV1.https.onRequest(async (req, res) =
         await batch.commit();
       }
 
-      logger.info("splitPrendasCollections chunk", {
+      logger.info("splitPrendasToPublicAdmin chunk", {
         by: adminSession.email,
         dryRun,
         processed,
@@ -220,15 +219,15 @@ exports.splitPrendasCollections = functionsV1.https.onRequest(async (req, res) =
       lastDocId
     });
   } catch (error) {
-    if (error instanceof functions.https.HttpsError) {
+    if (error instanceof HttpsError) {
       return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
     }
-    logger.error("splitPrendasCollections failed", error);
+    logger.error("splitPrendasToPublicAdmin failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
 
-exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
+exports.syncPublicPrendas2025 = onRequest(async (req, res) => {
   try {
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
     const total = snapshot.size;
@@ -272,7 +271,7 @@ exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
+exports.importPrendasFromXlsx = onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -388,7 +387,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       adminCollection: PRENDAS_ADMIN_COLLECTION
     });
   } catch (err) {
-    if (err instanceof functions.https.HttpsError) {
+    if (err instanceof HttpsError) {
       return res.status(err.httpErrorCode.status).json({
         ok: false,
         error: err.message
@@ -399,7 +398,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => {
+exports.migrateSplitCollections = onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -475,35 +474,13 @@ exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => 
       lastDocId
     });
   } catch (error) {
-    if (error instanceof functions.https.HttpsError) {
+    if (error instanceof HttpsError) {
       return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
     }
     logger.error("migrateSplitCollections failed", error);
     return res.status(500).json({ok: false, error: String(error)});
   }
 });
-
-exports.syncPrendasDerivedCollections = functionsV1.firestore
-  .document(`${PRENDAS_COLLECTION}/{docId}`)
-  .onWrite(async (change, context) => {
-    const docId = context.params.docId;
-    const publicRef = db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId);
-    const adminRef = db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId);
-
-    if (!change.after.exists) {
-      await Promise.all([publicRef.delete(), adminRef.delete()]);
-      logger.info("syncPrendasDerivedCollections delete", {docId});
-      return;
-    }
-
-    const payload = change.after.data() || {};
-    await Promise.all([
-      publicRef.set(buildPublicPayloadFromMaster(payload), {merge: true}),
-      adminRef.set(buildAdminPayloadFromMaster(payload), {merge: true})
-    ]);
-
-    logger.info("syncPrendasDerivedCollections upsert", {docId});
-  });
 
 const safeString = (value) => {
   if (value === null || value === undefined) return "";
@@ -533,10 +510,9 @@ const tokenize = (value) => {
 };
 
 const requireAdminPassword = () => {
-  const config = functions.config();
-  const password = process.env.ADMIN_PASSWORD || config?.admin?.password;
+  const password = process.env.ADMIN_PASSWORD;
   if (!password) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "failed-precondition",
       "Config admin.password no configurada."
     );
@@ -546,14 +522,14 @@ const requireAdminPassword = () => {
 
 const verifyAdminSession = async (sessionId) => {
   if (!sessionId) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "unauthenticated",
       "Sesión admin requerida."
     );
   }
   const session = adminSessions.get(sessionId);
   if (!session) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "permission-denied",
       "Sesión admin inválida."
     );
@@ -561,7 +537,7 @@ const verifyAdminSession = async (sessionId) => {
   const expiresAt = Number(session.expiresAt);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
     adminSessions.delete(sessionId);
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "permission-denied",
       "Sesión admin expirada."
     );
@@ -569,17 +545,18 @@ const verifyAdminSession = async (sessionId) => {
   return session;
 };
 
-exports.verifyAdminPassword = functions.https.onCall(async (data) => {
+exports.verifyAdminPassword = onCall(async (request) => {
+  const data = request.data || {};
   const password = safeString(data?.password).trim();
   if (!password) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "invalid-argument",
       "Contraseña requerida."
     );
   }
   const adminPassword = requireAdminPassword();
   if (password !== adminPassword) {
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       "permission-denied",
       "Contraseña inválida."
     );
@@ -591,7 +568,8 @@ exports.verifyAdminPassword = functions.https.onCall(async (data) => {
   return {sessionId, expiresAt: expiresAtMs};
 });
 
-exports.backfillSearchTokens = functions.https.onCall(async (data) => {
+exports.backfillSearchTokens = onCall(async (request) => {
+  const data = request.data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
   const cursor = safeString(data?.cursor).trim() || null;
@@ -697,7 +675,8 @@ const resolvePVenta = (data = {}) => {
   return null;
 };
 
-exports.normalizePrendasPVenta = functions.https.onCall(async (data) => {
+exports.normalizePrendasPVenta = onCall(async (request) => {
+  const data = request.data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
 
