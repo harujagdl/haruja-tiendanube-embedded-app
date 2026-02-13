@@ -101,9 +101,14 @@ exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
 
 exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
   try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
+    }
+
     const filePath = path.join(__dirname, "data", "HarujaPrendas_2025.xlsx");
     const wb = XLSX.readFile(filePath);
-    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const firstSheetName = wb.SheetNames[0];
+    const sheet = wb.Sheets[firstSheetName];
     const range = XLSX.utils.decode_range(sheet["!ref"]);
 
     let batch = db.batch();
@@ -155,7 +160,13 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       await batch.commit();
     }
 
-    res.json({ok: true, rows: count});
+    res.json({
+      ok: true,
+      sheet: firstSheetName,
+      rowsImported: count,
+      publicCollection: PRENDAS_PUBLIC_COLLECTION,
+      adminCollection: PRENDAS_ADMIN_COLLECTION
+    });
   } catch (err) {
     logger.error("importPrendasFromXlsx failed", err);
     res.status(500).json({ok: false, error: String(err)});
