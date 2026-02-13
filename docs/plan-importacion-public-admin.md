@@ -1,101 +1,103 @@
-# ✅ /plan de Codex — Importación y creación de colecciones PUBLIC + ADMIN
+# ✅ /plan de Codex — Migrar colección master a PUBLIC + ADMIN
 
 ## OBJETIVO
-- Ejecutar la Cloud Function `importPrendasFromXlsx` para crear:
+- Crear físicamente las colecciones:
   - `HarujaPrendas_2025_public`
   - `HarujaPrendas_2025_admin`
-- Confirmar que todo quedó en Firestore.
-- Verificar que el panel cargue datos correctamente.
-- No habilitar facturación sin necesidad.
+- Tomar los documentos ya existentes en `HarujaPrendas_2025`.
+- Copiarlos correctamente separando campos públicos y admin.
+- Dejar el sistema sincronizado automáticamente en adelante.
 
-## PRECONDICIONES
-- ✔ La Cloud Function `importPrendasFromXlsx` está desplegada.
-- ✔ El archivo `HarujaPrendas_2025.xlsx` está en `functions/data/`.
-- ✔ El deploy ya se ejecutó sin errores de billing.
+## PASO 1 — Verificar que la Function esté desplegada
+1. Ir a **Firebase Console → Functions**.
+2. Confirmar que existe al menos una de estas funciones HTTP:
+   - `migrateSplitCollections` (preferida)
+   - `splitPrendasToPublicAdmin` (alternativa legacy)
 
-## FASE 1 — Obtener la URL de la Function
-1. Entra a **Firebase Console → Build → Functions**.
-2. Busca la function:
-   - `importPrendasFromXlsx`
-3. Copia su **Trigger URL**.
+Si no aparece ninguna, el deploy está fallando y primero hay que resolver eso.
 
-Ejemplo:
+## PASO 2 — Ejecutar la función de migración
+Ejecutar una petición `POST` a la función desplegada.
+
+URL recomendada:
 
 ```txt
-https://us-central1-haruja-tiendanube.cloudfunctions.net/importPrendasFromXlsx
+https://us-central1-<PROJECT_ID>.cloudfunctions.net/migrateSplitCollections
 ```
 
-## FASE 2 — Ejecutar la Function (POST)
-4. Abre una herramienta HTTP (ejemplo: https://hoppscotch.io) o usa `curl`.
-5. Configura:
-   - Método: `POST`
-   - URL: (la URL copiada)
-   - Body: vacío
-6. Ejecuta la petición.
+Método: `POST`
 
-Alternativa por terminal:
+Headers:
+
+```txt
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{}
+```
+
+Ejemplo con `curl`:
 
 ```bash
-curl -X POST "https://us-central1-haruja-tiendanube.cloudfunctions.net/importPrendasFromXlsx"
+curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/migrateSplitCollections" \
+  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-## FASE 3 — Validar la respuesta
-7. Debes recibir una respuesta similar a:
+## PASO 3 — Obtener el ID Token correctamente
+En la app web donde ya haces login con Google, abrir consola del navegador y ejecutar:
+
+```js
+firebase.auth().currentUser.getIdToken(true).then(t => console.log(t))
+```
+
+Copiar el token e insertarlo en el header `Authorization`.
+
+## PASO 4 — Confirmar respuesta esperada
+La respuesta debe ser similar a:
 
 ```json
 {
   "ok": true,
-  "sheet": "Sheet1",
-  "rowsImported": 1200,
-  "publicCollection": "HarujaPrendas_2025_public",
-  "adminCollection": "HarujaPrendas_2025_admin"
+  "totalRead": 1398,
+  "publicWrites": 1398,
+  "adminWrites": 1398
 }
 ```
 
-Casos posibles:
-- Si recibes `{ "ok": true, "rowsImported": 0 }`:
-  - La función corrió, pero no encontró filas válidas.
-- Si recibes error:
-  - Ir a **FASE 4 (Logs)**.
+Si responde `ok: true`, ir a Firestore y verificar que ya existen:
 
-## FASE 4 — Revisar Logs si hay error
-8. Ve a **Firebase Console → Functions → importPrendasFromXlsx → Logs**.
-9. Busca errores tipo:
-   - `ENOENT` (archivo no encontrado)
-   - `MODULE_NOT_FOUND` (`xlsx`)
-   - `PERMISSION_DENIED` (escritura en Firestore)
-10. Corrige según el error y vuelve a ejecutar el `POST`.
+- `HarujaPrendas_2025_public`
+- `HarujaPrendas_2025_admin`
 
-## FASE 5 — Confirmar colecciones en Firestore
-11. En **Firestore Console → Data**, deben aparecer:
-    - `HarujaPrendas_2025_public`
-    - `HarujaPrendas_2025_admin`
+> Nota: las colecciones aparecen recién cuando se escribe el primer documento.
 
-Además, ambas deben tener documentos.
+## PASO 5 — Verificar que el panel consulte la colección correcta
+En frontend, confirmar que la lectura principal de prendas usa:
 
-## FASE 6 — Validar en el panel Haruja
-12. Abre el panel Haruja (si hace falta, en incógnito).
-13. En la consola del navegador deberían aparecer logs como:
+- `HarujaPrendas_2025_public`
 
-```txt
-[Prendas] Usando colección: HarujaPrendas_2025_public
-[Prendas] snapshot size: > 0
-```
+Y no la colección master:
 
-14. La tabla debe mostrar correctamente:
-- Orden
-- Código
-- Descripción
-- Tipo
-- Color
-- Talla
-- Proveedor
-- Status
-- Disponibilidad
-- Fecha
-- P.Venta
+- `HarujaPrendas_2025`
 
-## VALIDACIÓN FINAL
-- Las colecciones existen y tienen documentos.
-- El panel lista más de 0 productos.
-- No se requiere Cloud Billing para este flujo (solo ejecución de la function).
+## PASO 6 — Confirmar sincronización automática futura
+El backend incluye el trigger:
+
+- `syncPrendasDerivedCollections`
+
+Eso asegura que cualquier alta/edición futura en `HarujaPrendas_2025` actualice automáticamente `HarujaPrendas_2025_public` y `HarujaPrendas_2025_admin`.
+
+## ACLARACIÓN IMPORTANTE
+Las colecciones derivadas **no** se crean por:
+
+- hacer deploy,
+- declarar constantes en código,
+- tener la función definida.
+
+Se crean únicamente cuando se ejecuta una escritura real de documentos (migración o trigger).

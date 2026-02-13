@@ -266,32 +266,48 @@ No crear ese índice desde consola para evitar volver al conflicto `HTTP Error: 
 
 ## Crear colecciones `HarujaPrendas_2025_public` y `HarujaPrendas_2025_admin` (sin XLSX)
 
-La función HTTP `splitPrendasToPublicAdmin` toma como fuente la colección `HarujaPrendas_2025` y escribe en lotes las colecciones derivadas:
+La función HTTP `migrateSplitCollections` toma como fuente la colección `HarujaPrendas_2025` y escribe en lotes las colecciones derivadas:
 
 - `HarujaPrendas_2025_public` (campos públicos)
 - `HarujaPrendas_2025_admin` (campos públicos + costo/margen y metadatos admin)
+
+> Compatibilidad: también existe la función legacy `splitPrendasToPublicAdmin`.
 
 ### Requisitos
 
 1. Haber hecho deploy de Functions.
 2. Iniciar sesión con Google usando un email admin permitido.
+3. Obtener un Firebase ID token válido del usuario autenticado.
 
-### Ejecutar desde la UI
+### Obtener ID token desde la app web
 
-1. Abrir **Base de datos códigos**.
-2. Iniciar sesión con **Ingresar con Google**.
-3. Presionar **Crear/Actualizar colecciones**.
+En la consola del navegador (con sesión iniciada):
+
+```js
+firebase.auth().currentUser.getIdToken(true).then((t) => console.log(t));
+```
 
 ### Ejecutar manualmente (curl)
 
 ```bash
-curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/splitPrendasToPublicAdmin?dryRun=0" \
-  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>"
+curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/migrateSplitCollections" \
+  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
-Dry run (solo conteo, no escribe):
+Respuesta esperada:
 
-```bash
-curl -X POST "https://us-central1-<PROJECT_ID>.cloudfunctions.net/splitPrendasToPublicAdmin?dryRun=1" \
-  -H "Authorization: Bearer <FIREBASE_ID_TOKEN>"
+```json
+{
+  "ok": true,
+  "totalRead": 1398,
+  "publicWrites": 1398,
+  "adminWrites": 1398
+}
 ```
+
+Si devuelve `ok: true`, verificar en Firestore que existan documentos en:
+
+- `HarujaPrendas_2025_public`
+- `HarujaPrendas_2025_admin`
