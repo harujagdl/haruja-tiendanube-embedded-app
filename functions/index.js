@@ -20,6 +20,10 @@ const ADMIN_ALLOWLIST = new Set([
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const GEN1_RUNTIME_OPTS = {
+  memory: "1GB",
+  timeoutSeconds: 540
+};
 const STOPWORDS = new Set([
   "de",
   "la",
@@ -132,7 +136,7 @@ const buildAdminPayloadFromMaster = (data = {}) => ({
   typeCode: data.typeCode ?? null
 });
 
-exports.splitPrendasToPublicAdmin = functions.https.onRequest(async (req, res) => {
+exports.splitPrendasToPublicAdmin = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -247,7 +251,7 @@ exports.splitPrendasToPublicAdmin = functions.https.onRequest(async (req, res) =
   }
 });
 
-exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
+exports.syncPublicPrendas2025 = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
   try {
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
     const total = snapshot.size;
@@ -291,7 +295,7 @@ exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
+exports.importPrendasFromXlsx = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -418,7 +422,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
   }
 });
 
-exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => {
+exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onRequest(async (req, res) => {
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
@@ -565,7 +569,7 @@ const verifyAdminSession = async (sessionId) => {
   return session;
 };
 
-exports.verifyAdminPassword = functions.https.onCall(async (data) => {
+exports.verifyAdminPassword = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
   data = data || {};
   const password = safeString(data?.password).trim();
   if (!password) {
@@ -588,7 +592,7 @@ exports.verifyAdminPassword = functions.https.onCall(async (data) => {
   return {sessionId, expiresAt: expiresAtMs};
 });
 
-exports.backfillSearchTokens = functions.https.onCall(async (data) => {
+exports.backfillSearchTokens = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
   data = data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
@@ -695,7 +699,7 @@ const resolvePVenta = (data = {}) => {
   return null;
 };
 
-exports.normalizePrendasPVenta = functions.https.onCall(async (data) => {
+exports.normalizePrendasPVenta = functions.runWith(GEN1_RUNTIME_OPTS).https.onCall(async (data) => {
   data = data || {};
   const sessionId = safeString(data?.sessionId).trim();
   await verifyAdminSession(sessionId);
