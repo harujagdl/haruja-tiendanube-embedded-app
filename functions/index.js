@@ -85,6 +85,52 @@ const stripSensitive = (data = {}) => {
   return copy;
 };
 
+const toFixedNumber = (value, digits = 2) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Number(n.toFixed(digits));
+};
+
+const resolveOrden = (data = {}) => {
+  const orden = Number(data.orden);
+  if (Number.isFinite(orden)) return orden;
+  const seqNumber = Number(data.seqNumber);
+  if (Number.isFinite(seqNumber)) return seqNumber;
+  return null;
+};
+
+const resolvePVentaFromMaster = (data = {}) => {
+  const pVenta = Number(data.pVenta);
+  if (Number.isFinite(pVenta)) return toFixedNumber(pVenta);
+  const precioConIva = Number(data.precioConIva ?? data.precioConIVA);
+  if (Number.isFinite(precioConIva)) return toFixedNumber(precioConIva);
+  return null;
+};
+
+const buildPublicPayloadFromMaster = (data = {}) => ({
+  orden: resolveOrden(data),
+  codigo: data.codigo ?? null,
+  descripcion: data.descripcion ?? null,
+  tipo: data.tipo ?? null,
+  color: data.color ?? null,
+  talla: data.talla ?? null,
+  proveedor: data.proveedor ?? null,
+  status: data.status ?? null,
+  disponibilidad: data.disponibilidad ?? null,
+  fecha: data.fecha ?? null,
+  fechaTexto: data.fechaTexto ?? null,
+  pVenta: resolvePVentaFromMaster(data),
+  precio: toFixedNumber(data.precio)
+});
+
+const buildAdminPayloadFromMaster = (data = {}) => ({
+  costo: toFixedNumber(data.costo),
+  margen: toFixedNumber(data.margen, 3),
+  iva: toFixedNumber(data.iva, 4),
+  precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA),
+  precio: toFixedNumber(data.precio)
+});
+
 exports.syncPublicPrendas2025 = functions.https.onRequest(async (req, res) => {
   try {
     const snapshot = await db.collection(PRENDAS_COLLECTION).get();
@@ -181,8 +227,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
     let batch = db.batch();
     let writesInBatch = 0;
     let rowsImported = 0;
-    let writtenPublic = 0;
-    let writtenAdmin = 0;
+    let writtenMaster = 0;
 
     for (let r = 2; r <= range.e.r + 1; r++) {
       const codigo = String(getCell(sheet, "B", r)).trim();
@@ -190,33 +235,33 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
 
       const docId = safeDocId(codigo);
 
-      const publicObj = {
+      const masterObj = {
         orden: toNumber(getCell(sheet, "A", r)),
+        seqNumber: toNumber(getCell(sheet, "A", r)),
         codigo,
         descripcion: String(getCell(sheet, "F", r)),
         tipo: String(getCell(sheet, "C", r)),
         color: String(getCell(sheet, "D", r)),
         talla: String(getCell(sheet, "E", r)),
         proveedor: String(getCell(sheet, "M", r)),
+        status: String(getCell(sheet, "L", r)),
+        disponibilidad: String(getCell(sheet, "L", r)),
+        fechaTexto: String(getCell(sheet, "J", r)),
+        fecha: getCell(sheet, "J", r) || null,
         precio: toNumber(getCell(sheet, "G", r)),
+        precioConIva: toNumber(getCell(sheet, "I", r)),
         pVenta: toNumber(getCell(sheet, "I", r)),
+        iva: 0.16,
+        costo: toNumber(getCell(sheet, "N", r)),
+        margen: toNumber(getCell(sheet, "Q", r)),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       };
 
-      const adminObj = {
-        ...publicObj,
-        status: String(getCell(sheet, "L", r)),
-        costo: toNumber(getCell(sheet, "N", r)),
-        margen: toNumber(getCell(sheet, "Q", r))
-      };
+      batch.set(db.collection(PRENDAS_COLLECTION).doc(docId), masterObj, {merge: true});
 
-      batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicObj, {merge: true});
-      batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminObj, {merge: true});
-
-      writesInBatch += 2;
+      writesInBatch += 1;
       rowsImported += 1;
-      writtenPublic += 1;
-      writtenAdmin += 1;
+      writtenMaster += 1;
 
       if (writesInBatch >= 500) {
         logger.info("writing batch", {writesInBatch, rowsImported});
@@ -233,8 +278,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
 
     logger.info("DONE importPrendasFromXlsx", {
       rowsImported,
-      writtenPublic,
-      writtenAdmin
+      writtenMaster
     });
 
     res.json({
@@ -242,8 +286,7 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
       sheet: firstSheetName,
       rowsTotal,
       rowsImported,
-      writtenPublic,
-      writtenAdmin,
+      writtenMaster,
       publicCollection: PRENDAS_PUBLIC_COLLECTION,
       adminCollection: PRENDAS_ADMIN_COLLECTION
     });
@@ -258,6 +301,112 @@ exports.importPrendasFromXlsx = functions.https.onRequest(async (req, res) => {
     res.status(500).json({ok: false, error: String(err)});
   }
 });
+
+exports.migrateSplitCollections = functions.https.onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
+    }
+
+    const adminSession = await requireAllowlistedAdmin(req);
+    let totalRead = 0;
+    let publicWrites = 0;
+    let adminWrites = 0;
+    let firstDocId = null;
+    let lastDocId = null;
+    let cursor = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let baseQuery = db
+        .collection(PRENDAS_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(DEFAULT_BATCH_SIZE);
+      if (cursor) {
+        baseQuery = baseQuery.startAfter(cursor);
+      }
+
+      const snapshot = await baseQuery.get();
+      if (snapshot.empty) {
+        hasMore = false;
+        break;
+      }
+
+      const batch = db.batch();
+      snapshot.docs.forEach((docSnap, index) => {
+        const payload = docSnap.data() || {};
+        if (!firstDocId && index === 0) {
+          firstDocId = docSnap.id;
+        }
+        lastDocId = docSnap.id;
+        totalRead += 1;
+
+        batch.set(
+          db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id),
+          buildPublicPayloadFromMaster(payload),
+          {merge: true}
+        );
+        batch.set(
+          db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id),
+          buildAdminPayloadFromMaster(payload),
+          {merge: true}
+        );
+        publicWrites += 1;
+        adminWrites += 1;
+      });
+
+      await batch.commit();
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+      hasMore = snapshot.size === DEFAULT_BATCH_SIZE;
+    }
+
+    logger.info("migrateSplitCollections completed", {
+      by: adminSession.email,
+      totalRead,
+      publicWrites,
+      adminWrites,
+      firstDocId,
+      lastDocId
+    });
+
+    return res.status(200).json({
+      ok: true,
+      totalRead,
+      publicWrites,
+      adminWrites,
+      firstDocId,
+      lastDocId
+    });
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) {
+      return res.status(error.httpErrorCode.status).json({ok: false, error: error.message});
+    }
+    logger.error("migrateSplitCollections failed", error);
+    return res.status(500).json({ok: false, error: String(error)});
+  }
+});
+
+exports.syncPrendasDerivedCollections = functions.firestore
+  .document(`${PRENDAS_COLLECTION}/{docId}`)
+  .onWrite(async (change, context) => {
+    const docId = context.params.docId;
+    const publicRef = db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId);
+    const adminRef = db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId);
+
+    if (!change.after.exists) {
+      await Promise.all([publicRef.delete(), adminRef.delete()]);
+      logger.info("syncPrendasDerivedCollections delete", {docId});
+      return;
+    }
+
+    const payload = change.after.data() || {};
+    await Promise.all([
+      publicRef.set(buildPublicPayloadFromMaster(payload), {merge: true}),
+      adminRef.set(buildAdminPayloadFromMaster(payload), {merge: true})
+    ]);
+
+    logger.info("syncPrendasDerivedCollections upsert", {docId});
+  });
 
 const safeString = (value) => {
   if (value === null || value === undefined) return "";

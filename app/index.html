@@ -2982,7 +2982,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
           setAdminLoginStatus(
-            `Importación OK. rowsImported=${payload.rowsImported}, public=${payload.writtenPublic}, admin=${payload.writtenAdmin}`,
+            `Importación OK. rowsImported=${payload.rowsImported}, master=${payload.writtenMaster}. El split a public/admin se sincroniza desde master.`,
             "success"
           );
           await loadPrendasPage({ reset: true, reason: "import-xlsx" });

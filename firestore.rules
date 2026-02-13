@@ -24,8 +24,7 @@ service cloud.firestore {
 
     // 🔒 Privado: costos y márgenes (solo admin)
     match /HarujaPrendas_2025_admin/{docId} {
-      allow read: if isAdmin();
-      allow write: if false;
+      allow read, write: if isAdmin();
     }
 
     // ✅ Diccionarios (si existen como colecciones exactas)
