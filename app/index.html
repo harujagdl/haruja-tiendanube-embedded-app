@@ -860,6 +860,7 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
+                  <button type="button" id="admin-import-xlsx">Reimportar XLSX (Master)</button>
                   <button type="button" id="admin-split-collections">Migrar a public/admin</button>
                 </div>
               </div>
@@ -1060,6 +1061,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
+      const adminImportButton = document.getElementById("admin-import-xlsx");
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
@@ -1292,8 +1294,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
+      const API_BASE = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net`;
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
-      const SPLIT_FUNCTION_URL = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net/${SPLIT_FUNCTION_NAME}`;
+      const IMPORT_XLSX_FUNCTION_NAME = "importPrendasFromXlsx";
+      const SPLIT_FUNCTION_URL = `${API_BASE}/${SPLIT_FUNCTION_NAME}`;
+      const IMPORT_XLSX_FUNCTION_URL = `${API_BASE}/${IMPORT_XLSX_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -1772,16 +1777,19 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const pVenta = toNumberOrNull(data.pVenta ?? data.precioConIva ?? data.precio);
         const costo = toNumberOrNull(data.costo);
 
-        // SIEMPRE recalcular (admin)
         const utilidadCalculada = (Number.isFinite(pVenta) && Number.isFinite(costo)) ? (pVenta - costo) : null;
-
-        // Margen consistente con Functions (markup sobre costo)
         const margenCalculado = (Number.isFinite(utilidadCalculada) && Number.isFinite(costo) && costo !== 0)
           ? (utilidadCalculada / costo)
           : null;
 
-        const utilidad = utilidadCalculada; // no usar utilidad guardada si viene mal
-        const margen = margenCalculado;     // no usar margen guardado si viene mal
+        const utilidadRaw = toNumberOrNull(data.utilidad ?? data.Utilidad);
+        const margenRaw = toNumberOrNull(data.margen ?? data.Margen);
+        const utilidad = (Number.isFinite(utilidadRaw) && utilidadRaw !== 0)
+          ? utilidadRaw
+          : utilidadCalculada;
+        const margen = (Number.isFinite(margenRaw) && margenRaw !== 0)
+          ? margenRaw
+          : margenCalculado;
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
@@ -2296,21 +2304,21 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const costo = toNumberOrNull(adminExtra.costo);
           const utilidadFromAdmin = toNumberOrNull(adminExtra.utilidad);
           const margenFromAdmin = toNumberOrNull(adminExtra.margen);
-          const basePrice = Number.isFinite(row.pVenta)
-            ? Number((row.pVenta / 1.16).toFixed(2))
-            : null;
 
           row.costo = Number.isFinite(costo) ? costo : null;
-          row.utilidad = Number.isFinite(utilidadFromAdmin)
+          const utilidadCalculada = Number.isFinite(row.pVenta) && Number.isFinite(row.costo)
+            ? Number((row.pVenta - row.costo).toFixed(2))
+            : null;
+          const margenCalculado = Number.isFinite(utilidadCalculada) && Number.isFinite(row.costo) && row.costo !== 0
+            ? Number((utilidadCalculada / row.costo).toFixed(3))
+            : null;
+
+          row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
             ? utilidadFromAdmin
-            : Number.isFinite(basePrice) && Number.isFinite(row.costo)
-            ? Number((basePrice - row.costo).toFixed(2))
-            : null;
-          row.margen = Number.isFinite(margenFromAdmin)
+            : utilidadCalculada;
+          row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
             ? margenFromAdmin
-            : Number.isFinite(basePrice) && basePrice !== 0 && Number.isFinite(row.utilidad)
-            ? Number((row.utilidad / basePrice).toFixed(3))
-            : null;
+            : margenCalculado;
         });
 
         return rows;
@@ -2965,7 +2973,63 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         }
       };
 
+      const doImportFromXlsx = async () => {
+        if (adminImportButton) {
+          adminImportButton.disabled = true;
+        }
+        if (adminSplitButton) {
+          adminSplitButton.disabled = true;
+        }
+        try {
+          let user = auth.currentUser;
+          if (!user) {
+            const response = await signInWithPopup(auth, googleProvider);
+            user = response?.user || null;
+          }
+          const email = safeString(user?.email).trim().toLowerCase();
+          if (!isAllowlistedAdmin(email)) {
+            setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
+            await signOut(auth);
+            return;
+          }
+
+          const idToken = await user.getIdToken(true);
+          setAdminLoginStatus("Reimportando XLSX (master)...", "warning");
+          const response = await fetch(IMPORT_XLSX_FUNCTION_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`
+            },
+            body: JSON.stringify({})
+          });
+
+          const payload = await response.json();
+          if (!response.ok || !payload?.ok) {
+            throw new Error(payload?.error || `HTTP ${response.status}`);
+          }
+
+          const importedRows = Number(payload?.rowsImported || payload?.writtenMaster || 0);
+          setAdminLoginStatus(`Listo: ${importedRows} filas reimportadas en master.`, "success");
+          setPrendasAlert("");
+          await loadPrendasPage({ reset: true, reason: "import-xlsx-master" });
+        } catch (error) {
+          console.error(error);
+          setAdminLoginStatus(`Error al reimportar XLSX: ${error.message || error}`, "error");
+        } finally {
+          if (adminImportButton) {
+            adminImportButton.disabled = false;
+          }
+          if (adminSplitButton) {
+            adminSplitButton.disabled = false;
+          }
+        }
+      };
+
       const handleAdminSplitCollections = async () => {
+        if (adminImportButton) {
+          adminImportButton.disabled = true;
+        }
         if (adminSplitButton) {
           adminSplitButton.disabled = true;
         }
@@ -3033,6 +3097,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           console.error(error);
           setAdminLoginStatus(`Error al migrar colecciones: ${error.message || error}`, "error");
         } finally {
+          if (adminImportButton) {
+            adminImportButton.disabled = false;
+          }
           if (adminSplitButton) {
             adminSplitButton.disabled = false;
           }
@@ -3074,6 +3141,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
         });
+      }
+      if (adminImportButton) {
+        adminImportButton.addEventListener("click", doImportFromXlsx);
       }
       if (adminSplitButton) {
         adminSplitButton.addEventListener("click", handleAdminSplitCollections);
