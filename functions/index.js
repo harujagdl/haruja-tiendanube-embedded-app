@@ -19,6 +19,8 @@ const ADMIN_ALLOWLIST = new Set([
 ]);
 const SEARCH_VERSION = 1;
 const DEFAULT_BATCH_SIZE = 200;
+const MIGRATE_MIN_BATCH_SIZE = 50;
+const MIGRATE_MAX_BATCH_SIZE = 400;
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const GEN1_RUNTIME_OPTS = {
   memory: "1GB",
@@ -98,7 +100,7 @@ const resolveOrden = (data = {}) => {
   if (Number.isFinite(orden)) return orden;
   const seqNumber = Number(data.seqNumber ?? data.seq ?? data.secuencia);
   if (Number.isFinite(seqNumber)) return seqNumber;
-  return 0;
+  return null;
 };
 
 const resolvePVentaFromMaster = (data = {}) => {
@@ -109,34 +111,42 @@ const resolvePVentaFromMaster = (data = {}) => {
   return null;
 };
 
-const buildPublicPayloadFromMaster = (data = {}) => ({
-  docId: data.docId ?? data.codigo ?? null,
-  code: data.code ?? data.codigo ?? null,
-  orden: resolveOrden(data),
-  seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
-  codigo: data.codigo ?? null,
-  descripcion: data.descripcion ?? null,
-  tipo: data.tipo ?? null,
-  color: data.color ?? null,
-  talla: data.talla ?? null,
-  proveedor: data.proveedor ?? null,
-  status: data.status ?? null,
-  disponibilidad: data.disponibilidad ?? null,
-  fecha: data.fecha ?? null,
-  fechaTexto: data.fechaTexto ?? null,
-  createdAt: data.createdAt ?? null,
-  updatedAt: data.updatedAt ?? null,
-  source: data.source ?? PRENDAS_COLLECTION,
-  providerCode: data.providerCode ?? null,
-  typeCode: data.typeCode ?? null,
-  pVenta: resolvePVentaFromMaster(data),
-  precio: toFixedNumber(data.precio),
-  iva: toFixedNumber(data.iva, 4),
-  precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA)
-});
+const buildPublicPayloadFromMaster = (data = {}) => {
+  const payload = {
+    docId: data.docId ?? data.codigo ?? null,
+    code: data.code ?? data.codigo ?? null,
+    seqNumber: data.seqNumber ?? data.seq ?? data.secuencia ?? null,
+    codigo: data.codigo ?? null,
+    descripcion: data.descripcion ?? null,
+    tipo: data.tipo ?? null,
+    color: data.color ?? null,
+    talla: data.talla ?? null,
+    proveedor: data.proveedor ?? null,
+    status: data.status ?? null,
+    disponibilidad: data.disponibilidad ?? null,
+    fecha: data.fecha ?? null,
+    fechaTexto: data.fechaTexto ?? null,
+    createdAt: data.createdAt ?? null,
+    updatedAt: data.updatedAt ?? null,
+    source: data.source ?? PRENDAS_COLLECTION,
+    providerCode: data.providerCode ?? null,
+    typeCode: data.typeCode ?? null,
+    pVenta: resolvePVentaFromMaster(data),
+    precio: toFixedNumber(data.precio),
+    precioConIva: toFixedNumber(data.precioConIva ?? data.precioConIVA)
+  };
+
+  const orden = resolveOrden(data);
+  if (Number.isFinite(orden)) {
+    payload.orden = orden;
+  }
+
+  return payload;
+};
 
 const buildAdminPayloadFromMaster = (data = {}) => ({
   ...buildPublicPayloadFromMaster(data),
+  iva: toFixedNumber(data.iva, 4),
   costo: toFixedNumber(data.costo),
   margen: toFixedNumber(data.margen, 3),
   utilidad: toFixedNumber(data.utilidad)
@@ -435,73 +445,77 @@ exports.migrateSplitCollections = functions.runWith(GEN1_RUNTIME_OPTS).https.onR
     }
 
     const adminSession = await requireAllowlistedAdmin(req);
-    let totalRead = 0;
-    let publicWrites = 0;
-    let adminWrites = 0;
-    let firstDocId = null;
-    let lastDocId = null;
-    let cursor = null;
-    let hasMore = true;
+    const batchSizeRaw = Number(req.body?.batchSize ?? req.query?.batchSize);
+    const batchSize = Number.isFinite(batchSizeRaw)
+      ? Math.max(MIGRATE_MIN_BATCH_SIZE, Math.min(MIGRATE_MAX_BATCH_SIZE, Math.floor(batchSizeRaw)))
+      : DEFAULT_BATCH_SIZE;
+    const startAfterCursor = String(req.body?.startAfter ?? req.query?.startAfter ?? "").trim();
 
-    while (hasMore) {
-      let baseQuery = db
-        .collection(PRENDAS_COLLECTION)
-        .orderBy(admin.firestore.FieldPath.documentId())
-        .limit(DEFAULT_BATCH_SIZE);
-      if (cursor) {
-        baseQuery = baseQuery.startAfter(cursor);
-      }
+    let baseQuery = db
+      .collection(PRENDAS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(batchSize);
 
-      const snapshot = await baseQuery.get();
-      if (snapshot.empty) {
-        hasMore = false;
-        break;
-      }
-
-      const batch = db.batch();
-      snapshot.docs.forEach((docSnap, index) => {
-        const payload = docSnap.data() || {};
-        if (!firstDocId && index === 0) {
-          firstDocId = docSnap.id;
-        }
-        lastDocId = docSnap.id;
-        totalRead += 1;
-
-        const publicPayload = buildPublicPayloadFromMaster(payload);
-        const adminPayload = buildAdminPayloadFromMaster(payload);
-        publicPayload.docId = publicPayload.docId ?? docSnap.id;
-        adminPayload.docId = adminPayload.docId ?? docSnap.id;
-
-        batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicPayload, {merge: true});
-        batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminPayload, {merge: true});
-        publicWrites += 1;
-        adminWrites += 1;
-      });
-
-      await batch.commit();
-      cursor = snapshot.docs[snapshot.docs.length - 1];
-      hasMore = snapshot.size === DEFAULT_BATCH_SIZE;
+    if (startAfterCursor) {
+      baseQuery = baseQuery.startAfter(startAfterCursor);
     }
+
+    const snapshot = await baseQuery.get();
+    if (snapshot.empty) {
+      return res.status(200).json({
+        ok: true,
+        processed: 0,
+        writtenPublic: 0,
+        writtenAdmin: 0,
+        lastDocCursor: null,
+        hasMore: false,
+        batchSize
+      });
+    }
+
+    let processed = 0;
+    let writtenPublic = 0;
+    let writtenAdmin = 0;
+    const batch = db.batch();
+
+    snapshot.docs.forEach((docSnap) => {
+      const payload = docSnap.data() || {};
+      const publicPayload = buildPublicPayloadFromMaster(payload);
+      const adminPayload = buildAdminPayloadFromMaster(payload);
+      publicPayload.docId = publicPayload.docId ?? docSnap.id;
+      adminPayload.docId = adminPayload.docId ?? docSnap.id;
+
+      batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docSnap.id), publicPayload, {merge: true});
+      batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docSnap.id), adminPayload, {merge: true});
+      processed += 1;
+      writtenPublic += 1;
+      writtenAdmin += 1;
+    });
+
+    await batch.commit();
+    const lastDocCursor = snapshot.docs[snapshot.docs.length - 1]?.id || null;
+    const hasMore = snapshot.size === batchSize;
 
     console.info("migrateSplitCollections completed", {
       by: adminSession.email,
-      read: totalRead,
-      publicWritten: publicWrites,
-      adminWritten: adminWrites,
-      firstDocId,
-      lastDocId
+      batchSize,
+      startAfter: startAfterCursor || null,
+      processed,
+      publicWritten: writtenPublic,
+      adminWritten: writtenAdmin,
+      lastDocCursor,
+      hasMore
     });
 
     return res.status(200).json({
       ok: true,
-      read: totalRead,
-      publicWritten: publicWrites,
-      adminWritten: adminWrites,
-      totalRead,
-      publicWrites,
-      adminWrites,
-      firstDocId,
-      lastDocId
+      processed,
+      writtenPublic,
+      writtenAdmin,
+      lastDocCursor,
+      hasMore,
+      batchSize,
+      startAfter: startAfterCursor || null
     });
   } catch (error) {
     if (error instanceof HttpsError) {

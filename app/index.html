@@ -2950,21 +2950,49 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             return;
           }
           const idToken = await user.getIdToken(true);
-          setAdminLoginStatus("Migrando colección base a public/admin...", "warning");
-          const response = await fetch(SPLIT_FUNCTION_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${idToken}`
-            },
-            body: JSON.stringify({})
-          });
-          const payload = await response.json();
-          if (!response.ok || !payload?.ok) {
-            throw new Error(payload?.error || `HTTP ${response.status}`);
+          setAdminLoginStatus("Migrando colección base a public/admin por lotes...", "warning");
+
+          let totalProcessed = 0;
+          let totalPublic = 0;
+          let totalAdmin = 0;
+          let cursor = "";
+          let hasMore = true;
+
+          while (hasMore) {
+            const response = await fetch(SPLIT_FUNCTION_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${idToken}`
+              },
+              body: JSON.stringify({
+                batchSize: 300,
+                startAfter: cursor || undefined
+              })
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload?.ok) {
+              throw new Error(payload?.error || `HTTP ${response.status}`);
+            }
+
+            totalProcessed += Number(payload?.processed || 0);
+            totalPublic += Number(payload?.writtenPublic || 0);
+            totalAdmin += Number(payload?.writtenAdmin || 0);
+            cursor = safeString(payload?.lastDocCursor).trim();
+            hasMore = Boolean(payload?.hasMore) && Boolean(cursor);
+
+            setAdminLoginStatus(
+              `Migrando... lote=${payload?.processed || 0}, acumulado=${totalProcessed}, último=${cursor || "fin"}`,
+              "warning"
+            );
+
+            if (!payload?.processed) {
+              hasMore = false;
+            }
           }
+
           setAdminLoginStatus(
-            `Migración OK. leídos=${payload.read}, public=${payload.publicWritten}, admin=${payload.adminWritten}.`,
+            `Migración OK. procesados=${totalProcessed}, public=${totalPublic}, admin=${totalAdmin}.`,
             "success"
           );
           setPrendasAlert("");
