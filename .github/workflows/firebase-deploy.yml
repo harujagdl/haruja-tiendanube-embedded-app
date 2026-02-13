@@ -45,3 +45,9 @@ jobs:
             --only firestore:indexes,firestore:rules,hosting,functions \
             --force \
             --non-interactive
+
+      - name: Run split migration (master -> public/admin)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: node scripts/run-migrate-split.js

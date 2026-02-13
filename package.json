@@ -12,7 +12,8 @@
     "migrate:canon:dry": "DRY_RUN=true node scripts/migrate-status-disponibilidad-canon.mjs",
     "migrate:canon": "DRY_RUN=false node scripts/migrate-status-disponibilidad-canon.mjs",
     "migrate:split:dry": "DRY_RUN=true node scripts/migrate-prendas-public-admin.mjs",
-    "migrate:split": "DRY_RUN=false node scripts/migrate-prendas-public-admin.mjs"
+    "migrate:split": "DRY_RUN=false node scripts/migrate-prendas-public-admin.mjs",
+    "migrate:split:sa": "node scripts/run-migrate-split.js"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
