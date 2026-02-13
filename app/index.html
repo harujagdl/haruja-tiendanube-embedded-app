@@ -2949,7 +2949,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             await signOut(auth);
             return;
           }
-          const idToken = await user.getIdToken();
+          const idToken = await user.getIdToken(true);
           setAdminLoginStatus("Creando/actualizando colecciones public/admin...", "warning");
           const response = await fetch(`${SPLIT_FUNCTION_URL}?dryRun=0`, {
             method: "POST",
@@ -3210,7 +3210,14 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           });
 
           try {
-            const baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
+            let baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
+            if (baseSnapshot.empty) {
+              console.warn("[Prendas] Colección pública vacía. Se usa fallback temporal a colección principal.");
+              setPrendasCollections({
+                publicCollection: PRENDAS_COLLECTION
+              });
+              baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
+            }
             console.log("[Prendas] Base query (sin filtros) docs", {
               collection: activePrendasPublicCollection,
               docs: baseSnapshot.size
