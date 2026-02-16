@@ -104,11 +104,14 @@ const getRowValue = (row, index) => {
 const parseMultipartFile = (req, fieldName = "file") =>
   new Promise((resolve, reject) => {
     const contentType = req.headers["content-type"] || "";
-    if (!String(contentType).includes("multipart/form-data")) {
+    if (!contentType.includes("multipart/form-data")) {
       return reject(new Error("Content-Type debe ser multipart/form-data."));
     }
 
-    const bb = Busboy({headers: req.headers});
+    const bb = Busboy({
+      headers: req.headers,
+      limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+    });
 
     let fileBuffer = null;
     let fileBytes = 0;
@@ -123,32 +126,31 @@ const parseMultipartFile = (req, fieldName = "file") =>
       filename = info?.filename || "upload.xlsx";
       const chunks = [];
 
-      file.on("data", (d) => {
-        chunks.push(d);
-        fileBytes += d.length;
+      file.on("data", (data) => {
+        chunks.push(data);
+        fileBytes += data.length;
       });
-      file.on("limit", () => {
-        reject(new Error("Archivo demasiado grande."));
-      });
+
       file.on("end", () => {
         fileBuffer = Buffer.concat(chunks);
       });
     });
 
-    bb.on("error", (err) => reject(err));
+    bb.on("error", reject);
 
     bb.on("finish", () => {
-      if (!fileBuffer || !fileBuffer.length) {
+      if (!fileBuffer || fileBuffer.length === 0) {
         return reject(new Error("No se recibió archivo (campo 'file')."));
       }
-      resolve({buffer: fileBuffer, filename, fileBytes});
+      resolve({ buffer: fileBuffer, filename, fileBytes });
     });
 
-    if (req.rawBody && req.rawBody.length) {
-      bb.end(req.rawBody);
-    } else {
-      req.pipe(bb);
+    // 🔥 SIEMPRE usar rawBody en v2
+    if (!req.rawBody) {
+      return reject(new Error("rawBody no disponible."));
     }
+
+    bb.end(req.rawBody);
   });
 
 function applyCors(req, res) {
