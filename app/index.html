@@ -1085,6 +1085,15 @@ button.secondary.small{
 #base-datos-codigos .page-size-bottom{
   max-width:100%;
 }
+
+/* --- DB meta + loader (auto-added) --- */
+.prendas-meta{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:10px 0 0 0;}
+.prendas-count{font-size:14px;color:#6b7280;}
+.prendas-alert{padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#fff7ed;color:#9a3412;font-size:14px;}
+.db-loader{display:flex;align-items:center;gap:10px;margin:12px 0;}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid #e5e7eb;border-top-color:#2563eb;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
 </style>
   </head>
   <body>
@@ -1213,6 +1222,12 @@ button.secondary.small{
           <div id="dbCodigosSection" class="db-module">
             <h2>Base de datos códigos HarujaGdl</h2>
             <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
+
+            <div class="prendas-meta">
+              <div id="prendas-alert" class="prendas-alert" role="status" aria-live="polite" style="display:none;"></div>
+              <div class="prendas-count">Total: <span data-count-total>—</span></div>
+            </div>
+
             <div class="panel-controls">
               
                 
@@ -1261,6 +1276,11 @@ button.secondary.small{
                 <button type="button" id="admin-mode-btn" class="admin-mode-btn" aria-pressed="false">Modo admin</button>
               </div>
             </div>
+            <div data-db-loader class="db-loader" style="display:none;">
+              <div class="spinner"></div>
+              <div class="loading-text">Cargando prendas…</div>
+            </div>
+
 <table id="tablaPrendas" data-prendas-table>
                 <thead>
                   <tr>
@@ -1280,7 +1300,7 @@ button.secondary.small{
                     <th class="admin-only">(Admin) Utilidad</th>
                   </tr>
                 </thead>
-                <tbody id="prendas-tbody" data-prendas-tbody></tbody>
+                <tbody id="prendas-tbody" data-prendas-tbody><tr id="loadingRow"><td colspan="99" class="muted">Cargando prendas…</td></tr></tbody>
               </table>
               <template id="noResultsRow" data-empty-row>
                 <tr>
