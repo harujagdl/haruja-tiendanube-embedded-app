@@ -561,10 +561,28 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
             : 0;
         const margen = Number.isFinite(margenCalc) ? margenCalc : 0;
 
-        const fechaValue = getRowValue(row, idxFecha);
-        const fechaTexto = String(fechaValue ?? "").trim();
-        const status = String(getRowValue(row, idxStatus) ?? "").trim();
-        const disponibilidad = String(getRowValue(row, idxDisponibilidad) ?? "").trim() || status;
+const fechaRaw = getRowValue(row, idxFecha);
+
+let fecha = null;
+let fechaTexto = "";
+
+if (typeof fechaRaw === "number" && Number.isFinite(fechaRaw) && fechaRaw > 0) {
+  const parsed = XLSX.SSF.parse_date_code(fechaRaw);
+  if (parsed) {
+    fecha = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+    fechaTexto = fecha.toISOString().slice(0, 10);
+  }
+} else if (fechaRaw instanceof Date && !isNaN(fechaRaw)) {
+  fecha = fechaRaw;
+  fechaTexto = fecha.toISOString().slice(0, 10);
+} else if (typeof fechaRaw === "string" && fechaRaw.trim() !== "") {
+  fechaTexto = fechaRaw.trim();
+}
+
+const status = String(getRowValue(row, idxStatus) ?? "").trim();
+const disponibilidad =
+  String(getRowValue(row, idxDisponibilidad) ?? "").trim() || status;
+
 
 const masterObj = {
   orden: Number.isFinite(orden) ? orden : null,
@@ -584,9 +602,9 @@ const masterObj = {
   status,
   disponibilidad,
   fechaTexto,
-  fecha: fechaValue || null,
+  fecha,
   source: "upload-xlsx",
-  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 };
 
         const publicObj = buildPublicPayloadFromMaster(masterObj);
