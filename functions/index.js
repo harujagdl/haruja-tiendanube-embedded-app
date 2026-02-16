@@ -102,9 +102,12 @@ const getRowValue = (row, index) => {
 const parseMultipartFile = (req, fieldName = "file") =>
   new Promise((resolve, reject) => {
     const contentType = String(req.headers["content-type"] || "");
-    if (!contentType.toLowerCase().includes("multipart/form-data")) {
-      reject(new Error("Content-Type debe ser multipart/form-data."));
-      return;
+    const normalizedContentType = contentType.toLowerCase();
+    if (!normalizedContentType.includes("multipart/form-data")) {
+      return reject(new Error("Content-Type debe ser multipart/form-data."));
+    }
+    if (!normalizedContentType.includes("boundary=")) {
+      return reject(new Error("multipart/form-data sin boundary (no seteés Content-Type manualmente en fetch)."));
     }
 
     const busboy = Busboy({headers: req.headers});
@@ -113,6 +116,22 @@ const parseMultipartFile = (req, fieldName = "file") =>
     let filename = "";
     let mimeType = "";
     let fileBytes = 0;
+    let settled = false;
+
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    const succeed = (payload) => {
+      if (settled) return;
+      settled = true;
+      resolve(payload);
+    };
+
+    req.on("aborted", () => fail(new Error("Request aborted.")));
+    req.on("error", (error) => fail(error));
 
     busboy.on("file", (name, stream, info) => {
       if (name !== fieldName) {
@@ -128,20 +147,16 @@ const parseMultipartFile = (req, fieldName = "file") =>
         chunks.push(chunk);
         fileBytes += chunk.length;
       });
-      stream.on("error", (error) => reject(error));
+      stream.on("limit", () => fail(new Error("Archivo demasiado grande.")));
+      stream.on("error", (error) => fail(error));
     });
 
-    busboy.on("error", reject);
+    busboy.on("error", (error) => fail(error));
     busboy.on("finish", () => {
-      if (!matchedFile) {
-        reject(new Error("Campo file requerido."));
-        return;
+      if (!matchedFile || !chunks.length || fileBytes <= 0) {
+        return fail(new Error("No llegó archivo (campo 'file')."));
       }
-      if (fileBytes <= 0) {
-        reject(new Error("No file"));
-        return;
-      }
-      resolve({
+      return succeed({
         buffer: Buffer.concat(chunks),
         filename,
         mimeType,
@@ -149,7 +164,11 @@ const parseMultipartFile = (req, fieldName = "file") =>
       });
     });
 
-    req.pipe(busboy);
+    if (req.rawBody && Buffer.isBuffer(req.rawBody) && req.rawBody.length) {
+      busboy.end(req.rawBody);
+    } else {
+      req.pipe(busboy);
+    }
   });
 
 function applyCors(req, res) {
@@ -234,6 +253,9 @@ const toFixedNumber = (value, digits = 2) => {
   return Number(n.toFixed(digits));
 };
 
+const round2 = (value) => toFixedNumber(value, 2);
+const round1 = (value) => toFixedNumber(value, 1);
+
 const resolveOrden = (data = {}) => {
   const orden = Number(data.orden ?? data.Orden);
   if (Number.isFinite(orden)) return orden;
@@ -283,29 +305,26 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 function buildAdminPayloadFromMaster(masterData) {
   const costo = numOrUndefined(masterData.costo);
   const precioConIva = numOrUndefined(masterData.precioConIva ?? masterData.pVenta);
-  const utilidadRaw = numOrUndefined(masterData.utilidad);
-  const margenRaw = numOrUndefined(masterData.margen);
+  const orden = numOrUndefined(masterData.orden);
 
-  const utilidadCalc =
+  const utilidad =
     Number.isFinite(precioConIva) && Number.isFinite(costo)
-      ? Number(precioConIva - costo)
-      : undefined;
+      ? round2(precioConIva - costo)
+      : 0;
 
-  const margenCalc =
-    Number.isFinite(utilidadCalc) && Number.isFinite(costo) && costo > 0
-      ? Number((utilidadCalc / costo) * 100)
-      : undefined;
-
-  const utilidad = Number.isFinite(utilidadRaw) ? utilidadRaw : utilidadCalc;
-  const margen = Number.isFinite(margenRaw) ? margenRaw : margenCalc;
+  const margen =
+    Number.isFinite(costo) && costo > 0 && Number.isFinite(utilidad)
+      ? round1((utilidad / costo) * 100)
+      : 0;
 
   return {
     ...buildPublicPayloadFromMaster(masterData),
+    orden: Number.isFinite(orden) ? orden : null,
     ...(costo !== undefined ? {costo} : {}),
     ...(precioConIva !== undefined ? {precioConIva} : {}),
     ...(precioConIva !== undefined ? {pVenta: precioConIva} : {}),
-    ...(utilidad !== undefined ? {utilidad} : {}),
-    ...(margen !== undefined ? {margen} : {}),
+    utilidad,
+    margen,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
@@ -510,8 +529,6 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     const idxCodigo = resolveColumnIndex(headerMap, HEADER_ALIASES.codigo);
     const idxCosto = resolveColumnIndex(headerMap, HEADER_ALIASES.costo);
     const idxPrecioConIva = resolveColumnIndex(headerMap, HEADER_ALIASES.precioConIva);
-    const idxMargen = resolveColumnIndex(headerMap, HEADER_ALIASES.margen);
-    const idxUtilidad = resolveColumnIndex(headerMap, HEADER_ALIASES.utilidad);
     const idxDescripcion = resolveColumnIndex(headerMap, HEADER_ALIASES.descripcion);
     const idxTipo = resolveColumnIndex(headerMap, HEADER_ALIASES.tipo);
     const idxColor = resolveColumnIndex(headerMap, HEADER_ALIASES.color);
@@ -531,6 +548,7 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     let batch = db.batch();
     let writesInBatch = 0;
     let updated = 0;
+    let created = 0;
     const errors = [];
 
     for (let i = 1; i < rows.length; i++) {
@@ -547,20 +565,17 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
 
         const costo = numOrUndefined(getRowValue(row, idxCosto));
         const precioConIva = numOrUndefined(getRowValue(row, idxPrecioConIva));
-        const utilidadOverride = toFixedNumber(numOrUndefined(getRowValue(row, idxUtilidad)), 2);
-        const margenOverride = toFixedNumber(numOrUndefined(getRowValue(row, idxMargen)), 2);
-
         const utilidadCalc =
           Number.isFinite(precioConIva) && Number.isFinite(costo)
             ? toFixedNumber(precioConIva - costo, 2)
-            : null;
-        const utilidad = Number.isFinite(utilidadOverride) ? utilidadOverride : utilidadCalc;
+            : 0;
+        const utilidad = Number.isFinite(utilidadCalc) ? utilidadCalc : 0;
 
         const margenCalc =
           Number.isFinite(utilidad) && Number.isFinite(costo) && costo > 0
-            ? toFixedNumber((utilidad / costo) * 100, 2)
-            : null;
-        const margen = Number.isFinite(margenOverride) ? margenOverride : margenCalc;
+            ? toFixedNumber((utilidad / costo) * 100, 1)
+            : 0;
+        const margen = Number.isFinite(margenCalc) ? margenCalc : 0;
 
         const fechaValue = getRowValue(row, idxFecha);
         const fechaTexto = String(fechaValue ?? "").trim();
@@ -620,10 +635,11 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
       filename,
       sheet: firstSheetName,
       updated,
+      created,
       errors: errors.length
     });
 
-    return res.status(200).json({ok: true, updated, errors});
+    return res.status(200).json({ok: true, updated, created, errors});
   } catch (err) {
     if (err instanceof HttpsError) {
       return res.status(err.httpErrorCode.status).json({ok: false, error: err.message});

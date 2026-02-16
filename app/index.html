@@ -1205,14 +1205,14 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         return safeString(b?.codigo).localeCompare(safeString(a?.codigo));
       };
 
-      const compareItemsByOrdenDesc = (a, b) => {
+      const compareItemsByOrdenAsc = (a, b) => {
         const ordenA = toNumberOrNull(a?.orden);
         const ordenB = toNumberOrNull(b?.orden);
         const hasA = Number.isFinite(ordenA);
         const hasB = Number.isFinite(ordenB);
 
         if (hasA && hasB && ordenA !== ordenB) {
-          return ordenB - ordenA;
+          return ordenA - ordenB;
         }
         if (hasA && !hasB) return -1;
         if (!hasA && hasB) return 1;
@@ -1315,7 +1315,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
       const IMPORT_XLSX_FUNCTION_NAME = "importPrendasFromXlsxUpload";
       const SPLIT_FUNCTION_URL = `${API_BASE}/${SPLIT_FUNCTION_NAME}`;
-      const IMPORT_XLSX_FUNCTION_URL = `${API_BASE}/${IMPORT_XLSX_FUNCTION_NAME}`;
+      const IMPORT_XLSX_UPLOAD_URL = `${API_BASE}/${IMPORT_XLSX_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -2346,7 +2346,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             ? utilidadFromAdmin
             : utilidadCalculada;
           row.margen = Number.isFinite(margenFromAdmin)
-            ? (margenFromAdmin > 5 ? margenFromAdmin : Number((margenFromAdmin * 100).toFixed(1)))
+            ? Number(margenFromAdmin.toFixed(1))
             : margenCalculado;
         });
 
@@ -2362,7 +2362,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         let hasMore = true;
         const rows = [];
         while (hasMore) {
-          const constraints = [orderBy("orden", "desc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          const constraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
           if (cursor) constraints.splice(1, 0, startAfter(cursor));
           const snap = await getDocs(query(prendasPublicRef, ...constraints));
           console.log("[Prendas] snapshot size:", snap.size);
@@ -2387,7 +2387,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
               hasMore = true;
 
               while (hasMore) {
-                const fallbackConstraints = [orderBy("orden", "desc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+                const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
                 if (cursor) fallbackConstraints.splice(1, 0, startAfter(cursor));
                 const fallbackSnap = await getDocs(
                   query(collection(db, PRENDAS_MASTER_COLLECTION), ...fallbackConstraints)
@@ -2421,7 +2421,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           row.margen = null;
         });
 
-        prendasState.baseRows = rows.sort(compareItemsByOrdenDesc);
+        prendasState.baseRows = rows.sort(compareItemsByOrdenAsc);
         prendasState.baseRowsCacheKey = cacheKey;
         return prendasState.baseRows;
       };
@@ -3039,7 +3039,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const formData = new FormData();
           formData.append("file", selectedFile, selectedFile.name);
 
-          const response = await fetch(IMPORT_XLSX_FUNCTION_URL, {
+          const response = await fetch(IMPORT_XLSX_UPLOAD_URL, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${idToken}`
@@ -3047,20 +3047,19 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             body: formData
           });
 
+          const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
-            const txt = await response.text();
-            throw new Error(txt || `HTTP ${response.status}`);
+            throw new Error(payload?.error || `HTTP ${response.status}`);
           }
-
-          const payload = await response.json();
           if (!payload?.ok) {
             throw new Error(payload?.error || "Falló la importación XLSX.");
           }
 
           const importedRows = Number(payload?.updated || 0);
+          const importedCreated = Number(payload?.created || 0);
           const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
           setAdminLoginStatus(
-            `Importación OK: updated ${importedRows}${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
+            `Importación OK: ${importedRows} actualizados, ${importedCreated} nuevos${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
             errorsCount ? "warning" : "success"
           );
           await handleAdminSplitCollections();
