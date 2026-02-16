@@ -665,7 +665,421 @@
           padding: 20px;
         }
       }
-    </style>
+    
+/* --- Pro filters bar (compact, professional) --- */
+#dbCodigosSection .panel-controls{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-top: 16px;
+}
+#dbCodigosSection .filters-grid{
+  display:grid;
+  grid-template-columns: 2.2fr 1.2fr;
+  gap:14px;
+}
+#dbCodigosSection .filters-grid label{
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  margin-bottom: 6px;
+}
+#dbCodigosSection .filters-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+}
+#dbCodigosSection .filters-row .inline-toggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0;
+}
+#dbCodigosSection .filters-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+#dbCodigosSection #prendas-precio-apply,
+#dbCodigosSection #prendas-filters-clear{
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 14px;
+}
+#dbCodigosSection .filters-pagesize > div{
+  display:flex;
+  flex-direction:column;
+}
+#dbCodigosSection .filters-pagesize label{
+  font-size:12px;
+  color: var(--muted, #6b7280);
+  margin-bottom: 6px;
+}
+
+/* --- Table toolbar + Admin button --- */
+.table-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding: 10px 10px 12px 10px;
+}
+.admin-mode-btn{
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-mode-btn.is-on{
+  background: #0b5cff;
+  border-color: #0b5cff;
+  color: #ffffff;
+}
+.admin-mode-btn.is-disabled{
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Reduce extra whitespace around db header */
+#dbCodigosSection h2{ margin-bottom: 6px; }
+#dbCodigosSection p{ margin-top: 0; }
+
+/* --- Cleaner filter bar tweaks --- */
+#dbCodigosSection .filters-grid{
+  grid-template-columns: 2.4fr 1.2fr;
+}
+#dbCodigosSection .filters-row{
+  justify-content: flex-start;
+}
+#dbCodigosSection .filters-actions{ display:none; } /* we auto-apply */
+#dbCodigosSection #prendas-precio-apply.hidden{ display:none !important; }
+#dbCodigosSection #prendas-filters-clear{
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+}
+#dbCodigosSection .filters-pagesize{
+  margin-left: auto;
+}
+#dbCodigosSection .inline-toggle label{
+  color: var(--muted, #6b7280);
+}
+/* Reduce section padding a bit */
+#dbCodigosSection .section{ padding-top: 12px; }
+
+/* --- Minimal mode tweaks --- */
+#admin-panel{ display:none !important; }
+.dashboard-stats, .stats-grid, #statsSection{ display:none !important; }
+
+#dbCodigosSection .panel-controls{ padding-bottom: 6px; }
+
+/* --- Align checkbox with search + price --- */
+#dbCodigosSection .filters-grid{
+  grid-template-columns: 2.3fr 1.2fr auto;
+  align-items: end;
+}
+#dbCodigosSection .inline-toggle-top{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  padding-bottom: 8px;
+}
+#dbCodigosSection .inline-toggle-top label{
+  margin:0;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
+/* --- Page size under table (pagination bar) --- */
+.pagination{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:center;
+}
+.page-size-inline{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.page-size-inline label{
+  font-size:12px;
+  color: var(--muted, #6b7280);
+}
+.page-size-inline select{
+  height: 36px;
+  border-radius: 12px;
+  padding: 0 10px;
+}
+
+/* Make reset button subtler */
+button.secondary.small{
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+/* --- Filters row aligned (single line) --- */
+#dbCodigosSection .filters-grid.filters-grid-4{
+  display:grid;
+  grid-template-columns: 2.2fr 0.9fr 0.9fr auto;
+  gap:14px;
+  align-items:end;
+}
+#dbCodigosSection .filters-grid.filters-grid-4 input[type="text"],
+#dbCodigosSection .filters-grid.filters-grid-4 input[type="number"]{
+  height: 46px;
+  border-radius: 14px;
+}
+#dbCodigosSection .filters-grid.filters-grid-4 label{
+  font-size:12px;
+  color: var(--muted, #6b7280);
+  margin-bottom: 6px;
+}
+#dbCodigosSection .filters-grid.filters-grid-4 .inline-toggle-top{
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.02);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom: 0;
+}
+#dbCodigosSection .filters-grid.filters-grid-4 .inline-toggle-top label{
+  margin:0;
+  font-size: 13px;
+}
+
+/* --- Minimal header filters --- */
+#dbCodigosSection .filters-grid.filters-grid-min{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items:center;
+  margin-top: 14px;
+}
+#dbCodigosSection .filters-grid.filters-grid-min input{
+  height: 46px;
+  border-radius: 14px;
+}
+.btn-more-filters{
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+  color: #0f172a;
+  font-weight: 600;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.btn-more-filters .dot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: transparent;
+}
+.btn-more-filters.has-active .dot{ background: #0b5cff; }
+
+.more-filters-panel{
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.02);
+}
+.more-filters-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 10px;
+  align-items:center;
+}
+.more-filters-row input[type="number"]{
+  height: 42px;
+  border-radius: 14px;
+  min-width: 140px;
+}
+.check-pill{
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color: rgba(15, 23, 42, 0.75);
+}
+.check-pill input{ width:16px; height:16px; }
+.btn-link{
+  background: transparent;
+  border: none;
+  color: rgba(15, 23, 42, 0.65);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+.btn-link:hover{ text-decoration: underline; }
+
+/* --- Keep table inside section --- */
+.table-wrapper{
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#tablaPrendas{
+  width: 100%;
+  min-width: 1100px;
+}
+
+/* --- Page size at very bottom --- */
+.page-size-bottom{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:10px;
+  margin-top: 10px;
+  padding-bottom: 6px;
+  color: rgba(15, 23, 42, 0.65);
+  font-size: 12px;
+}
+.page-size-bottom select{
+  height: 36px;
+  border-radius: 12px;
+  padding: 0 10px;
+}
+
+/* --- Keep table inside same white module --- */
+#dbCodigosSection{
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  overflow: hidden; /* keeps table/pagination visually inside */
+}
+@media (max-width: 900px){
+  #dbCodigosSection{ padding: 18px; border-radius: 20px; }
+}
+/* ensure table scroll stays inside the module */
+#dbCodigosSection .table-wrapper{
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  overflow-x: auto;
+}
+#dbCodigosSection table{ min-width: 980px; } /* horizontal scroll instead of breaking */
+
+/* --- Unified module (filters + table) --- */
+.db-module{
+  background:#fff;
+  border:1px solid rgba(15, 23, 42, 0.08);
+  border-radius:24px;
+  padding:28px;
+  box-shadow:0 10px 30px rgba(15, 23, 42, 0.06);
+  overflow:hidden; /* keeps table/pagination inside */
+}
+@media (max-width: 900px){
+  .db-module{ padding:18px; border-radius:20px; }
+}
+
+/* Remove inner "card" look so it doesn't feel like 2 módulos */
+#dbCodigosSection .panel-controls{
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 14px 0 14px !important;
+}
+
+/* Table stays within module on any screen */
+#dbCodigosSection .table-wrapper{
+  width: 100%;
+  max-width: 100%;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fff;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#dbCodigosSection table{
+  width: 100%;
+  min-width: 980px; /* horizontal scroll instead of breaking layout */
+}
+@media (max-width: 1100px){
+  #dbCodigosSection table{ min-width: 900px; }
+}
+@media (max-width: 900px){
+  #dbCodigosSection table{ min-width: 760px; }
+}
+@media (max-width: 700px){
+  #dbCodigosSection table{ min-width: 680px; }
+}
+
+/* Bottom controls inside module */
+.page-size-bottom{ padding-bottom: 0; }
+
+/* === Make the WHOLE DB section a single module (so table doesn't look "outside") === */
+#base-datos-codigos{
+  background:#fff;
+  border:1px solid rgba(15,23,42,0.08);
+  border-radius:24px;
+  padding:28px;
+  box-shadow:0 10px 30px rgba(15,23,42,0.06);
+  overflow:hidden;
+  margin-bottom: 18px;
+}
+@media (max-width: 900px){
+  #base-datos-codigos{ padding:18px; border-radius:20px; }
+}
+
+/* Turn the inner wrapper into a simple layout container (no second card) */
+#base-datos-codigos > #dbCodigosSection.db-module{
+  background:transparent !important;
+  border:0 !important;
+  box-shadow:none !important;
+  padding:0 !important;
+  border-radius:0 !important;
+  overflow:visible !important;
+}
+
+/* Ensure table stays within module and scrolls horizontally when needed */
+#base-datos-codigos .table-wrapper{
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid rgba(15,23,42,0.08);
+  border-radius:18px;
+  background:#fff;
+}
+#base-datos-codigos table{
+  width:100%;
+  min-width: 980px;
+}
+@media (max-width: 900px){
+  #base-datos-codigos table{ min-width: 760px; }
+}
+@media (max-width: 700px){
+  #base-datos-codigos table{ min-width: 680px; }
+}
+
+/* Keep bottom bar inside the module */
+#base-datos-codigos .pagination-bar,
+#base-datos-codigos .page-size-bottom{
+  max-width:100%;
+}
+</style>
   </head>
   <body>
     <div style="
@@ -790,63 +1204,48 @@
         </section>
 
         <section class="section" id="base-datos-codigos">
-          <div id="dbCodigosSection">
+          <div id="dbCodigosSection" class="db-module">
             <h2>Base de datos códigos HarujaGdl</h2>
             <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
             <div class="panel-controls">
-              <div class="filters-grid">
-                <div>
-                  <label for="prendas-search">Buscar por código o descripción</label>
-                  <input id="prendas-search" type="text" placeholder="Ej: HA12A003 o sudadera" />
-                </div>
-                <div>
-                  <label for="prendas-year">Año alta</label>
-                  <select id="prendas-year">
-                    <option value="">Todos</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="prendas-month">Mes alta</label>
-                  <select id="prendas-month">
-                    <option value="">Todos</option>
-                  </select>
-                </div>
-                <div>
-                  <label>Precio (rango)</label>
-                  <div class="price-range">
-                    <input id="prendas-precio-min" type="number" min="0" placeholder="Mín" />
-                    <input id="prendas-precio-max" type="number" min="0" placeholder="Máx" />
-                  </div>
-                </div>
-                <div class="inline-toggle">
-                  <input id="prendas-precio-sin" type="checkbox" checked />
-                  <label for="prendas-precio-sin">Incluir sin precio</label>
-                </div>
-                <div>
-                  <label>&nbsp;</label>
-                  <button type="button" id="prendas-precio-apply">Aplicar filtros</button>
-                </div>
-                <div>
-                  <label>&nbsp;</label>
-                  <button type="button" id="prendas-filters-clear" class="secondary">Limpiar</button>
-                </div>
-                <div>
-                  <label for="prendas-page-size">Registros por página</label>
-                  <select id="prendas-page-size">
-                    <option value="30">30</option>
-                    <option value="50">50</option>
-                    <option value="80" selected>80</option>
-                    <option value="100">100</option>
-                  </select>
-                </div>
+              
+                
+            
+            <div class="filters-grid filters-grid-min">
+              <div class="search-wrap">
+                <input id="prendas-search" type="text" placeholder="Buscar: código o descripción (ej. HA12A003)" />
               </div>
-              <div class="admin-optional" id="admin-optional">
-                <span class="muted">Admin opcional: configura después si no necesitas costos.</span>
-                <button type="button" id="admin-optional-toggle" class="secondary">
-                  Mostrar admin
+
+              <div class="filters-more-wrap">
+                <button type="button" id="btnMoreFilters" class="btn-more-filters" aria-expanded="false">
+                  Más filtros
+                  <span id="moreFiltersDot" class="dot" aria-hidden="true"></span>
                 </button>
               </div>
-              <div class="admin-panel" id="admin-panel">
+            </div>
+
+            <div id="moreFiltersPanel" class="more-filters-panel" hidden>
+              <div class="more-filters-row">
+                <input id="prendas-precio-min" type="number" min="0" placeholder="Precio mín" />
+                <input id="prendas-precio-max" type="number" min="0" placeholder="Precio máx" />
+                <label class="check-pill">
+                  <input id="prendas-precio-sin" type="checkbox" checked />
+                  <span>Incluir sin precio</span>
+                </label>
+                <button type="button" id="prendas-filters-clear" class="btn-link">Limpiar</button>
+              </div>
+            </div>
+</div>
+
+              
+              <div class="filters-row">
+<div class="filters-actions">
+                  <button type="button" id="prendas-precio-apply" class="hidden" tabindex="-1" aria-hidden="true">Aplicar</button>
+                  <button type="button" id="prendas-filters-clear" class="secondary small">Restablecer</button>
+                </div>
+</div>
+            </div>
+    <div class="admin-panel" id="admin-panel">
                 <div>
                   <label>Admin (solo Google)</label>
                   <div class="admin-login-row">
@@ -888,7 +1287,16 @@
               <span class="loading-text">Cargando base de datos...</span>
             </div>
             <div class="table-wrapper">
-              <table id="tablaPrendas" data-prendas-table>
+              
+            <div class="table-toolbar">
+              <div class="table-toolbar-left">
+                <span id="tableHint" class="muted"></span>
+              </div>
+              <div class="table-toolbar-right">
+                <button type="button" id="admin-mode-btn" class="admin-mode-btn" aria-pressed="false">Modo admin</button>
+              </div>
+            </div>
+<table id="tablaPrendas" data-prendas-table>
                 <thead>
                   <tr>
                     <th data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
@@ -918,10 +1326,21 @@
             <div class="pagination">
               <span id="prendas-showing" data-count-shown>Mostrando 0</span>
               <span id="prendas-page-indicator" class="page-indicator">Página 1</span>
-              <div>
+<div>
                 <button type="button" id="prendas-prev">Anterior</button>
                 <button type="button" id="prendas-next">Siguiente</button>
               </div>
+            <div class="page-size-bottom">
+              <label for="prendas-page-size">Registros por página</label>
+              <select id="prendas-page-size" aria-label="Registros por página">
+                <option value="30">30</option>
+                <option value="50">50</option>
+                <option value="80" selected>80</option>
+                <option value="120">120</option>
+                <option value="200">200</option>
+              </select>
+            </div>
+
             </div>
           </div>
         </section>
@@ -3109,7 +3528,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           adminPanel.classList.toggle("hidden", !visible);
         }
         if (adminOptionalToggle) {
-          adminOptionalToggle.textContent = visible ? "Ocultar admin" : "Mostrar admin";
+          adminOptionalToggle.textContent = visible ? "Ocultar admin" : "Admin";
         }
       };
 
@@ -3143,6 +3562,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         if (refresh) {
           loadPrendasPage({ reset: true, reason: "admin-toggle" });
         }
+        updateAdminModeBtn();
+
       };
 
       const handleAdminToggle = () => {
@@ -3371,7 +3792,42 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           setAdminPanelVisible(!adminPanelVisible);
         });
       }
-      if (btnPickXlsx) {
+      
+      const adminModeBtn = document.getElementById("admin-mode-btn");
+
+      const updateAdminModeBtn = () => {
+        if (!adminModeBtn) return;
+        const enabled = Boolean(prendasState?.adminViewEnabled);
+        const canUse = Boolean(prendasState?.adminByAuth);
+        adminModeBtn.classList.toggle("is-on", enabled);
+        adminModeBtn.classList.toggle("is-disabled", !canUse && !enabled);
+        adminModeBtn.setAttribute("aria-pressed", enabled ? "true" : "false");
+        adminModeBtn.textContent = enabled ? "Modo admin: ON" : (canUse ? "Modo admin" : "Modo admin (login)");
+      };
+
+      
+      if (adminModeBtn) {
+        adminModeBtn.addEventListener("click", async () => {
+          // If not authenticated as allowlisted admin, start Google login flow directly
+          if (!prendasState.adminByAuth) {
+            try {
+              await handleAdminLogin();
+            } catch (e) {
+              // ignore
+            }
+            updateAdminModeBtn();
+            return;
+          }
+
+          // Toggle admin view (cost/margen/utilidad columns)
+          if (adminToggleDb) {
+            adminToggleDb.checked = !adminToggleDb.checked;
+          }
+          handleAdminToggle();
+          updateAdminModeBtn();
+        });
+      }
+if (btnPickXlsx) {
         btnPickXlsx.addEventListener("click", () => {
           xlsxFileInput?.click();
         });
