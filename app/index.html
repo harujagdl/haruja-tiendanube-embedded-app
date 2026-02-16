@@ -1137,10 +1137,6 @@ button.secondary.small{
 /* Admin-only cols hidden by default */
 .admin-only{ display:none; }
 body.admin-on .admin-only{ display:table-cell; }
-
-/* --- Admin columns hard-hide by default --- */
-#dbCodigosSection .admin-only{display:none !important;}
-#dbCodigosSection.admin-enabled .admin-only{display:table-cell !important;}
 </style>
   </head>
   <body>
@@ -1304,6 +1300,7 @@ body.admin-on .admin-only{ display:table-cell; }
       <div class="metric"><div class="metric-label">Nuevos (7 días)</div><div id="prendas-nuevos" class="metric-value">—</div></div>
       <div class="metric"><div class="metric-label">Existentes</div><div id="prendas-existentes" class="metric-value">—</div></div>
     </div>
+  </div>
 
   <div class="db-table">
     <div class="db-table-toolbar">
@@ -1335,7 +1332,14 @@ body.admin-on .admin-only{ display:table-cell; }
                     <th class="admin-only">(Admin) Utilidad</th>
                   </tr>
                 </thead>
-        <tbody id="prendas-tbody"></tbody>
+        <tbody id="prendas-tbody">
+          <tr id="loadingRow" data-db-loader>
+            <td colspan="16" class="muted" style="padding:14px 16px;">Cargando…</td>
+          </tr>
+          <tr id="noResultsRow" data-empty-row style="display:none">
+            <td colspan="16" class="muted" style="padding:14px 16px;">Sin resultados.</td>
+          </tr>
+</tbody>
       </table>
 <template id="emptyRowTemplate">
   <tr data-empty-row>
@@ -3606,6 +3610,67 @@ const auth = getAuth(app);
           console.error(error);
         }
       };
+
+      const doImportFromXlsx = async () => {
+        if (adminSplitButton) {
+          adminSplitButton.disabled = true;
+        }
+        try {
+          if (!Input) {
+          }
+          const file = Input?.files?.[0];
+          if (!file) {
+            throw new Error("Selecciona un archivo .xlsx antes de reimportar.");
+          }
+
+          let user = auth.currentUser;
+          if (!user) {
+            const response = await signInWithPopup(auth, googleProvider);
+            user = response?.user || null;
+          }
+          const email = safeString(user?.email).trim().toLowerCase();
+          if (!isAllowlistedAdmin(email)) {
+            setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
+            await signOut(auth);
+            return;
+          }
+
+          const idToken = await user.getIdToken(true);
+          const formData = new FormData();
+          formData.append("file", file, file.name || "HarujaPrendas_2025.xlsx");
+
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${idToken}`
+            },
+            body: formData
+          });
+
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload?.error || `HTTP ${response.status}`);
+          }
+          if (!payload?.ok) {
+          }
+
+          const importedRows = Number(payload?.updated || 0);
+          const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
+          setAdminLoginStatus(
+            `Importación OK: ${importedRows} filas procesadas${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
+            errorsCount ? "warning" : "success"
+          );
+          await handleAdminSplitCollections();
+          setPrendasAlert("");
+          await loadPrendasPage({ reset: true, reason: "import-xlsx-master" });
+        } catch (error) {
+          console.error(error);
+        } finally {
+          if (adminSplitButton) {
+            adminSplitButton.disabled = false;
+          }
+        }
+      };
+
       const handleAdminSplitCollections = async () => {
         if (adminSplitButton) {
           adminSplitButton.disabled = true;
