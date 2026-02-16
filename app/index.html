@@ -1643,11 +1643,16 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         return CODE_PATTERN.test(value);
       };
 
-      const getPrendaDate = (data) =>
-        toDateValue(data?.fechaAlta) ||
-        toDateValue(data?.fecha) ||
-        toDateValue(data?.updatedAt) ||
-        toDateValue(data?.createdAt);
+      const getPrendaDate = (data) => {
+        // Preferimos las fechas “de negocio” (fechaAlta/fecha o sus textos),
+        // porque son las que el usuario espera ver/filtrar.
+        // Luego caemos a timestamps técnicos (updatedAt/createdAt).
+        return (
+          resolveComparableDate(data) ||
+          toDateValue(data?.updatedAt) ||
+          toDateValue(data?.createdAt)
+        );
+      };
 
       const normalizeStatus = (raw) => {
         const normalized = normalizeText(raw);
