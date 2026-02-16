@@ -566,28 +566,28 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
         const status = String(getRowValue(row, idxStatus) ?? "").trim();
         const disponibilidad = String(getRowValue(row, idxDisponibilidad) ?? "").trim() || status;
 
-        const masterObj = {
-          ...(Number.isFinite(orden) ? {orden} : {}),
-          docId,
-          code: codigo,
-          codigo,
-          costo: Number.isFinite(costo) ? costo : null,
-          precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
-          pVenta: Number.isFinite(precioConIva) ? precioConIva : null,
-          utilidad,
-          margen,
-          descripcion: String(getRowValue(row, idxDescripcion) ?? "").trim(),
-          tipo: String(getRowValue(row, idxTipo) ?? "").trim(),
-          color: String(getRowValue(row, idxColor) ?? "").trim(),
-          talla: String(getRowValue(row, idxTalla) ?? "").trim(),
-          proveedor: String(getRowValue(row, idxProveedor) ?? "").trim(),
-          status,
-          disponibilidad,
-          fechaTexto,
-          fecha: fechaValue || null,
-          source: "upload-xlsx",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        };
+const masterObj = {
+  orden: Number.isFinite(orden) ? orden : null,
+  docId,
+  code: codigo,
+  codigo,
+  costo: Number.isFinite(costo) ? costo : null,
+  precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
+  pVenta: Number.isFinite(precioConIva) ? precioConIva : null,
+  utilidad,
+  margen,
+  descripcion: String(getRowValue(row, idxDescripcion) ?? "").trim(),
+  tipo: String(getRowValue(row, idxTipo) ?? "").trim(),
+  color: String(getRowValue(row, idxColor) ?? "").trim(),
+  talla: String(getRowValue(row, idxTalla) ?? "").trim(),
+  proveedor: String(getRowValue(row, idxProveedor) ?? "").trim(),
+  status,
+  disponibilidad,
+  fechaTexto,
+  fecha: fechaValue || null,
+  source: "upload-xlsx",
+  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+};
 
         const publicObj = buildPublicPayloadFromMaster(masterObj);
         const adminObj = buildAdminPayloadFromMaster(masterObj);
