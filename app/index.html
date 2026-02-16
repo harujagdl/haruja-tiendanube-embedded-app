@@ -620,9 +620,15 @@
         background: #f8fafc;
       }
 
-      #dbCodigosSection .admin-only {
-        display: none !important;
-      }
+      #dbCodigosSection .admin-only{display:none !important;}
+    body.is-admin .admin-only{display:table-cell !important;}
+    body.is-admin .admin-only.flex{display:flex !important;}
+
+    /* Ensure table stays inside module and scrolls horizontally on small screens */
+    #dbCodigosSection .table-wrapper{max-width:100%; overflow-x:auto; border-radius:16px;}
+    #dbCodigosSection table{width:100%; border-collapse:separate; border-spacing:0;}
+    #dbCodigosSection .table-toolbar{position:sticky; top:0; background:transparent;}
+
 
       #dbCodigosSection.admin-enabled .admin-only {
         display: revert !important;
@@ -1245,48 +1251,7 @@ button.secondary.small{
                 </div>
 </div>
             </div>
-    <div class="admin-panel" id="admin-panel">
-                <div>
-                  <label>Admin (solo Google)</label>
-                  <div class="admin-login-row">
-                    <button type="button" id="admin-login">Ingresar con Google</button>
-                    <button type="button" id="admin-logout" class="secondary hidden">Salir</button>
-                  </div>
-                  <div id="admin-login-status" class="status"></div>
-                </div>
-                <div class="admin-actions hidden" id="admin-actions">
-                  <div class="inline-toggle">
-                    <input id="adminToggleDb" type="checkbox" />
-                    <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
-                  </div>
-                  <input id="xlsxFile" type="file" accept=".xlsx" style="display:none" />
-                  <button type="button" id="btnPickXlsx" class="secondary">Seleccionar XLSX</button>
-                  <button type="button" id="admin-import-xlsx">Reimportar XLSX (Master)</button>
-                  <button type="button" id="admin-split-collections">Migrar a public/admin</button>
-                </div>
-              </div>
-              <div class="counters">
-                <div class="counter-card">
-                  <span>Total</span>
-                  <strong id="prendas-total" data-count-total>—</strong>
-                </div>
-                <div class="counter-card">
-                  <span>Nuevos (7 días)</span>
-                  <strong id="prendas-nuevos">—</strong>
-                </div>
-                <div class="counter-card">
-                  <span>Existentes</span>
-                  <strong id="prendas-existentes">—</strong>
-                </div>
-              </div>
-              <p id="prendas-count-note" class="muted"></p>
-            </div>
-            <div id="prendas-alert" class="alert hidden"></div>
-            <div id="loadingRow" class="loading-row" style="display:none" data-db-loader>
-              <span class="loading-spinner"></span>
-              <span class="loading-text">Cargando base de datos...</span>
-            </div>
-            <div class="table-wrapper">
+    <div class="table-wrapper">
               
             <div class="table-toolbar">
               <div class="table-toolbar-left">
@@ -3501,7 +3466,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         sessionStorage.getItem(ADMIN_VIEW_KEY) === "1";
 
       const setAdminViewEnabled = (enabled) => {
-        sessionStorage.setItem(ADMIN_VIEW_KEY, enabled ? "1" : "0");
+        // Solo permitir modo admin si el usuario está autenticado y en allowlist
+        const adminByAuth = Boolean(prendasState.adminByAuth);
+        const finalEnabled = adminByAuth ? Boolean(enabled) : false;
+        sessionStorage.setItem(ADMIN_VIEW_KEY, finalEnabled ? "1" : "0");
+        document.body.classList.toggle("is-admin", finalEnabled);
       };
 
       const setAdminLoginStatus = (message, type = "") => {
@@ -3526,6 +3495,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         const byAuth = Boolean(prendasState.adminByAuth);
         const enabled = byAuth && getAdminViewEnabled();
         prendasState.isAdmin = enabled;
+        document.body.classList.toggle("is-admin", enabled);
         if (dbCodigosSection) {
           dbCodigosSection.classList.toggle("admin-enabled", enabled);
         }
@@ -3556,10 +3526,21 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       };
 
-      const handleAdminToggle = () => {
-        if (!prendasState.adminByAuth) return;
-        setAdminViewEnabled(Boolean(adminToggleDb?.checked));
+      const handleAdminToggle = async () => {
+        // Si no está autenticado como admin, el botón funciona como login
+        if (!prendasState.adminByAuth) {
+          await handleAdminLogin();
+          if (prendasState.adminByAuth) {
+            setAdminViewEnabled(true);
+            applyAdminUI();
+            try { await refreshList(); } catch (_) {}
+          }
+          return;
+        }
+        const nextEnabled = !getAdminViewEnabled();
+        setAdminViewEnabled(nextEnabled);
         applyAdminUI();
+        try { await refreshList(); } catch (_) {}
       };
 
       const handleAdminLogin = async () => {
@@ -3787,49 +3768,29 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const updateAdminModeBtn = () => {
         if (!adminModeBtn) return;
-        const enabled = Boolean(prendasState?.adminViewEnabled);
-        const canUse = Boolean(prendasState?.adminByAuth);
+        const enabled = getAdminViewEnabled() && prendasState.adminByAuth;
         adminModeBtn.classList.toggle("is-on", enabled);
-        adminModeBtn.classList.toggle("is-disabled", !canUse && !enabled);
         adminModeBtn.setAttribute("aria-pressed", enabled ? "true" : "false");
-        adminModeBtn.textContent = enabled ? "Modo admin: ON" : (canUse ? "Modo admin" : "Modo admin (login)");
+        if (!prendasState.adminByAuth) {
+          adminModeBtn.textContent = "Modo admin";
+          adminModeBtn.title = "Inicia sesión con Google para ver Costos/Margen/Utilidad";
+          return;
+        }
+        adminModeBtn.textContent = enabled ? "Salir modo admin" : "Modo admin";
+        adminModeBtn.title = enabled ? "Ocultar columnas admin" : "Mostrar columnas admin";
       };
 
       
       if (adminModeBtn) {
         adminModeBtn.addEventListener("click", async () => {
-          // If not authenticated as allowlisted admin, start Google login flow directly
-          if (!prendasState.adminByAuth) {
-            try {
-              await handleAdminLogin();
-            } catch (e) {
-              // ignore
-            }
-            updateAdminModeBtn();
-            return;
+          try {
+            await handleAdminToggle();
+          } catch (e) {
+            console.error(e);
           }
-
-          // Toggle admin view (cost/margen/utilidad columns)
-          if (adminToggleDb) {
-            adminToggleDb.checked = !adminToggleDb.checked;
-          }
-          handleAdminToggle();
-          updateAdminModeBtn();
         });
       }
-if (btnPickXlsx) {
-        btnPickXlsx.addEventListener("click", () => {
-          xlsxFileInput?.click();
-        });
-      }
-      if (adminImportButton) {
-        adminImportButton.addEventListener("click", doImportFromXlsx);
-      }
-      if (adminSplitButton) {
-        adminSplitButton.addEventListener("click", handleAdminSplitCollections);
-      }
-
-      window.addEventListener("hashchange", () => {
+window.addEventListener("hashchange", () => {
         handleTabChange(window.location.hash);
       });
 
