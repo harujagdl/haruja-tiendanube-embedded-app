@@ -2488,15 +2488,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
           return true;
         });
-          if (!hasChecklistMatch) return false;
-          const hasPriceRange = headerFilters.pventaMin != null || headerFilters.pventaMax != null;
-          if (!hasPriceRange) return true;
-          const price = toNum(item.pVenta);
-          if (price === null) return false;
-          if (headerFilters.pventaMin != null && price < headerFilters.pventaMin) return false;
-          if (headerFilters.pventaMax != null && price > headerFilters.pventaMax) return false;
-          return true;
-        });
 
       const applyAllFilters = (rows) => {
         const globalFilters = getCurrentGlobalFilters();
