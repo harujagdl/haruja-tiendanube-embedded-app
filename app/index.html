@@ -627,6 +627,8 @@
     /* Ensure table stays inside module and scrolls horizontally on small screens */
     #dbCodigosSection .table-wrapper{max-width:100%; overflow-x:auto; border-radius:16px;}
     #dbCodigosSection table{width:100%; border-collapse:separate; border-spacing:0;}
+#dbCodigosSection th, #dbCodigosSection td{padding:10px 10px; font-size:13px;}
+#dbCodigosSection th{white-space:nowrap;}
     #dbCodigosSection .table-toolbar{position:sticky; top:0; background:transparent;}
 
 
@@ -1406,13 +1408,13 @@ body.admin-on .admin-only{ display:table-cell; }
       // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
 // Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
 const firebaseConfig = window.__HARUJA_FIREBASE_CONFIG__ || {
-  apiKey: "AIzaSyAK5_MuMseQm58AeRZlrPtGyEZ216-Xkno",
+  apiKey: "PEGA_AQUI_TU_API_KEY",
   authDomain: "haruja-tiendanube.firebaseapp.com",
   projectId: "haruja-tiendanube",
   // OJO: Firebase ahora puede mostrarlo como *.firebasestorage.app; cualquiera de los 2 suele funcionar.
   storageBucket: "haruja-tiendanube.firebasestorage.app",
-  messagingSenderId: "396461447684",
-  appId: "1:396461447684:web:770dc3bc9bbb40a2873351"
+  messagingSenderId: "PEGA_AQUI_TU_MESSAGING_SENDER_ID",
+  appId: "PEGA_AQUI_TU_APP_ID"
 };
 
 if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || firebaseConfig.apiKey.includes("REEMPLAZAR")) {
@@ -2422,10 +2424,7 @@ const auth = getAuth(app);
           );
         }
         if (key === "orden") {
-          return (
-            prendasState.filters.header.ordenMin !== null ||
-            prendasState.filters.header.ordenMax !== null
-          );
+          return Boolean(prendasState.filters.header.ordenSortDir);
         }
         if (key === "fecha") {
           return Boolean(prendasState.filters.header.fechaYear || prendasState.filters.header.fechaMonth);
@@ -2709,6 +2708,11 @@ const auth = getAuth(app);
           `;
           const sel = container.querySelector("[data-orden-sort]");
           sel.value = currentDir;
+          sel.addEventListener("change", async () => {
+            prendasState.filters.header.ordenSortDir = safeString(sel.value || "");
+            closeHeaderPopover();
+            await applyFilters();
+          });
 
           container.querySelector("[data-clear]").addEventListener("click", async () => {
             prendasState.filters.header.ordenSortDir = null;
