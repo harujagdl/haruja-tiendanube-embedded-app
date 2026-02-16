@@ -1311,6 +1311,8 @@ body.admin-on .admin-only{ display:table-cell; }
       <div class="spinner"></div>
       <div class="loader-text">Cargando base de datos…</div>
     </div>
+    <div id="prendas-alert" class="prendas-alert" style="display:none; margin:10px 0;"></div>
+    <template id="prendas-empty-template"><tr><td colspan="99" style="padding:18px; text-align:center; color:#6b7280;">Sin resultados</td></tr></template>
 
     <div class="table-wrap">
       <table id="tablaPrendas" class="table">
@@ -3611,65 +3613,8 @@ const auth = getAuth(app);
         }
       };
 
-      const doImportFromXlsx = async () => {
-        if (adminSplitButton) {
-          adminSplitButton.disabled = true;
-        }
-        try {
-          if (!Input) {
-          }
-          const file = Input?.files?.[0];
-          if (!file) {
-            throw new Error("Selecciona un archivo .xlsx antes de reimportar.");
-          }
+      // (XLSX import removed)
 
-          let user = auth.currentUser;
-          if (!user) {
-            const response = await signInWithPopup(auth, googleProvider);
-            user = response?.user || null;
-          }
-          const email = safeString(user?.email).trim().toLowerCase();
-          if (!isAllowlistedAdmin(email)) {
-            setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
-            await signOut(auth);
-            return;
-          }
-
-          const idToken = await user.getIdToken(true);
-          const formData = new FormData();
-          formData.append("file", file, file.name || "HarujaPrendas_2025.xlsx");
-
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${idToken}`
-            },
-            body: formData
-          });
-
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok) {
-            throw new Error(payload?.error || `HTTP ${response.status}`);
-          }
-          if (!payload?.ok) {
-          }
-
-          const importedRows = Number(payload?.updated || 0);
-          const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
-          setAdminLoginStatus(
-            `Importación OK: ${importedRows} filas procesadas${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
-            errorsCount ? "warning" : "success"
-          );
-          await handleAdminSplitCollections();
-          setPrendasAlert("");
-          await loadPrendasPage({ reset: true, reason: "import-xlsx-master" });
-        } catch (error) {
-          console.error(error);
-        } finally {
-          if (adminSplitButton) {
-            adminSplitButton.disabled = false;
-          }
-        }
-      };
 
       const handleAdminSplitCollections = async () => {
         if (adminSplitButton) {
