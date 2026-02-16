@@ -74,6 +74,8 @@ const HEADER_ALIASES = {
   codigo: ["codigo", "código", "code", "sku"],
   costo: ["costo", "cost", "costo$"],
   precioConIva: ["precioconiva", "precio con iva", "pventa", "p.venta", "venta", "precioiva"],
+  precio: ["precio", "price"],
+  pVenta: ["pventa", "p.venta", "venta", "precioventa"],
   margen: ["margen", "markup", "margen%"],
   utilidad: ["utilidad", "profit"],
   descripcion: ["descripcion", "descripción", "producto", "nombre", "item"],
@@ -101,73 +103,51 @@ const getRowValue = (row, index) => {
 
 const parseMultipartFile = (req, fieldName = "file") =>
   new Promise((resolve, reject) => {
-    const contentType = String(req.headers["content-type"] || "");
-    const normalizedContentType = contentType.toLowerCase();
-    if (!normalizedContentType.includes("multipart/form-data")) {
+    const contentType = req.headers["content-type"] || "";
+    if (!String(contentType).includes("multipart/form-data")) {
       return reject(new Error("Content-Type debe ser multipart/form-data."));
     }
-    if (!normalizedContentType.includes("boundary=")) {
-      return reject(new Error("multipart/form-data sin boundary (no seteés Content-Type manualmente en fetch)."));
-    }
 
-    const busboy = Busboy({headers: req.headers});
-    const chunks = [];
-    let matchedFile = false;
-    let filename = "";
-    let mimeType = "";
+    const bb = Busboy({headers: req.headers});
+
+    let fileBuffer = null;
     let fileBytes = 0;
-    let settled = false;
+    let filename = null;
 
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      reject(error);
-    };
-
-    const succeed = (payload) => {
-      if (settled) return;
-      settled = true;
-      resolve(payload);
-    };
-
-    req.on("aborted", () => fail(new Error("Request aborted.")));
-    req.on("error", (error) => fail(error));
-
-    busboy.on("file", (name, stream, info) => {
+    bb.on("file", (name, file, info) => {
       if (name !== fieldName) {
-        stream.resume();
+        file.resume();
         return;
       }
 
-      matchedFile = true;
-      filename = String(info?.filename || "");
-      mimeType = String(info?.mimeType || "");
+      filename = info?.filename || "upload.xlsx";
+      const chunks = [];
 
-      stream.on("data", (chunk) => {
-        chunks.push(chunk);
-        fileBytes += chunk.length;
+      file.on("data", (d) => {
+        chunks.push(d);
+        fileBytes += d.length;
       });
-      stream.on("limit", () => fail(new Error("Archivo demasiado grande.")));
-      stream.on("error", (error) => fail(error));
+      file.on("limit", () => {
+        reject(new Error("Archivo demasiado grande."));
+      });
+      file.on("end", () => {
+        fileBuffer = Buffer.concat(chunks);
+      });
     });
 
-    busboy.on("error", (error) => fail(error));
-    busboy.on("finish", () => {
-      if (!matchedFile || !chunks.length || fileBytes <= 0) {
-        return fail(new Error("No llegó archivo (campo 'file')."));
+    bb.on("error", (err) => reject(err));
+
+    bb.on("finish", () => {
+      if (!fileBuffer || !fileBuffer.length) {
+        return reject(new Error("No se recibió archivo (campo 'file')."));
       }
-      return succeed({
-        buffer: Buffer.concat(chunks),
-        filename,
-        mimeType,
-        fileBytes,
-      });
+      resolve({buffer: fileBuffer, filename, fileBytes});
     });
 
-    if (req.rawBody && Buffer.isBuffer(req.rawBody) && req.rawBody.length) {
-      busboy.end(req.rawBody);
+    if (req.rawBody && req.rawBody.length) {
+      bb.end(req.rawBody);
     } else {
-      req.pipe(busboy);
+      req.pipe(bb);
     }
   });
 
@@ -177,7 +157,7 @@ function applyCors(req, res) {
   res.set("Access-Control-Allow-Origin", allowOrigin);
   res.set("Vary", "Origin");
   res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
   res.set("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") {
     res.status(204).send("");
@@ -305,26 +285,26 @@ const buildPublicPayloadFromMaster = (data = {}) => {
 function buildAdminPayloadFromMaster(masterData) {
   const costo = numOrUndefined(masterData.costo);
   const precioConIva = numOrUndefined(masterData.precioConIva ?? masterData.pVenta);
-  const orden = numOrUndefined(masterData.orden);
+  const orden = numOrUndefined(masterData.orden ?? masterData.seqNumber);
 
   const utilidad =
     Number.isFinite(precioConIva) && Number.isFinite(costo)
       ? round2(precioConIva - costo)
-      : 0;
+      : null;
 
   const margen =
     Number.isFinite(costo) && costo > 0 && Number.isFinite(utilidad)
       ? round1((utilidad / costo) * 100)
-      : 0;
+      : null;
 
   return {
     ...buildPublicPayloadFromMaster(masterData),
     orden: Number.isFinite(orden) ? orden : null,
-    ...(costo !== undefined ? {costo} : {}),
-    ...(precioConIva !== undefined ? {precioConIva} : {}),
-    ...(precioConIva !== undefined ? {pVenta: precioConIva} : {}),
-    utilidad,
-    margen,
+    costo: Number.isFinite(costo) ? costo : null,
+    precioConIva: Number.isFinite(precioConIva) ? precioConIva : null,
+    pVenta: Number.isFinite(precioConIva) ? precioConIva : null,
+    utilidad: Number.isFinite(utilidad) ? utilidad : null,
+    margen: Number.isFinite(margen) ? margen : null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 }
@@ -529,6 +509,8 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     const idxCodigo = resolveColumnIndex(headerMap, HEADER_ALIASES.codigo);
     const idxCosto = resolveColumnIndex(headerMap, HEADER_ALIASES.costo);
     const idxPrecioConIva = resolveColumnIndex(headerMap, HEADER_ALIASES.precioConIva);
+    const idxPrecio = resolveColumnIndex(headerMap, HEADER_ALIASES.precio);
+    const idxPVenta = resolveColumnIndex(headerMap, HEADER_ALIASES.pVenta);
     const idxDescripcion = resolveColumnIndex(headerMap, HEADER_ALIASES.descripcion);
     const idxTipo = resolveColumnIndex(headerMap, HEADER_ALIASES.tipo);
     const idxColor = resolveColumnIndex(headerMap, HEADER_ALIASES.color);
@@ -548,7 +530,6 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     let batch = db.batch();
     let writesInBatch = 0;
     let updated = 0;
-    let created = 0;
     const errors = [];
 
     for (let i = 1; i < rows.length; i++) {
@@ -564,7 +545,8 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
         const orden = Number.isFinite(ordenFromAlias) ? ordenFromAlias : ordenFromFirstCol;
 
         const costo = numOrUndefined(getRowValue(row, idxCosto));
-        const precioConIva = numOrUndefined(getRowValue(row, idxPrecioConIva));
+        const idxPrecioConIvaFinal = idxPrecioConIva >= 0 ? idxPrecioConIva : (idxPrecio >= 0 ? idxPrecio : idxPVenta);
+        const precioConIva = numOrUndefined(getRowValue(row, idxPrecioConIvaFinal));
         const utilidadCalc =
           Number.isFinite(precioConIva) && Number.isFinite(costo)
             ? toFixedNumber(precioConIva - costo, 2)
@@ -635,11 +617,10 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
       filename,
       sheet: firstSheetName,
       updated,
-      created,
       errors: errors.length
     });
 
-    return res.status(200).json({ok: true, updated, created, errors});
+    return res.status(200).json({ok: true, updated, errors});
   } catch (err) {
     if (err instanceof HttpsError) {
       return res.status(err.httpErrorCode.status).json({ok: false, error: err.message});
@@ -650,6 +631,93 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
 });
 
 exports.importPrendasFromXlsx = exports.importPrendasFromXlsxUpload;
+
+
+exports.recalcAdminFields = onRequest(RUNTIME_OPTS, async (req, res) => {
+  try {
+    if (applyCors(req, res)) return;
+    if (req.method !== "POST") {
+      return res.status(405).json({ok: false, error: "Method not allowed. Use POST."});
+    }
+
+    await requireAllowlistedAdmin(req);
+
+    const batchSize = 250;
+    let updated = 0;
+    let cursor = null;
+
+    while (true) {
+      let query = db
+        .collection(PRENDAS_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(batchSize);
+
+      if (cursor) {
+        query = query.startAfter(cursor);
+      }
+
+      const snapshot = await query.get();
+      if (snapshot.empty) break;
+
+      let batch = db.batch();
+      let writes = 0;
+
+      for (const docSnap of snapshot.docs) {
+        const master = docSnap.data() || {};
+        const docId = docSnap.id;
+
+        const costo = numOrUndefined(master.costo);
+        const precioConIva = numOrUndefined(master.precioConIva ?? master.pVenta);
+        const utilidadActual = numOrUndefined(master.utilidad);
+        const margenActual = numOrUndefined(master.margen);
+        const orden = numOrUndefined(master.orden ?? master.seqNumber);
+
+        let utilidad = utilidadActual;
+        if ((!Number.isFinite(utilidad) || utilidad === 0) && Number.isFinite(costo) && Number.isFinite(precioConIva)) {
+          utilidad = round2(precioConIva - costo);
+        }
+
+        let margen = margenActual;
+        if ((!Number.isFinite(margen) || margen === 0) && Number.isFinite(costo) && costo > 0 && Number.isFinite(utilidad)) {
+          margen = round1((utilidad / costo) * 100);
+        }
+
+        const adminPayload = {
+          ...buildAdminPayloadFromMaster({...master, costo, precioConIva, utilidad, margen, orden}),
+          utilidad: Number.isFinite(utilidad) ? utilidad : null,
+          margen: Number.isFinite(margen) ? margen : null,
+          orden: Number.isFinite(orden) ? orden : null,
+        };
+        const publicPayload = buildPublicPayloadFromMaster({...master, orden});
+
+        batch.set(db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId), adminPayload, {merge: true});
+        batch.set(db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId), publicPayload, {merge: true});
+        writes += 2;
+        updated += 1;
+
+        if (writes >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          writes = 0;
+        }
+      }
+
+      if (writes > 0) {
+        await batch.commit();
+      }
+
+      cursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+
+    return res.status(200).json({ok: true, updated});
+  } catch (err) {
+    if (err instanceof HttpsError) {
+      return res.status(err.httpErrorCode.status).json({ok: false, error: err.message});
+    }
+    console.error("recalcAdminFields failed", err);
+    return res.status(500).json({ok: false, error: String(err)});
+  }
+});
 
 exports.migrateSplitCollections = onRequest(RUNTIME_OPTS, async (req, res) => {
   try {
