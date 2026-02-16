@@ -1094,6 +1094,45 @@ button.secondary.small{
 .spinner{width:16px;height:16px;border-radius:50%;border:2px solid #e5e7eb;border-top-color:#2563eb;animation:spin 1s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+
+/* --- DB module unified + responsive table --- */
+#dbCodigosSection { overflow: hidden; }
+#dbCodigosSection .db-controls { padding: 0 24px 10px 24px; }
+#dbCodigosSection .db-controls-row { display:flex; gap:12px; align-items:center; padding: 18px 24px 0 24px; }
+#dbCodigosSection .db-controls-row .input { flex:1; min-width: 220px; }
+#dbCodigosSection .more-filters-panel { margin: 10px 24px 0 24px; padding: 14px; border:1px solid #e6e8ef; border-radius:16px; background:#fff; }
+#dbCodigosSection .more-filters-grid { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+#dbCodigosSection .more-filters-grid .input { width: 160px; }
+#dbCodigosSection .check { display:flex; gap:10px; align-items:center; padding: 10px 12px; border:1px solid #e6e8ef; border-radius:14px; background:#fafbff; }
+#dbCodigosSection .check span { color:#6b7280; }
+#dbCodigosSection .more-filters-actions { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-top: 12px; flex-wrap:wrap; }
+
+#dbCodigosSection .admin-only { display:none !important; }
+#dbCodigosSection.admin-enabled .admin-only { display:table-cell !important; }
+#dbCodigosSection .admin-only-block { display:none !important; width: 100%; }
+#dbCodigosSection.admin-enabled .admin-only-block { display:block !important; }
+
+#dbCodigosSection .db-metrics { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; padding: 14px 24px 0 24px; }
+#dbCodigosSection .metric { background:#fafbff; border:1px solid #e6e8ef; border-radius:16px; padding:14px; }
+#dbCodigosSection .metric-label { color:#6b7280; font-size:14px; }
+#dbCodigosSection .metric-value { font-size:20px; font-weight:700; margin-top:2px; }
+
+#dbCodigosSection .db-table { padding: 18px 24px 24px 24px; }
+#dbCodigosSection .db-table-toolbar { display:flex; justify-content:flex-end; margin-bottom: 10px; }
+#dbCodigosSection .table-wrap { width:100%; overflow:auto; border:1px solid #e6e8ef; border-radius:16px; background:#fff; }
+#dbCodigosSection table.table { width: 100%; border-collapse: collapse; min-width: 980px; }
+#dbCodigosSection thead th { position: sticky; top: 0; background:#fff; z-index:2; }
+#dbCodigosSection .th-filter { margin-left: 8px; border:1px solid #e6e8ef; background:#fff; border-radius: 10px; padding: 4px 8px; cursor:pointer; }
+#dbCodigosSection .pager { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top: 12px; flex-wrap:wrap; }
+#dbCodigosSection .pager-bottom { display:flex; justify-content:flex-end; margin-top: 10px; }
+#dbCodigosSection .pager-size { display:flex; gap:10px; align-items:center; color:#6b7280; }
+
+@media (max-width: 900px) {
+  #dbCodigosSection .db-controls-row { flex-direction:column; align-items:stretch; }
+  #dbCodigosSection .db-controls-row .btn { width:100%; }
+  #dbCodigosSection .db-metrics { grid-template-columns: 1fr; }
+  #dbCodigosSection .more-filters-grid .input { width: 100%; min-width: 180px; }
+}
 </style>
   </head>
   <body>
@@ -1219,70 +1258,64 @@ button.secondary.small{
         </section>
 
         <section class="section" id="base-datos-codigos">
-          <div id="dbCodigosSection" class="db-module">
-            <h2>Base de datos códigos HarujaGdl</h2>
-            <p>Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</p>
+          <div id="dbCodigosSection" class="card section-card">
+  <div class="card-header">
+    <div class="card-title">Base de datos códigos HarujaGdl</div>
+    <div class="card-subtitle">Explora la base de prendas 2025 con búsqueda, filtros y estado de novedades.</div>
+  </div>
 
-            <div class="prendas-meta">
-              <div id="prendas-alert" class="prendas-alert" role="status" aria-live="polite" style="display:none;"></div>
-              <div class="prendas-count">Total: <span data-count-total>—</span></div>
-            </div>
+  <div class="db-controls">
+    <div class="db-controls-row">
+      <input id="prendas-search" class="input" type="text" placeholder="Buscar: código o descripción (ej. HA12A003)" />
+      <button id="btnMoreFilters" class="btn btn-ghost" type="button">
+        Más filtros <span id="moreFiltersDot" class="dot" style="display:none"></span>
+      </button>
+    </div>
 
-            <div class="panel-controls">
-              
-                
-            
-            <div class="filters-grid filters-grid-min">
-              <div class="search-wrap">
-                <input id="prendas-search" type="text" placeholder="Buscar: código o descripción (ej. HA12A003)" />
-              </div>
+    <div id="moreFiltersPanel" class="more-filters-panel" style="display:none">
+      <div class="more-filters-grid">
+        <input id="prendas-precio-min" class="input" type="number" inputmode="numeric" placeholder="Precio mín" />
+        <input id="prendas-precio-max" class="input" type="number" inputmode="numeric" placeholder="Precio máx" />
+        <label class="check">
+          <input id="prendas-precio-sin" type="checkbox" />
+          <span>Incluir sin precio</span>
+        </label>
+      </div>
 
-              <div class="filters-more-wrap">
-                <button type="button" id="btnMoreFilters" class="btn-more-filters" aria-expanded="false">
-                  Más filtros
-                  <span id="moreFiltersDot" class="dot" aria-hidden="true"></span>
-                </button>
-              </div>
-            </div>
+      <div class="more-filters-actions">
+        <button id="prendas-filters-clear" class="btn btn-muted" type="button">Limpiar</button>
+        <button id="prendas-precio-apply" class="btn btn-primary" type="button">Aplicar</button>
 
-            <div id="moreFiltersPanel" class="more-filters-panel" hidden>
-              <div class="more-filters-row">
-                <input id="prendas-precio-min" type="number" min="0" placeholder="Precio mín" />
-                <input id="prendas-precio-max" type="number" min="0" placeholder="Precio máx" />
-                <label class="check-pill">
-                  <input id="prendas-precio-sin" type="checkbox" checked />
-                  <span>Incluir sin precio</span>
-                </label>
-                <button type="button" id="prendas-filters-clear" class="btn-link">Limpiar</button>
-              </div>
-            </div>
-</div>
+        <div class="admin-only-block admin-import">
+          <div class="admin-import-title">Importar XLSX (admin)</div>
+          <div class="admin-import-row">
+            <input id="xlsxFile" class="input" type="file" accept=".xlsx" />
+            <button id="admin-import-xlsx" class="btn btn-primary" type="button">Importar</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-              
-              <div class="filters-row">
-<div class="filters-actions">
-                  <button type="button" id="prendas-precio-apply" class="hidden" tabindex="-1" aria-hidden="true">Aplicar</button>
-                  <button type="button" id="prendas-filters-clear" class="secondary small">Restablecer</button>
-                </div>
-</div>
-            </div>
-    <div class="table-wrapper">
-              
-            <div class="table-toolbar">
-              <div class="table-toolbar-left">
-                <span id="tableHint" class="muted"></span>
-              </div>
-              <div class="table-toolbar-right">
-                <button type="button" id="admin-mode-btn" class="admin-mode-btn" aria-pressed="false">Modo admin</button>
-              </div>
-            </div>
-            <div data-db-loader class="db-loader" style="display:none;">
-              <div class="spinner"></div>
-              <div class="loading-text">Cargando prendas…</div>
-            </div>
+    <div class="db-metrics">
+      <div class="metric"><div class="metric-label">Total</div><div id="prendas-total" class="metric-value">—</div></div>
+      <div class="metric"><div class="metric-label">Nuevos (7 días)</div><div id="prendas-nuevos" class="metric-value">—</div></div>
+      <div class="metric"><div class="metric-label">Existentes</div><div id="prendas-existentes" class="metric-value">—</div></div>
+    </div>
+  </div>
 
-<table id="tablaPrendas" data-prendas-table>
-                <thead>
+  <div class="db-table">
+    <div class="db-table-toolbar">
+      <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
+    </div>
+
+    <div id="prendas-loader" class="loader-row" style="display:none">
+      <div class="spinner"></div>
+      <div class="loader-text">Cargando base de datos…</div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="tablaPrendas" class="table">
+        <thead>
                   <tr>
                     <th data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
                     <th>Código</th>
@@ -1300,54 +1333,33 @@ button.secondary.small{
                     <th class="admin-only">(Admin) Utilidad</th>
                   </tr>
                 </thead>
-                <tbody id="prendas-tbody" data-prendas-tbody><tr id="loadingRow"><td colspan="99" class="muted">Cargando prendas…</td></tr></tbody>
-              </table>
-              <template id="noResultsRow" data-empty-row>
-                <tr>
-                  <td colspan="14">No hay resultados con los filtros actuales.</td>
-                </tr>
-              </template>
-            </div>
-            <div class="pagination">
-              <span id="prendas-showing" data-count-shown>Mostrando 0</span>
-              <span id="prendas-page-indicator" class="page-indicator">Página 1</span>
-<div>
-                <button type="button" id="prendas-prev">Anterior</button>
-                <button type="button" id="prendas-next">Siguiente</button>
-              </div>
-            <div class="page-size-bottom">
-              <label for="prendas-page-size">Registros por página</label>
-              <select id="prendas-page-size" aria-label="Registros por página">
-                <option value="30">30</option>
-                <option value="50">50</option>
-                <option value="80" selected>80</option>
-                <option value="120">120</option>
-                <option value="200">200</option>
-              </select>
-            </div>
-
-            </div>
-          </div>
-        </section>
-      </main>
+        <tbody id="prendas-tbody"></tbody>
+      </table>
     </div>
 
-    <!-- 🔧 Firebase Config (edítalo y NO toques el resto) -->
-    <script>
-      // Si prefieres, pega aquí el objeto completo que te da Firebase Console.
-      // Deja las comillas tal cual. Ejemplo:
-      // window.__HARUJA_FIREBASE_CONFIG__ = { apiKey: "...", authDomain: "...", ... };
-      window.__HARUJA_FIREBASE_CONFIG__ = window.__HARUJA_FIREBASE_CONFIG__ || {
-        apiKey: "AIzaSyAK5_MuMseQm58AeRZlrPtGyEZ216-Xkno",
-        authDomain: "haruja-tiendanube.firebaseapp.com",
-        projectId: "haruja-tiendanube",
-        storageBucket: "haruja-tiendanube.firebasestorage.app",
-        messagingSenderId: "396461447684",
-        appId: "1:396461447684:web:770dc3bc9bbb40a2873351"
-      };
-    </script>
+    <div class="pager">
+      <div id="prendas-showing" class="pager-left">Mostrando 0</div>
+      <div id="prendas-page" class="pager-center">Página 1</div>
+      <div class="pager-right">
+        <button id="prendas-prev" class="btn btn-primary" type="button">Anterior</button>
+        <button id="prendas-next" class="btn btn-primary" type="button">Siguiente</button>
+      </div>
+    </div>
 
-    <script type="module">
+    <div class="pager-bottom">
+      <div class="pager-spacer"></div>
+      <div class="pager-size">
+        <span>Registros por página</span>
+        <select id="prendas-page-size" class="select">
+          <option value="40">40</option>
+          <option value="80" selected>80</option>
+          <option value="120">120</option>
+          <option value="200">200</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div><script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
       import {
         getFirestore,
@@ -1779,8 +1791,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         disponibilidad: new Set(),
         pventaMin: null,
         pventaMax: null,
-        ordenMin: null,
-        ordenMax: null,
+        ordenSortDir: null,
         fechaYear: "",
         fechaMonth: ""
       });
@@ -2495,7 +2506,17 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         );
         const rowsAfterGlobal = applyGlobalFilters(rowsAfterNoPrice, globalFilters);
         prendasState.rowsAfterGlobal = rowsAfterGlobal;
-        const rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
+        let rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
+        // Orden (asc/desc) — solo ordena, no filtra por rango
+        const ordDir = (prendasState.filters.header.ordenSortDir || '').toLowerCase();
+        if (ordDir === 'asc' || ordDir === 'desc') {
+          const mult = ordDir === 'asc' ? 1 : -1;
+          rowsAfterAll = [...rowsAfterAll].sort((a, b) => {
+            const av = Number(a.orden ?? 0);
+            const bv = Number(b.orden ?? 0);
+            return (av - bv) * mult;
+          });
+        }
         prendasState.rowsAfterAll = rowsAfterAll;
         return rowsAfterAll;
       };
@@ -2656,51 +2677,35 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
         }
 
-        if (key === "orden") {
+                if (key === "orden") {
           container.classList.add("range-popover");
-          const currentMin = prendasState.filters.header.ordenMin;
-          const currentMax = prendasState.filters.header.ordenMax;
+          const currentDir = prendasState.filters.header.ordenSortDir || "";
           container.innerHTML = `
-            <div class="popover-head"><p class="popover-title">Filtrar Orden</p></div>
-            <div class="range-fields">
-              <div class="range-field">
-                <label for="orden-min">Mínimo</label>
-                <input id="orden-min" type="number" step="1" placeholder="1" value="${currentMin ?? ""}" data-orden-min />
-              </div>
-              <div class="range-field">
-                <label for="orden-max">Máximo</label>
-                <input id="orden-max" type="number" step="1" placeholder="9999" value="${currentMax ?? ""}" data-orden-max />
-              </div>
+            <div class="popover-title">Orden</div>
+            <div class="popover-body">
+              <select class="select" data-orden-sort>
+                <option value="">Sin orden</option>
+                <option value="asc">Ascendente</option>
+                <option value="desc">Descendente</option>
+              </select>
             </div>
-            <div class="hint" data-orden-hint></div>
-            <div class="actions">
-              <button type="button" data-apply>Aplicar</button>
-              <button type="button" class="secondary" data-clear>Limpiar</button>
+            <div class="popover-actions">
+              <button class="btn btn-muted" data-clear>Limpiar</button>
+              <button class="btn btn-primary" data-apply>Aplicar</button>
             </div>
           `;
-          document.body.appendChild(container);
-          const minInput = container.querySelector("[data-orden-min]");
-          const maxInput = container.querySelector("[data-orden-max]");
-          const hintEl = container.querySelector("[data-orden-hint]");
+          const sel = container.querySelector("[data-orden-sort]");
+          sel.value = currentDir;
 
           container.querySelector("[data-clear]").addEventListener("click", async () => {
-            prendasState.filters.header.ordenMin = null;
-            prendasState.filters.header.ordenMax = null;
+            prendasState.filters.header.ordenSortDir = null;
             closeHeaderPopover();
             await applyFilters();
           });
 
           container.querySelector("[data-apply]").addEventListener("click", async () => {
-            let minValue = toNumberOrNull(minInput.value);
-            let maxValue = toNumberOrNull(maxInput.value);
-            if (minValue !== null) minValue = Math.floor(minValue);
-            if (maxValue !== null) maxValue = Math.floor(maxValue);
-            if (minValue !== null && maxValue !== null && minValue > maxValue) {
-              [minValue, maxValue] = [maxValue, minValue];
-              hintEl.textContent = "Se ajustó el rango automáticamente (mín ↔ máx).";
-            }
-            prendasState.filters.header.ordenMin = minValue;
-            prendasState.filters.header.ordenMax = maxValue;
+            const v = (sel.value || "").trim();
+            prendasState.filters.header.ordenSortDir = v ? v : null;
             closeHeaderPopover();
             await applyFilters();
           });
@@ -3855,7 +3860,43 @@ window.addEventListener("hashchange", () => {
         await loadPrendasPage({ reset: true, reason: "filters-clear" });
       };
 
-      prendasSearch.addEventListener("input", handleSearchInput);
+      
+    // ---- Más filtros (panel) ----
+    const updateMoreFiltersDot = () => {
+      const hasPriceMin = !!(prendasPrecioMin && String(prendasPrecioMin.value || "").trim());
+      const hasPriceMax = !!(prendasPrecioMax && String(prendasPrecioMax.value || "").trim());
+      const hasNoPrice = !!(prendasPrecioSin && prendasPrecioSin.checked);
+      const active = hasPriceMin || hasPriceMax || hasNoPrice;
+      if (moreFiltersDot) moreFiltersDot.style.display = active ? "inline-block" : "none";
+    };
+
+    const setMoreFiltersOpen = (open) => {
+      if (!moreFiltersPanel) return;
+      moreFiltersPanel.style.display = open ? "block" : "none";
+    };
+
+    if (btnMoreFilters) {
+      btnMoreFilters.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isOpen = moreFiltersPanel && moreFiltersPanel.style.display !== "none";
+        setMoreFiltersOpen(!isOpen);
+      });
+    }
+
+    // Cerrar al dar click fuera
+    document.addEventListener("click", (e) => {
+      if (!moreFiltersPanel || moreFiltersPanel.style.display === "none") return;
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (t.closest("#moreFiltersPanel") || t.closest("#btnMoreFilters")) return;
+      setMoreFiltersOpen(false);
+    });
+
+    // Actualiza dot cuando cambia algo
+    [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
+    if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
+prendasSearch.addEventListener("input", handleSearchInput);
       headerFilterButtons.forEach((button) => {
         button.addEventListener("click", (event) => {
           event.stopPropagation();
