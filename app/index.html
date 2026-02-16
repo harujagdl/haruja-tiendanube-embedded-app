@@ -891,7 +891,7 @@
               <table id="tablaPrendas" data-prendas-table>
                 <thead>
                   <tr>
-                    <th>Orden</th>
+                    <th data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
                     <th>Código</th>
                     <th>Descripción</th>
                     <th data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
@@ -900,7 +900,7 @@
                     <th data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
                     <th data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
                     <th data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
-                    <th>Fecha</th>
+                    <th data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
                     <th data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
@@ -1182,9 +1182,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const resolveComparableDate = (item) => {
+        const d1 = toDateValue(item?.fechaAlta);
+        if (d1 instanceof Date && d1.getTime() !== 0) return d1;
+
+        const d2 = toDateValue(item?.fecha);
+        if (d2 instanceof Date && d2.getTime() !== 0) return d2;
+
         return (
-          toDateValue(item?.fechaAlta) ||
-          toDateValue(item?.fecha) ||
           parseDateTextValue(item?.fechaAltaTexto) ||
           parseDateTextValue(item?.fechaTexto) ||
           null
@@ -1370,7 +1374,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         talla: new Set(),
         disponibilidad: new Set(),
         pventaMin: null,
-        pventaMax: null
+        pventaMax: null,
+        ordenMin: null,
+        ordenMax: null,
+        fechaYear: "",
+        fechaMonth: ""
       });
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
@@ -1644,14 +1652,15 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const getPrendaDate = (data) => {
-        // Preferimos las fechas “de negocio” (fechaAlta/fecha o sus textos),
-        // porque son las que el usuario espera ver/filtrar.
-        // Luego caemos a timestamps técnicos (updatedAt/createdAt).
-        return (
+        const resolved =
           resolveComparableDate(data) ||
+          toDateValue(data?.fechaAlta) ||
+          toDateValue(data?.fecha) ||
           toDateValue(data?.updatedAt) ||
-          toDateValue(data?.createdAt)
-        );
+          toDateValue(data?.createdAt);
+
+        if (resolved instanceof Date && resolved.getTime() === 0) return null;
+        return resolved;
       };
 
       const normalizeStatus = (raw) => {
@@ -1978,11 +1987,20 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       });
 
       const isHeaderFilterActive = (key) => {
-        if (key === HEADER_RANGE_KEY) {
+        if (key === "pventa") {
           return (
             prendasState.filters.header.pventaMin !== null ||
             prendasState.filters.header.pventaMax !== null
           );
+        }
+        if (key === "orden") {
+          return (
+            prendasState.filters.header.ordenMin !== null ||
+            prendasState.filters.header.ordenMax !== null
+          );
+        }
+        if (key === "fecha") {
+          return Boolean(prendasState.filters.header.fechaYear || prendasState.filters.header.fechaMonth);
         }
         return (prendasState.filters.header[key]?.size || 0) > 0;
       };
@@ -2018,6 +2036,39 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             const itemValue = normalizeFilterValue(item[key]);
             return selected.has(itemValue);
           });
+          if (!hasChecklistMatch) return false;
+
+          // Orden (rango)
+          const hasOrdenRange = headerFilters.ordenMin != null || headerFilters.ordenMax != null;
+          if (hasOrdenRange) {
+            const ord = toNum(item.orden);
+            if (ord === null) return false;
+            if (headerFilters.ordenMin != null && ord < headerFilters.ordenMin) return false;
+            if (headerFilters.ordenMax != null && ord > headerFilters.ordenMax) return false;
+          }
+
+          // Fecha (año/mes)
+          const hasFechaFilter = Boolean(headerFilters.fechaYear || headerFilters.fechaMonth);
+          if (hasFechaFilter) {
+            const d = resolveComparableDate(item);
+            if (!d) return false;
+            const year = String(d.getFullYear());
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            if (headerFilters.fechaYear && year !== String(headerFilters.fechaYear)) return false;
+            if (headerFilters.fechaMonth && month !== String(headerFilters.fechaMonth)) return false;
+          }
+
+          // P. Venta (rango)
+          const hasPriceRange = headerFilters.pventaMin != null || headerFilters.pventaMax != null;
+          if (hasPriceRange) {
+            const price = toNum(item.pVenta);
+            if (price === null) return false;
+            if (headerFilters.pventaMin != null && price < headerFilters.pventaMin) return false;
+            if (headerFilters.pventaMax != null && price > headerFilters.pventaMax) return false;
+          }
+
+          return true;
+        });
           if (!hasChecklistMatch) return false;
           const hasPriceRange = headerFilters.pventaMin != null || headerFilters.pventaMax != null;
           if (!hasPriceRange) return true;
@@ -2207,6 +2258,126 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
           bindHeaderPopoverPositioning(container, anchorButton, key);
           return;
+
+        }
+
+        if (key === "orden") {
+          container.classList.add("range-popover");
+          const currentMin = prendasState.filters.header.ordenMin;
+          const currentMax = prendasState.filters.header.ordenMax;
+          container.innerHTML = `
+            <div class="popover-head"><p class="popover-title">Filtrar Orden</p></div>
+            <div class="range-fields">
+              <div class="range-field">
+                <label for="orden-min">Mínimo</label>
+                <input id="orden-min" type="number" step="1" placeholder="1" value="${currentMin ?? ""}" data-orden-min />
+              </div>
+              <div class="range-field">
+                <label for="orden-max">Máximo</label>
+                <input id="orden-max" type="number" step="1" placeholder="9999" value="${currentMax ?? ""}" data-orden-max />
+              </div>
+            </div>
+            <div class="hint" data-orden-hint></div>
+            <div class="actions">
+              <button type="button" data-apply>Aplicar</button>
+              <button type="button" class="secondary" data-clear>Limpiar</button>
+            </div>
+          `;
+          document.body.appendChild(container);
+          const minInput = container.querySelector("[data-orden-min]");
+          const maxInput = container.querySelector("[data-orden-max]");
+          const hintEl = container.querySelector("[data-orden-hint]");
+
+          container.querySelector("[data-clear]").addEventListener("click", async () => {
+            prendasState.filters.header.ordenMin = null;
+            prendasState.filters.header.ordenMax = null;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          container.querySelector("[data-apply]").addEventListener("click", async () => {
+            let minValue = toNumberOrNull(minInput.value);
+            let maxValue = toNumberOrNull(maxInput.value);
+            if (minValue !== null) minValue = Math.floor(minValue);
+            if (maxValue !== null) maxValue = Math.floor(maxValue);
+            if (minValue !== null && maxValue !== null && minValue > maxValue) {
+              [minValue, maxValue] = [maxValue, minValue];
+              hintEl.textContent = "Se ajustó el rango automáticamente (mín ↔ máx).";
+            }
+            prendasState.filters.header.ordenMin = minValue;
+            prendasState.filters.header.ordenMax = maxValue;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          bindHeaderPopoverPositioning(container, anchorButton, key);
+          return;
+        }
+
+        if (key === "fecha") {
+          const monthNames = [
+            "enero","febrero","marzo","abril","mayo","junio",
+            "julio","agosto","septiembre","octubre","noviembre","diciembre"
+          ];
+          const availableYears = Array.from(new Set((prendasState.baseRows || [])
+            .map((it) => resolveComparableDate(it))
+            .filter(Boolean)
+            .map((d) => d.getFullYear())))
+            .sort((a,b) => b - a);
+
+          const currentYear = safeString(prendasState.filters.header.fechaYear).trim();
+          const currentMonth = safeString(prendasState.filters.header.fechaMonth).trim();
+
+          const yearOptions = ['<option value="">Todos</option>']
+            .concat(availableYears.map((y) => `<option value="${y}" ${String(y)===currentYear ? "selected" : ""}>${y}</option>`))
+            .join("");
+
+          const monthOptions = ['<option value="">Todos</option>']
+            .concat(monthNames.map((name, i) => {
+              const v = String(i + 1).padStart(2, "0");
+              return `<option value="${v}" ${v===currentMonth ? "selected" : ""}>${name}</option>`;
+            }))
+            .join("");
+
+          container.innerHTML = `
+            <div class="popover-head"><p class="popover-title">Filtrar Fecha</p></div>
+            <div class="range-fields">
+              <div class="range-field">
+                <label for="fecha-year">Año</label>
+                <select id="fecha-year" data-fecha-year>${yearOptions}</select>
+              </div>
+              <div class="range-field">
+                <label for="fecha-month">Mes</label>
+                <select id="fecha-month" data-fecha-month>${monthOptions}</select>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" data-apply>Aplicar</button>
+              <button type="button" class="secondary" data-clear>Limpiar</button>
+            </div>
+          `;
+          document.body.appendChild(container);
+
+          const yearSelect = container.querySelector("[data-fecha-year]");
+          const monthSelect = container.querySelector("[data-fecha-month]");
+
+          container.querySelector("[data-clear]").addEventListener("click", async () => {
+            prendasState.filters.header.fechaYear = "";
+            prendasState.filters.header.fechaMonth = "";
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          container.querySelector("[data-apply]").addEventListener("click", async () => {
+            prendasState.filters.header.fechaYear = safeString(yearSelect.value).trim();
+            prendasState.filters.header.fechaMonth = safeString(monthSelect.value).trim();
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          bindHeaderPopoverPositioning(container, anchorButton, key);
+          return;
+        }
         }
 
         const options = prendasState.uniqueOptions[key] || [];
