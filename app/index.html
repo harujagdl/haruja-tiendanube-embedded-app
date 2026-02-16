@@ -860,8 +860,9 @@
                     <input id="adminToggleDb" type="checkbox" />
                     <label for="adminToggleDb">Modo admin (mostrar costos y márgenes)</label>
                   </div>
+                  <input id="xlsxFile" type="file" accept=".xlsx" style="display:none" />
+                  <button type="button" id="btnPickXlsx" class="secondary">Seleccionar XLSX</button>
                   <button type="button" id="admin-import-xlsx">Reimportar XLSX (Master)</button>
-                  <input type="file" id="xlsxFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden" />
                   <button type="button" id="admin-split-collections">Migrar a public/admin</button>
                 </div>
               </div>
@@ -1064,6 +1065,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
       const adminImportButton = document.getElementById("admin-import-xlsx");
       const xlsxFileInput = document.getElementById("xlsxFile");
+      const btnPickXlsx = document.getElementById("btnPickXlsx");
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
@@ -1806,18 +1808,20 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             ? ((utilidadCalculada / costo) * 100)
             : 0;
 
-        const utilidadRaw = toNumberOrNull(data.utilidad ?? data.Utilidad);
-        const margenRaw = toNumberOrNull(data.margen ?? data.Margen);
-        const utilidad = (Number.isFinite(utilidadRaw) && utilidadRaw !== 0)
-          ? utilidadRaw
-          : utilidadCalculada;
-        const margen = (Number.isFinite(margenRaw) && margenRaw !== 0)
-          ? margenRaw
-          : margenCalculado;
+        let utilidad = Number(data.utilidad ?? data.Utilidad ?? 0);
+        if ((!utilidad || utilidad === 0) && costo > 0 && precioConIvaFinal > 0) {
+          utilidad = Math.round((precioConIvaFinal - costo) * 100) / 100;
+        }
+
+        let margen = Number(data.margen ?? data.Margen ?? 0);
+        if ((!margen || margen === 0) && costo > 0 && utilidad > 0) {
+          margen = Math.round(((utilidad / costo) * 100) * 10) / 10;
+        }
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
         const orden = toNumberOrNull(data.orden ?? data.Orden);
+        const seqNumber = toNumberOrNull(data.seqNumber ?? data.seq ?? data.secuencia);
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
         ).trim();
@@ -1829,7 +1833,8 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
         return {
           id: docSnap.id,
           docId: safeString(data.docId ?? docSnap.id),
-          orden,
+          orden: Number.isFinite(orden) ? orden : seqNumber,
+          seqNumber,
           codigo,
           descripcion,
           color,
@@ -2342,10 +2347,10 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
               ? Number(((utilidadCalculada / row.costo) * 100).toFixed(1))
               : 0;
 
-          row.utilidad = Number.isFinite(utilidadFromAdmin)
+          row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
             ? utilidadFromAdmin
             : utilidadCalculada;
-          row.margen = Number.isFinite(margenFromAdmin)
+          row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
             ? Number(margenFromAdmin.toFixed(1))
             : margenCalculado;
         });
@@ -2589,7 +2594,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
       const createPrendaRow = (item) => {
         const ordenValue = Number(item.orden);
-        const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "--";
+        const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "";
         const codigo = safeString(item.codigo || item.code) || "--";
         const descripcion = safeString(item.descripcion) || "--";
         const tipo = safeString(item.tipo) || "--";
@@ -3013,13 +3018,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           if (!xlsxFileInput) {
             throw new Error("No existe #xlsxFile para seleccionar XLSX.");
           }
-          xlsxFileInput.value = "";
-          const selectedFile = await new Promise((resolve) => {
-            xlsxFileInput.addEventListener("change", () => resolve(xlsxFileInput.files?.[0] || null), {once: true});
-            xlsxFileInput.click();
-          });
-          if (!selectedFile) {
-            throw new Error("Selecciona un XLSX primero.");
+          const file = xlsxFileInput?.files?.[0];
+          if (!file) {
+            throw new Error("Selecciona un archivo .xlsx antes de reimportar.");
           }
 
           let user = auth.currentUser;
@@ -3037,7 +3038,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const idToken = await user.getIdToken(true);
           setAdminLoginStatus("Subiendo XLSX y reimportando master...", "warning");
           const formData = new FormData();
-          formData.append("file", selectedFile, selectedFile.name);
+          formData.append("file", file, file.name || "HarujaPrendas_2025.xlsx");
 
           const response = await fetch(IMPORT_XLSX_UPLOAD_URL, {
             method: "POST",
@@ -3049,6 +3050,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
+            console.error("XLSX upload failed", response.status, payload);
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
           if (!payload?.ok) {
@@ -3056,10 +3058,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           }
 
           const importedRows = Number(payload?.updated || 0);
-          const importedCreated = Number(payload?.created || 0);
           const errorsCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
           setAdminLoginStatus(
-            `Importación OK: ${importedRows} actualizados, ${importedCreated} nuevos${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
+            `Importación OK: ${importedRows} filas procesadas${errorsCount ? ` (errores ${errorsCount})` : ""}. Migrando a public/admin...`,
             errorsCount ? "warning" : "success"
           );
           await handleAdminSplitCollections();
@@ -3192,6 +3193,11 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       if (adminOptionalToggle) {
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
+        });
+      }
+      if (btnPickXlsx) {
+        btnPickXlsx.addEventListener("click", () => {
+          xlsxFileInput?.click();
         });
       }
       if (adminImportButton) {
