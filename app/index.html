@@ -3019,8 +3019,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             xlsxFileInput.click();
           });
           if (!selectedFile) {
-            setAdminLoginStatus("Importación cancelada: no seleccionaste archivo XLSX.", "warning");
-            return;
+            throw new Error("Selecciona un XLSX primero.");
           }
 
           let user = auth.currentUser;
@@ -3038,7 +3037,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           const idToken = await user.getIdToken(true);
           setAdminLoginStatus("Subiendo XLSX y reimportando master...", "warning");
           const formData = new FormData();
-          formData.append("file", selectedFile);
+          formData.append("file", selectedFile, selectedFile.name);
 
           const response = await fetch(IMPORT_XLSX_FUNCTION_URL, {
             method: "POST",
@@ -3048,9 +3047,14 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
             body: formData
           });
 
+          if (!response.ok) {
+            const txt = await response.text();
+            throw new Error(txt || `HTTP ${response.status}`);
+          }
+
           const payload = await response.json();
-          if (!response.ok || !payload?.ok) {
-            throw new Error(payload?.error || `HTTP ${response.status}`);
+          if (!payload?.ok) {
+            throw new Error(payload?.error || "Falló la importación XLSX.");
           }
 
           const importedRows = Number(payload?.updated || 0);

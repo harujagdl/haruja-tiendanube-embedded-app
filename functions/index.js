@@ -112,6 +112,7 @@ const parseMultipartFile = (req, fieldName = "file") =>
     let matchedFile = false;
     let filename = "";
     let mimeType = "";
+    let fileBytes = 0;
 
     busboy.on("file", (name, stream, info) => {
       if (name !== fieldName) {
@@ -123,7 +124,10 @@ const parseMultipartFile = (req, fieldName = "file") =>
       filename = String(info?.filename || "");
       mimeType = String(info?.mimeType || "");
 
-      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("data", (chunk) => {
+        chunks.push(chunk);
+        fileBytes += chunk.length;
+      });
       stream.on("error", (error) => reject(error));
     });
 
@@ -133,10 +137,15 @@ const parseMultipartFile = (req, fieldName = "file") =>
         reject(new Error("Campo file requerido."));
         return;
       }
+      if (fileBytes <= 0) {
+        reject(new Error("No file"));
+        return;
+      }
       resolve({
         buffer: Buffer.concat(chunks),
         filename,
         mimeType,
+        fileBytes,
       });
     });
 
@@ -470,11 +479,16 @@ exports.importPrendasFromXlsxUpload = onRequest(RUNTIME_OPTS, async (req, res) =
     }
 
     const adminSession = await requireAllowlistedAdmin(req);
-    const {buffer, filename} = await parseMultipartFile(req, "file");
+    const {buffer, filename, fileBytes} = await parseMultipartFile(req, "file");
 
     if (!buffer?.length) {
-      return res.status(400).json({ok: false, error: "Archivo XLSX vacío."});
+      return res.status(400).json({ok: false, error: "No file"});
     }
+
+    console.info("importPrendasFromXlsxUpload file received", {
+      filename,
+      bytes: fileBytes,
+    });
 
     const wb = XLSX.read(buffer, {type: "buffer"});
     const firstSheetName = wb.SheetNames[0];
