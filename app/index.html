@@ -1133,6 +1133,10 @@ button.secondary.small{
   #dbCodigosSection .db-metrics { grid-template-columns: 1fr; }
   #dbCodigosSection .more-filters-grid .input { width: 100%; min-width: 180px; }
 }
+
+/* Admin-only cols hidden by default */
+.admin-only{ display:none; }
+body.admin-on .admin-only{ display:table-cell; }
 </style>
   </head>
   <body>
@@ -1287,12 +1291,7 @@ button.secondary.small{
         <button id="prendas-precio-apply" class="btn btn-primary" type="button">Aplicar</button>
 
         <div class="admin-only-block admin-import">
-          <div class="admin-import-title">Importar XLSX (admin)</div>
-          <div class="admin-import-row">
-            <input id="xlsxFile" class="input" type="file" accept=".xlsx" />
-            <button id="admin-import-xlsx" class="btn btn-primary" type="button">Importar</button>
           </div>
-        </div>
       </div>
     </div>
 
@@ -1335,6 +1334,12 @@ button.secondary.small{
                 </thead>
         <tbody id="prendas-tbody"></tbody>
       </table>
+<template id="emptyRowTemplate">
+  <tr data-empty-row>
+    <td colspan="99" style="padding:14px; color:#667085; text-align:center;">Sin resultados con estos filtros.</td>
+  </tr>
+</template>
+
     </div>
 
     <div class="pager">
@@ -1392,13 +1397,13 @@ button.secondary.small{
       // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
 // Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
 const firebaseConfig = window.__HARUJA_FIREBASE_CONFIG__ || {
-  apiKey: "PEGA_AQUI_TU_API_KEY",
+  apiKey: "AIzaSyDTDnao-bkiC4yxmV-mGryBmmvlWOvMIpg",
   authDomain: "haruja-tiendanube.firebaseapp.com",
   projectId: "haruja-tiendanube",
   // OJO: Firebase ahora puede mostrarlo como *.firebasestorage.app; cualquiera de los 2 suele funcionar.
   storageBucket: "haruja-tiendanube.firebasestorage.app",
-  messagingSenderId: "PEGA_AQUI_TU_MESSAGING_SENDER_ID",
-  appId: "PEGA_AQUI_TU_APP_ID"
+  messagingSenderId: "821972200592",
+  appId: "1:821972200592:web:de809935c39a319ff4bc15"
 };
 
 if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || firebaseConfig.apiKey.includes("REEMPLAZAR")) {
@@ -1406,8 +1411,11 @@ if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || fi
 }
 console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
-      const app = initializeApp(firebaseConfig);
-      const auth = getAuth(app);
+      if(!firebaseConfig.apiKey || String(firebaseConfig.apiKey).includes("PEGA") || String(firebaseConfig.apiKey).includes("AQUI")){
+  console.warn("[Firebase] Falta configurar firebaseConfig.apiKey (y/o appId/messagingSenderId).");
+}
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
       const googleProvider = new GoogleAuthProvider();
       let db;
       try {
@@ -1479,9 +1487,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
-      const adminImportButton = document.getElementById("admin-import-xlsx");
-      const xlsxFileInput = document.getElementById("xlsxFile");
-      const btnPickXlsx = document.getElementById("btnPickXlsx");
+
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
       const adminLogoutButton = document.getElementById("admin-logout");
@@ -1735,9 +1741,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
       const API_BASE = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net`;
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
-      const IMPORT_XLSX_FUNCTION_NAME = "importPrendasFromXlsxUpload";
       const SPLIT_FUNCTION_URL = `${API_BASE}/${SPLIT_FUNCTION_NAME}`;
-      const IMPORT_XLSX_UPLOAD_URL = `${API_BASE}/${IMPORT_XLSX_FUNCTION_NAME}`;
       const ADMIN_ALLOWLIST = new Set([
         "yair.tenorio.silva@gmail.com",
         "harujagdl@gmail.com",
@@ -3601,17 +3605,13 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const doImportFromXlsx = async () => {
-        if (adminImportButton) {
-          adminImportButton.disabled = true;
-        }
         if (adminSplitButton) {
           adminSplitButton.disabled = true;
         }
         try {
-          if (!xlsxFileInput) {
-            throw new Error("No existe #xlsxFile para seleccionar XLSX.");
+          if (!Input) {
           }
-          const file = xlsxFileInput?.files?.[0];
+          const file = Input?.files?.[0];
           if (!file) {
             throw new Error("Selecciona un archivo .xlsx antes de reimportar.");
           }
@@ -3629,11 +3629,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           }
 
           const idToken = await user.getIdToken(true);
-          setAdminLoginStatus("Subiendo XLSX y reimportando master...", "warning");
           const formData = new FormData();
           formData.append("file", file, file.name || "HarujaPrendas_2025.xlsx");
 
-          const response = await fetch(IMPORT_XLSX_UPLOAD_URL, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${idToken}`
@@ -3643,11 +3641,9 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) {
-            console.error("XLSX upload failed", response.status, payload);
             throw new Error(payload?.error || `HTTP ${response.status}`);
           }
           if (!payload?.ok) {
-            throw new Error(payload?.error || "Falló la importación XLSX.");
           }
 
           const importedRows = Number(payload?.updated || 0);
@@ -3661,11 +3657,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           await loadPrendasPage({ reset: true, reason: "import-xlsx-master" });
         } catch (error) {
           console.error(error);
-          setAdminLoginStatus(`Error al reimportar XLSX: ${error.message || error}`, "error");
         } finally {
-          if (adminImportButton) {
-            adminImportButton.disabled = false;
-          }
           if (adminSplitButton) {
             adminSplitButton.disabled = false;
           }
@@ -3673,9 +3665,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
       };
 
       const handleAdminSplitCollections = async () => {
-        if (adminImportButton) {
-          adminImportButton.disabled = true;
-        }
         if (adminSplitButton) {
           adminSplitButton.disabled = true;
         }
@@ -3743,9 +3732,6 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
           console.error(error);
           setAdminLoginStatus(`Error al migrar colecciones: ${error.message || error}`, "error");
         } finally {
-          if (adminImportButton) {
-            adminImportButton.disabled = false;
-          }
           if (adminSplitButton) {
             adminSplitButton.disabled = false;
           }
