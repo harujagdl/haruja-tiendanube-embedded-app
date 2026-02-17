@@ -723,6 +723,49 @@
         text-align: center;
       }
 
+      #dbCodigosSection .labels-panel {
+        display: grid;
+        gap: 10px;
+        margin: 0 10px 12px;
+        padding: 12px;
+        border: 1px solid #d0d5dd;
+        border-radius: 12px;
+        background: #f8fafc;
+      }
+
+      #dbCodigosSection .labels-panel.hidden {
+        display: none;
+      }
+
+      #dbCodigosSection .labels-panel-title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      #dbCodigosSection .labels-scope-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        font-size: 13px;
+      }
+
+      #dbCodigosSection .labels-scope-options label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+      }
+
+      #dbCodigosSection .col-select {
+        width: 36px;
+        text-align: center;
+      }
+
+      #dbCodigosSection .row-select {
+        width: 16px;
+        height: 16px;
+      }
+
       .edit-modal {
         position: fixed;
         inset: 0;
@@ -1534,7 +1577,17 @@ body.admin-on .admin-only{ display:table-cell; }
   <div class="db-table">
     <div class="db-table-toolbar">
       <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
+      <button id="labels-btn" class="btn btn-ghost" type="button">Etiquetas</button>
       <button id="admin-logout-quick" class="btn btn-muted hidden" type="button">Salir de admin</button>
+    </div>
+    <div id="labels-panel" class="labels-panel hidden" aria-hidden="true">
+      <div class="labels-panel-title">Imprimir etiquetas</div>
+      <div class="labels-scope-options">
+        <label><input type="radio" name="labels-scope" value="page" checked /> Página actual</label>
+        <label><input type="radio" name="labels-scope" value="filtered" /> Todo filtrado</label>
+        <label><input type="radio" name="labels-scope" value="selected" /> Seleccionados</label>
+      </div>
+      <button id="labels-print-btn" class="btn btn-primary" type="button">Imprimir (Ctrl+P)</button>
     </div>
 
     <div id="prendas-loader" class="loader-row" style="display:none">
@@ -1548,6 +1601,7 @@ body.admin-on .admin-only{ display:table-cell; }
       <table id="tablaPrendas" class="table">
         <thead>
                   <tr>
+                    <th class="col-select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
                     <th class="col-orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
                     <th class="col-codigo">Código</th>
                     <th class="col-descripcion">Descripción</th>
@@ -1567,10 +1621,10 @@ body.admin-on .admin-only{ display:table-cell; }
                 </thead>
         <tbody id="prendas-tbody">
           <tr id="loadingRow" data-db-loader>
-            <td colspan="16" class="muted" style="padding:14px 16px;">Cargando…</td>
+            <td colspan="17" class="muted" style="padding:14px 16px;">Cargando…</td>
           </tr>
           <tr id="noResultsRow" data-empty-row style="display:none">
-            <td colspan="16" class="muted" style="padding:14px 16px;">Sin resultados.</td>
+            <td colspan="17" class="muted" style="padding:14px 16px;">Sin resultados.</td>
           </tr>
 </tbody>
       </table>
@@ -1761,6 +1815,11 @@ const auth = getAuth(app);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel.querySelector("#adminToggleDb");
+      const labelsButton = document.getElementById("labels-btn");
+      const labelsPanel = document.getElementById("labels-panel");
+      const labelsPrintButton = document.getElementById("labels-print-btn");
+      const labelsScopeInputs = document.querySelectorAll("input[name='labels-scope']");
+      const selectAllLabelsCheckbox = document.getElementById("select-all-labels");
 
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
@@ -2136,7 +2195,10 @@ const auth = getAuth(app);
         metadataLoaded: false,
         headerPopover: null,
         sort: { ...DEFAULT_PRENDAS_SORT },
-        adminMap: new Map()
+        adminMap: new Map(),
+        selected: new Set(),
+        labelsScope: "page",
+        labelsPanelOpen: false
       };
       prendasState.editing = null;
       let isBooting = true;
@@ -2472,6 +2534,140 @@ const auth = getAuth(app);
       const formatDateCell = (item) => {
         const date = getPrendaDate(item);
         return date ? formatDateDDMMYYYY(date) : "--";
+      };
+
+      const labelCurrencyFormatter = new Intl.NumberFormat("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        maximumFractionDigits: 0
+      });
+
+      const formatLabelPrice = (value) => {
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) return "$0";
+        return labelCurrencyFormatter.format(amount);
+      };
+
+      const getLabelPriceNumber = (row) => {
+        const adminEnabled = isAdminViewEnabled();
+        const override = toNumberOrNull(row?.pVentaOverride);
+        const publicPrice = toNumberOrNull(row?.pVenta);
+        if (adminEnabled && Number.isFinite(override)) {
+          return override;
+        }
+        return Number.isFinite(publicPrice) ? publicPrice : null;
+      };
+
+      const updateSelectAllCheckbox = () => {
+        if (!selectAllLabelsCheckbox) return;
+        const rows = prendasState.filtered || [];
+        const visibleIds = rows
+          .map((row) => safeString(row.docId || row.id).trim())
+          .filter((id) => id);
+        if (!visibleIds.length) {
+          selectAllLabelsCheckbox.checked = false;
+          selectAllLabelsCheckbox.indeterminate = false;
+          return;
+        }
+        const selectedCount = visibleIds.filter((id) => prendasState.selected.has(id)).length;
+        selectAllLabelsCheckbox.checked = selectedCount === visibleIds.length;
+        selectAllLabelsCheckbox.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
+      };
+
+      const getRowsForScope = (scope = "page") => {
+        if (scope === "filtered") {
+          return prendasState.rowsAfterAll || [];
+        }
+        if (scope === "selected") {
+          const allRows = prendasState.rowsAfterAll || [];
+          return allRows.filter((row) => {
+            const docId = safeString(row.docId || row.id).trim();
+            return docId && prendasState.selected.has(docId);
+          });
+        }
+        return prendasState.filtered || [];
+      };
+
+      const getLabelLogoSrc = () => {
+        const preferred = document.querySelector("img#headerLogo, header img, .app img");
+        if (preferred?.src) return preferred.src;
+        const fallbackSvg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 90'><rect width='100%' height='100%' fill='white'/><text x='8' y='62' font-family='Arial,sans-serif' font-size='56' font-weight='700' fill='black'>HARUJA</text></svg>`;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(fallbackSvg)}`;
+      };
+
+      const escapeHtml = (value) => safeString(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+      const getPrintHtml = (labels = []) => {
+        const pages = labels.map((label) => `
+          <section class="page">
+            <div class="codigo">${escapeHtml(label.codigo)}</div>
+            <div class="precio">${escapeHtml(label.precioTexto)}</div>
+            <div class="qr" data-qr="${escapeHtml(label.qrValue)}"></div>
+            <img class="logo" src="${escapeHtml(label.logoSrc)}" alt="logo" />
+          </section>
+        `).join("\n");
+        return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8" /><title>Etiquetas 51x25</title>
+<style>
+  @page { size: 51mm 25mm; margin: 0; }
+  html,body { margin:0; padding:0; }
+  .print-actions { position: fixed; top: 8px; left: 8px; z-index: 10; }
+  .page { width:51mm; height:25mm; page-break-after:always; position:relative; overflow:hidden; }
+  .codigo { position:absolute; left:3.13mm; top:5mm; font-size:3.75mm; font-weight:600; font-family: Arial, sans-serif; }
+  .precio { position:absolute; left:3.13mm; top:12.51mm; font-size:6.88mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
+  .qr { position:absolute; left:32.53mm; top:2.13mm; width:16.5mm; height:16.5mm; }
+  .qr img { width:100%; height:100%; display:block; }
+  .logo { position:absolute; left:36.28mm; top:20.64mm; width:13.01mm; height:3.75mm; object-fit:contain; }
+  @media print { .print-actions { display:none; } }
+</style></head>
+<body>
+  <div class="print-actions"><button onclick="window.print()">Imprimir</button></div>
+  ${pages}
+  <script>
+    (function(){
+      document.querySelectorAll('.qr').forEach(function(el){
+        var value = el.dataset.qr || '';
+        var img = document.createElement('img');
+        img.alt = 'QR';
+        img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(value);
+        el.appendChild(img);
+      });
+    })();
+    setTimeout(function(){ window.print(); }, 300);
+  <\/script>
+</body></html>`;
+      };
+
+      const openPrintLabels = (scope = "page") => {
+        const rows = getRowsForScope(scope);
+        if (!rows.length) {
+          setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
+          return;
+        }
+        const logoSrc = getLabelLogoSrc();
+        const labels = rows.map((row) => {
+          const codigo = safeString(row.codigo || row.code).trim().toUpperCase();
+          const precioNum = getLabelPriceNumber(row);
+          return {
+            codigo,
+            precioTexto: formatLabelPrice(precioNum),
+            qrValue: `LA,${codigo}`,
+            logoSrc
+          };
+        });
+        const printWindow = window.open("", "_blank");
+        if (!printWindow) {
+          setPrendasAlert("No se pudo abrir la ventana de impresión. Revisa bloqueador de popups.");
+          return;
+        }
+        printWindow.document.write(getPrintHtml(labels));
+        printWindow.document.close();
+        printWindow.focus();
       };
 
       const computeMarginUtility = (pVenta, costo) => {
@@ -3371,6 +3567,7 @@ const auth = getAuth(app);
         prendasState.sort = restorePersistedSort();
         prendasState.uniqueOptions = {};
         prendasState.adminMap.clear();
+        prendasState.selected.clear();
         closeHeaderPopover();
         resetCounters();
       };
@@ -3380,7 +3577,7 @@ const auth = getAuth(app);
         prendasTbody.textContent = "";
         const row = document.createElement("tr");
         const cell = document.createElement("td");
-        cell.colSpan = 13;
+        cell.colSpan = 17;
         cell.textContent = "Cargando base de datos...";
         row.appendChild(cell);
         prendasTbody.appendChild(row);
@@ -3542,8 +3739,20 @@ const auth = getAuth(app);
         const utilidad = moneyFmt(item.utilidad);
 
         const row = document.createElement("tr");
-        row.dataset.docId = safeString(item.docId || item.id).trim();
+        const docId = safeString(item.docId || item.id).trim();
+        row.dataset.docId = docId;
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
+
+        const selectCell = document.createElement("td");
+        selectCell.className = "col-select";
+        const selectInput = document.createElement("input");
+        selectInput.type = "checkbox";
+        selectInput.className = "row-select";
+        selectInput.dataset.docId = docId;
+        selectInput.checked = prendasState.selected.has(docId);
+        selectCell.appendChild(selectInput);
+        row.appendChild(selectCell);
+
         const baseCells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta];
         const baseClasses = [
           "col-orden","col-codigo","col-descripcion","col-tipo","col-color","col-talla","col-proveedor","col-status","col-disponibilidad","col-fecha","col-pventa"
@@ -3743,16 +3952,18 @@ const auth = getAuth(app);
           if (!emptyNode) {
             const emptyRow = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 14;
+            cell.colSpan = 17;
             cell.textContent = "No hay resultados con los filtros actuales.";
             emptyRow.appendChild(cell);
             emptyNode = emptyRow;
           }
           prendasTbody.appendChild(emptyNode);
           setCounter(0, showingTotal);
+          updateSelectAllCheckbox();
           return;
         }
         await renderRowsChunked(rows, prendasTbody, PRENDAS_RENDER_CHUNK, token);
+        updateSelectAllCheckbox();
       };
 
       const setSkuSearchMode = (enabled) => {
@@ -4319,6 +4530,16 @@ const auth = getAuth(app);
 
       if (prendasTable) {
         prendasTable.addEventListener("click", (event) => {
+          const rowSelect = event.target.closest(".row-select");
+          if (rowSelect) {
+            const docId = safeString(rowSelect.dataset.docId).trim();
+            if (!docId) return;
+            if (rowSelect.checked) prendasState.selected.add(docId);
+            else prendasState.selected.delete(docId);
+            updateSelectAllCheckbox();
+            return;
+          }
+
           const button = event.target.closest(".rowEditBtn");
           if (!button) return;
           if (!isAdminViewEnabled()) return;
@@ -4328,6 +4549,44 @@ const auth = getAuth(app);
             || prendasState.baseRows.find((row) => safeString(row.docId || row.id).trim() === docId);
           const adminData = prendasState.adminMap.get(docId) || {};
           openEditModal(rowData ? { ...rowData, ...adminData } : rowData);
+        });
+      }
+
+      if (selectAllLabelsCheckbox) {
+        selectAllLabelsCheckbox.addEventListener("change", () => {
+          const checked = Boolean(selectAllLabelsCheckbox.checked);
+          (prendasState.filtered || []).forEach((row) => {
+            const docId = safeString(row.docId || row.id).trim();
+            if (!docId) return;
+            if (checked) prendasState.selected.add(docId);
+            else prendasState.selected.delete(docId);
+          });
+          prendasTbody.querySelectorAll(".row-select").forEach((input) => {
+            input.checked = checked;
+          });
+          updateSelectAllCheckbox();
+        });
+      }
+
+      if (labelsButton && labelsPanel) {
+        labelsButton.addEventListener("click", () => {
+          prendasState.labelsPanelOpen = !prendasState.labelsPanelOpen;
+          labelsPanel.classList.toggle("hidden", !prendasState.labelsPanelOpen);
+          labelsPanel.setAttribute("aria-hidden", prendasState.labelsPanelOpen ? "false" : "true");
+        });
+      }
+
+      labelsScopeInputs.forEach((input) => {
+        input.addEventListener("change", () => {
+          if (input.checked) {
+            prendasState.labelsScope = input.value;
+          }
+        });
+      });
+
+      if (labelsPrintButton) {
+        labelsPrintButton.addEventListener("click", () => {
+          openPrintLabels(prendasState.labelsScope || "page");
         });
       }
 
