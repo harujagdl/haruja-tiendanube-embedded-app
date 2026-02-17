@@ -667,6 +667,95 @@
         display: none;
       }
 
+      #dbCodigosSection .rowEditBtn {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        color: #344054;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        padding: 0;
+      }
+
+      #dbCodigosSection .rowEditBtn:hover {
+        background: #f2f4f7;
+      }
+
+      #dbCodigosSection .col-actions {
+        text-align: center;
+      }
+
+      .edit-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+      }
+
+      .edit-modal.hidden {
+        display: none;
+      }
+
+      .edit-modal-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+      }
+
+      .edit-modal-sheet {
+        position: relative;
+        z-index: 1;
+        max-width: 520px;
+        margin: 8vh auto;
+        background: #fff;
+        border-radius: 16px;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25);
+        padding: 16px;
+      }
+
+      .edit-modal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .edit-modal-meta {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        font-size: 13px;
+        color: #475467;
+      }
+
+      .edit-modal-actions {
+        margin-top: 14px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      @media (max-width: 640px) {
+        #dbCodigosSection .rowEditBtn {
+          width: 40px;
+          height: 40px;
+        }
+
+        .edit-modal-sheet {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          margin: 0;
+          max-width: none;
+          border-radius: 16px 16px 0 0;
+        }
+      }
+
       @media (max-width: 600px) {
         header,
         main {
@@ -1401,6 +1490,7 @@ body.admin-on .admin-only{ display:table-cell; }
   <div class="db-table">
     <div class="db-table-toolbar">
       <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
+      <button id="admin-logout-quick" class="btn btn-muted hidden" type="button">Salir de admin</button>
     </div>
 
     <div id="prendas-loader" class="loader-row" style="display:none">
@@ -1428,6 +1518,7 @@ body.admin-on .admin-only{ display:table-cell; }
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
                     <th class="admin-only">(Admin) Utilidad</th>
+                    <th class="admin-only col-actions">Acciones</th>
                   </tr>
                 </thead>
         <tbody id="prendas-tbody">
@@ -1469,7 +1560,35 @@ body.admin-on .admin-only{ display:table-cell; }
       </div>
     </div>
   </div>
-</div><script type="module">
+</div>
+
+<div id="editModal" class="edit-modal hidden" aria-hidden="true">
+  <div id="editModalOverlay" class="edit-modal-overlay"></div>
+  <div class="edit-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <h3 id="editModalTitle" style="margin:0 0 12px;">Editar fila</h3>
+    <div class="edit-modal-grid">
+      <div>
+        <label for="editPVenta">P.Venta</label>
+        <input id="editPVenta" type="number" min="0" step="0.01" />
+      </div>
+      <div>
+        <label for="editCosto">Costo</label>
+        <input id="editCosto" type="number" min="0" step="0.01" />
+      </div>
+    </div>
+    <div class="edit-modal-meta">
+      <div>Utilidad: <strong id="editUtilidadPreview">$0.00</strong></div>
+      <div>Margen: <strong id="editMargenPreview">0.0%</strong></div>
+    </div>
+    <p id="editModalError" class="status error hidden" style="margin:10px 0 0;"></p>
+    <div class="edit-modal-actions">
+      <button id="editModalCancel" type="button" class="secondary">Cancelar</button>
+      <button id="editModalSave" type="button">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
       import {
         getFirestore,
@@ -1484,7 +1603,9 @@ body.admin-on .admin-only{ display:table-cell; }
         documentId,
         runTransaction,
         serverTimestamp,
+        setDoc,
         startAfter,
+        updateDoc,
         where,
         limit,
         persistentLocalCache,
@@ -1603,6 +1724,16 @@ const auth = getAuth(app);
       const adminActions = document.getElementById("admin-actions");
             const adminOptional = document.getElementById("admin-optional");
       const adminOptionalToggle = document.getElementById("admin-optional-toggle");
+      const adminLogoutQuickButton = document.getElementById("admin-logout-quick");
+      const editModal = document.getElementById("editModal");
+      const editModalOverlay = document.getElementById("editModalOverlay");
+      const editPVentaInput = document.getElementById("editPVenta");
+      const editCostoInput = document.getElementById("editCosto");
+      const editUtilidadPreview = document.getElementById("editUtilidadPreview");
+      const editMargenPreview = document.getElementById("editMargenPreview");
+      const editModalError = document.getElementById("editModalError");
+      const editModalSaveButton = document.getElementById("editModalSave");
+      const editModalCancelButton = document.getElementById("editModalCancel");
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
       console.assert(loadingRow, "No existe loader de prendas");
@@ -1956,6 +2087,7 @@ const auth = getAuth(app);
         headerPopover: null,
         sort: { ...DEFAULT_PRENDAS_SORT }
       };
+      prendasState.editing = null;
       let isBooting = true;
 
       const setPrendasCollections = ({ publicCollection }) => {
@@ -2285,6 +2417,14 @@ const auth = getAuth(app);
         return date ? formatDateDDMMYYYY(date) : "--";
       };
 
+      const computeMarginUtility = (pVenta, costo) => {
+        const p = toNumberOrNull(pVenta) ?? 0;
+        const c = toNumberOrNull(costo) ?? 0;
+        const utilidad = Number((p - c).toFixed(2));
+        const margenPct = p > 0 ? Number(((utilidad / p) * 100).toFixed(1)) : 0;
+        return { utilidad, margenPct };
+      };
+
       const buildSearchKey = (data) => {
         const codigo = safeString(data.codigo || data.code || data.Codigo || data.Code);
         const descripcion = safeString(data.descripcion || data.Descripcion || data.detalles);
@@ -2342,14 +2482,8 @@ const auth = getAuth(app);
           ? precioConIva
           : (Number.isFinite(pVenta) ? pVenta : null);
 
-        const utilidadCalculada =
-          (typeof precioConIvaFinal === "number" && typeof costo === "number")
-            ? (precioConIvaFinal - costo)
-            : 0;
-        const margenCalculado =
-          (typeof utilidadCalculada === "number" && typeof costo === "number" && costo !== 0)
-            ? ((utilidadCalculada / costo) * 100)
-            : 0;
+        const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
+          computeMarginUtility(precioConIvaFinal, costo);
 
         let utilidad = Number(data.utilidad ?? data.Utilidad ?? 0);
         if ((!utilidad || utilidad === 0) && costo > 0 && precioConIvaFinal > 0) {
@@ -2357,8 +2491,8 @@ const auth = getAuth(app);
         }
 
         let margen = Number(data.margen ?? data.Margen ?? 0);
-        if ((!margen || margen === 0) && costo > 0 && utilidad > 0) {
-          margen = Math.round(((utilidad / costo) * 100) * 10) / 10;
+        if ((!margen || margen === 0) && precioConIvaFinal > 0) {
+          margen = Math.round(((utilidad / precioConIvaFinal) * 100) * 10) / 10;
         }
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
@@ -3060,14 +3194,8 @@ const auth = getAuth(app);
           const precioConIva = Number.isFinite(row.precioConIva)
             ? row.precioConIva
             : (Number.isFinite(row.pVenta) ? row.pVenta : null);
-          const utilidadCalculada =
-            (typeof precioConIva === "number" && typeof row.costo === "number")
-              ? Number((precioConIva - row.costo).toFixed(2))
-              : 0;
-          const margenCalculado =
-            (typeof utilidadCalculada === "number" && typeof row.costo === "number" && row.costo !== 0)
-              ? Number(((utilidadCalculada / row.costo) * 100).toFixed(1))
-              : 0;
+          const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
+            computeMarginUtility(precioConIva, row.costo);
 
           row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
             ? utilidadFromAdmin
@@ -3343,6 +3471,7 @@ const auth = getAuth(app);
         const utilidad = formatMoney(item.utilidad);
 
         const row = document.createElement("tr");
+        row.dataset.docId = safeString(item.docId || item.id).trim();
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
         const cells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
         const columnClassByIndex = [
@@ -3378,7 +3507,137 @@ const auth = getAuth(app);
           if (index >= 11) cell.classList.add("admin-only");
           row.appendChild(cell);
         });
+
+        if (prendasState.isAdmin) {
+          const actionCell = document.createElement("td");
+          actionCell.className = "admin-only col-actions";
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "rowEditBtn";
+          editButton.dataset.editDoc = safeString(item.docId || item.id).trim();
+          editButton.setAttribute("aria-label", "Editar fila");
+          editButton.textContent = "✎";
+          actionCell.appendChild(editButton);
+          row.appendChild(actionCell);
+        }
         return row;
+      };
+
+      const updateEditPreview = () => {
+        if (!editPVentaInput || !editCostoInput) return;
+        const p = toNumberOrNull(editPVentaInput.value) ?? 0;
+        const c = toNumberOrNull(editCostoInput.value) ?? 0;
+        const { utilidad, margenPct } = computeMarginUtility(p, c);
+        if (editUtilidadPreview) editUtilidadPreview.textContent = formatMoney(utilidad);
+        if (editMargenPreview) editMargenPreview.textContent = formatPercent(margenPct);
+      };
+
+      const closeEditModal = () => {
+        prendasState.editing = null;
+        if (editModal) {
+          editModal.classList.add("hidden");
+          editModal.setAttribute("aria-hidden", "true");
+        }
+        if (editModalError) {
+          editModalError.textContent = "";
+          editModalError.classList.add("hidden");
+        }
+      };
+
+      const openEditModal = (rowData) => {
+        if (!editModal || !rowData) return;
+        prendasState.editing = {
+          docId: safeString(rowData.docId || rowData.id).trim(),
+          rowDataSnapshot: { ...rowData }
+        };
+        if (editPVentaInput) editPVentaInput.value = toNumberOrNull(rowData.pVenta) ?? 0;
+        if (editCostoInput) editCostoInput.value = toNumberOrNull(rowData.costo) ?? 0;
+        if (editModalError) {
+          editModalError.textContent = "";
+          editModalError.classList.add("hidden");
+        }
+        updateEditPreview();
+        editModal.classList.remove("hidden");
+        editModal.setAttribute("aria-hidden", "false");
+      };
+
+      const updateRowInMemory = (docId, updates) => {
+        const applyTo = (rows = []) => {
+          rows.forEach((row) => {
+            const rowDocId = safeString(row.docId || row.id).trim();
+            if (rowDocId !== docId) return;
+            Object.assign(row, updates);
+          });
+        };
+        applyTo(prendasState.baseRows);
+        applyTo(prendasState.rowsAfterAll);
+        applyTo(prendasState.rowsAfterGlobal);
+        applyTo(prendasState.filtered);
+      };
+
+      const ensureAdminSession = async () => {
+        let user = auth.currentUser;
+        if (!user) {
+          const response = await signInWithPopup(auth, googleProvider);
+          user = response?.user || null;
+        }
+        const email = safeString(user?.email).trim().toLowerCase();
+        if (!isAllowlistedAdmin(email)) {
+          if (user) {
+            await signOut(auth);
+          }
+          throw new Error("Usuario no autorizado para editar.");
+        }
+        return user;
+      };
+
+      const saveEdit = async () => {
+        try {
+          if (!prendasState.editing?.docId) return;
+          const docId = prendasState.editing.docId;
+          const pVenta = toNumberOrNull(editPVentaInput?.value);
+          const costo = toNumberOrNull(editCostoInput?.value);
+          if (!Number.isFinite(pVenta) || pVenta < 0) {
+            throw new Error("P.Venta debe ser mayor o igual a 0.");
+          }
+          if (!Number.isFinite(costo) || costo < 0) {
+            throw new Error("Costo debe ser mayor o igual a 0.");
+          }
+          editModalSaveButton.disabled = true;
+          const user = await ensureAdminSession();
+          const { utilidad, margenPct } = computeMarginUtility(pVenta, costo);
+          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, docId);
+          await setDoc(adminRef, {
+            docId,
+            pVenta,
+            costo,
+            utilidad,
+            margen: margenPct,
+            updatedAt: serverTimestamp(),
+            updatedBy: safeString(user?.email).trim().toLowerCase()
+          }, { merge: true });
+
+          const publicRef = doc(db, activePrendasPublicCollection, docId);
+          await updateDoc(publicRef, {
+            pVenta,
+            precioConIva: pVenta,
+            updatedAt: serverTimestamp()
+          });
+
+          updateRowInMemory(docId, { pVenta, precioConIva: pVenta, costo, utilidad, margen: margenPct });
+          await renderDocs(prendasState.filtered);
+          closeEditModal();
+        } catch (error) {
+          if (editModalError) {
+            editModalError.textContent = error?.message || "No se pudo guardar.";
+            editModalError.classList.remove("hidden");
+          }
+          console.error(error);
+        } finally {
+          if (editModalSaveButton) {
+            editModalSaveButton.disabled = false;
+          }
+        }
       };
 
       const renderDocs = async (rows) => {
@@ -3717,11 +3976,17 @@ const auth = getAuth(app);
         if (adminLogoutButton) {
           adminLogoutButton.classList.toggle("hidden", !byAuth);
         }
+        if (adminLogoutQuickButton) {
+          adminLogoutQuickButton.classList.toggle("hidden", !byAuth);
+        }
         if (byAuth) {
           setAdminLoginStatus(`Admin autenticado: ${prendasState.adminEmail}`, "success");
         } else {
           setAdminLoginStatus("Inicia sesión con un correo admin permitido.");
           setAdminViewEnabled(false);
+        }
+        if (!enabled) {
+          closeEditModal();
         }
         setAdminPanelVisible(adminPanelVisible);
         if (refresh) {
@@ -3888,6 +4153,9 @@ const auth = getAuth(app);
       if (adminLogoutButton) {
         adminLogoutButton.addEventListener("click", handleAdminLogout);
       }
+      if (adminLogoutQuickButton) {
+        adminLogoutQuickButton.addEventListener("click", handleAdminLogout);
+      }
       if (adminOptionalToggle) {
         adminOptionalToggle.addEventListener("click", () => {
           setAdminPanelVisible(!adminPanelVisible);
@@ -3906,7 +4174,7 @@ const auth = getAuth(app);
           adminModeBtn.title = "Inicia sesión con Google para ver Costos/Margen/Utilidad";
           return;
         }
-        adminModeBtn.textContent = enabled ? "Salir modo admin" : "Modo admin";
+        adminModeBtn.textContent = enabled ? "Ocultar modo admin" : "Modo admin";
         adminModeBtn.title = enabled ? "Ocultar columnas admin" : "Mostrar columnas admin";
       };
 
@@ -3920,6 +4188,41 @@ const auth = getAuth(app);
           }
         });
       }
+
+      if (prendasTable) {
+        prendasTable.addEventListener("click", (event) => {
+          const button = event.target.closest(".rowEditBtn");
+          if (!button) return;
+          if (!prendasState.adminByAuth || !getAdminViewEnabled()) return;
+          const docId = safeString(button.dataset.editDoc).trim();
+          if (!docId) return;
+          const rowData = prendasState.filtered.find((row) => safeString(row.docId || row.id).trim() === docId)
+            || prendasState.baseRows.find((row) => safeString(row.docId || row.id).trim() === docId);
+          openEditModal(rowData);
+        });
+      }
+
+      if (editPVentaInput) {
+        editPVentaInput.addEventListener("input", updateEditPreview);
+      }
+      if (editCostoInput) {
+        editCostoInput.addEventListener("input", updateEditPreview);
+      }
+      if (editModalCancelButton) {
+        editModalCancelButton.addEventListener("click", closeEditModal);
+      }
+      if (editModalOverlay) {
+        editModalOverlay.addEventListener("click", closeEditModal);
+      }
+      if (editModalSaveButton) {
+        editModalSaveButton.addEventListener("click", saveEdit);
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && editModal && !editModal.classList.contains("hidden")) {
+          closeEditModal();
+        }
+      });
+
 window.addEventListener("hashchange", () => {
         handleTabChange(window.location.hash);
       });
