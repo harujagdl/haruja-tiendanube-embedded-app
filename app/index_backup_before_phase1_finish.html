@@ -610,35 +610,29 @@
 
 
 
-      .admin-create-card {
+      .admin-create-fields {
         grid-column: 1 / -1;
         border: 1px solid #e5e7eb;
         background: #f8fafc;
         border-radius: 12px;
         padding: 12px;
-        display: grid;
+        display: none;
         gap: 10px;
       }
 
-      .admin-create-card .admin-create-title {
+      .admin-create-fields .admin-create-title {
         font-size: 13px;
         font-weight: 600;
         color: #374151;
       }
 
-      .admin-create-card .admin-create-grid {
+      .admin-create-fields .admin-create-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 12px;
       }
 
-      @media (max-width: 720px) {
-        .admin-create-card .admin-create-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .admin-create-card small {
+      .admin-create-fields small {
         color: #6b7280;
         font-size: 12px;
       }
@@ -1439,19 +1433,19 @@ body.admin-on .admin-only{ display:table-cell; }
               <label for="registro-detalles">Detalles (opcional)</label>
               <input id="registro-detalles" name="detalles" type="text" placeholder="Ej: Pelly estampada" />
             </div>
-            <div id="adminCreateFields" class="admin-create-card hidden" aria-hidden="true">
+            <div id="adminCreateFields" class="admin-create-fields" aria-hidden="true">
               <div class="admin-create-title">Admin (opcional)</div>
               <div class="admin-create-grid">
                 <div>
                   <label for="adminCreateCosto">Costo</label>
-                  <input id="adminCreateCosto" type="number" step="0.01" min="0" placeholder="Costo (admin)" />
+                  <input id="adminCreateCosto" type="number" step="0.01" min="0" placeholder="0" />
                 </div>
                 <div>
                   <label for="adminCreatePVenta">P.Venta override (opcional)</label>
-                  <input id="adminCreatePVenta" type="number" step="0.01" min="0" placeholder="P.Venta override (admin)" />
+                  <input id="adminCreatePVenta" type="number" step="0.01" min="0" placeholder="0" />
                 </div>
               </div>
-              <small>Solo en Modo Admin</small>
+              <small>Solo visible en Modo Admin</small>
             </div>
             <button type="submit">Generar código</button>
           </form>
@@ -1819,8 +1813,6 @@ const auth = getAuth(app);
           .replace(/\s+/g, " ")
           .replace(/\//g, "__");
 
-      const safeDocId = (codigo) => normalizeSku(codigo);
-
       const normalizeSkuPrefix = (input) =>
         safeString(input)
           .trim()
@@ -2135,8 +2127,7 @@ const auth = getAuth(app);
         metadataTotal: null,
         metadataLoaded: false,
         headerPopover: null,
-        sort: { ...DEFAULT_PRENDAS_SORT },
-        adminMap: new Map()
+        sort: { ...DEFAULT_PRENDAS_SORT }
       };
       prendasState.editing = null;
       let isBooting = true;
@@ -3215,11 +3206,11 @@ const auth = getAuth(app);
 
         for (const chunk of chunks) {
           const snap = await getDocs(
-            query(collection(db, PRENDAS_ADMIN_COLLECTION), where(documentId(), "in", chunk))
+            query(collection(db, PRENDAS_ADMIN_COLLECTION), where("docId", "in", chunk))
           );
           snap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
-            const lookupId = safeString(docSnap.id).trim();
+            const lookupId = safeString(data.docId || docSnap.id).trim();
             if (!lookupId) return;
             map.set(lookupId, {
               costo: toNumberOrNull(data.costo),
@@ -3230,13 +3221,11 @@ const auth = getAuth(app);
           });
         }
 
-        prendasState.adminMap = map;
         return map;
       };
 
       const mergeAdminFields = async (rows = []) => {
         if (!(isAdminViewEnabled() && rows.length)) {
-          prendasState.adminMap.clear();
           return rows;
         }
 
@@ -3370,7 +3359,6 @@ const auth = getAuth(app);
         prendasState.filters.header = createEmptyHeaderFilters();
         prendasState.sort = restorePersistedSort();
         prendasState.uniqueOptions = {};
-        prendasState.adminMap.clear();
         closeHeaderPopover();
         resetCounters();
       };
@@ -3690,13 +3678,6 @@ const auth = getAuth(app);
             updatedBy: safeString(user?.email).trim().toLowerCase()
           }, { merge: true });
 
-          prendasState.adminMap.set(docId, {
-            costo: Number.isFinite(costo) ? costo : null,
-            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
-            utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : null,
-            margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : null
-          });
-
           const nextPVenta = Number.isFinite(pVentaOverride)
             ? pVentaOverride
             : toNumber(prendasState.editing?.publicPVenta);
@@ -3708,7 +3689,7 @@ const auth = getAuth(app);
             utilidad: hasMarginData ? utilidad : null,
             margen: hasMarginData ? Number(margenPct.toFixed(1)) : null
           });
-          await loadPrendasPage({ reset: false, reason: "edit-save" });
+          await renderDocs(prendasState.filtered);
           closeEditModal();
         } catch (error) {
           if (editModalError) {
@@ -3898,7 +3879,7 @@ const auth = getAuth(app);
           const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
             .filter(Boolean)
             .join(" ");
-          const docId = safeDocId(codigo);
+          const docId = normalizeSku(codigo);
 
           const payloadPublic = {
             docId,
@@ -3936,7 +3917,7 @@ const auth = getAuth(app);
             const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
             const pVentaVisible = Number.isFinite(pVentaOverride)
               ? pVentaOverride
-              : toNumber(payloadPublic.pVenta);
+              : null;
             const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
             const payloadAdmin = {
               docId,
@@ -4101,7 +4082,7 @@ const auth = getAuth(app);
           setAdminViewEnabled(false);
         }
         if (adminCreateFields) {
-          adminCreateFields.classList.toggle("hidden", !enabled);
+          adminCreateFields.style.display = enabled ? "grid" : "none";
           adminCreateFields.setAttribute("aria-hidden", enabled ? "false" : "true");
         }
         if (adminCreateCostoInput) {
@@ -4113,7 +4094,6 @@ const auth = getAuth(app);
           if (!enabled) adminCreatePVentaInput.value = "";
         }
         if (!enabled) {
-          prendasState.adminMap.clear();
           closeEditModal();
         }
         setAdminPanelVisible(adminPanelVisible);
@@ -4326,8 +4306,7 @@ const auth = getAuth(app);
           if (!docId) return;
           const rowData = prendasState.filtered.find((row) => safeString(row.docId || row.id).trim() === docId)
             || prendasState.baseRows.find((row) => safeString(row.docId || row.id).trim() === docId);
-          const adminData = prendasState.adminMap.get(docId) || {};
-          openEditModal(rowData ? { ...rowData, ...adminData } : rowData);
+          openEditModal(rowData);
         });
       }
 
