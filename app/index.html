@@ -3396,7 +3396,7 @@ const auth = getAuth(app);
       };
 
       const loadPrendasPage = async ({
-        pageIndex = 0,
+        pageIndex = null,
         reset = false,
         reason = "manual"
       } = {}) => {
@@ -3422,7 +3422,10 @@ const auth = getAuth(app);
           const pageSize = getPageSize();
           const totalRows = rowsAfterAll.length;
           const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-          const safePageIndex = Math.min(Math.max(pageIndex, 0), totalPages - 1);
+          const requestedPageIndex = Number.isFinite(Number(pageIndex))
+            ? Number(pageIndex)
+            : prendasState.pageIndex;
+          const safePageIndex = Math.min(Math.max(requestedPageIndex, 0), totalPages - 1);
           const start = safePageIndex * pageSize;
           const items = rowsAfterAll.slice(start, start + pageSize);
 
