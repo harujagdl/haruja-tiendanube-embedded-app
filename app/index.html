@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Panel Haruja – TD | Panel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
       :root {
         color-scheme: light;
@@ -1399,6 +1400,105 @@ body.admin-on .admin-only{ display:table-cell; }
   }
 }
 
+#printRoot {
+  display: none;
+}
+
+.label-page {
+  width: 51mm;
+  height: 25mm;
+  page-break-after: always;
+  overflow: hidden;
+  background: #fff;
+  color: #000;
+  padding: 1.5mm;
+  display: grid;
+  grid-template-columns: 1fr 17.5mm;
+  gap: 1.5mm;
+  font-family: Arial, sans-serif;
+}
+
+.label-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.label-code-title,
+.label-price-title {
+  font-size: 3.2mm;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.label-sku {
+  margin-top: 1mm;
+  min-height: 3mm;
+  font-size: 2.2mm;
+  line-height: 1.1;
+}
+
+.label-price-title {
+  margin-top: auto;
+}
+
+.label-price-value {
+  margin-top: 0.8mm;
+  font-size: 5.8mm;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.label-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.label-qr {
+  width: 14mm;
+  height: 14mm;
+}
+
+.label-qr img,
+.label-qr canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.label-logo {
+  width: 13.5mm;
+  height: 3.8mm;
+  object-fit: contain;
+}
+
+@page {
+  size: 51mm 25mm;
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #printRoot,
+  #printRoot * {
+    visibility: visible;
+  }
+
+  #printRoot {
+    display: block;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -1514,24 +1614,19 @@ body.admin-on .admin-only{ display:table-cell; }
           <p>Ingresa el código y la cantidad de etiquetas a generar.</p>
           <form class="form" id="zpl-form">
             <div>
-              <label for="zpl-codigo">Código (SKU)</label>
-              <input id="zpl-codigo" name="codigo" type="text" placeholder="HA2A007/NG-M" />
+              <label for="labelSkuInput">Código (SKU)</label>
+              <input id="labelSkuInput" name="codigo" type="text" placeholder="HA2A007/NG-M" />
             </div>
             <div>
-              <label for="zpl-cantidad">Cantidad</label>
-              <input id="zpl-cantidad" name="cantidad" type="number" min="1" value="1" />
+              <label for="labelQtyInput">Cantidad</label>
+              <input id="labelQtyInput" name="cantidad" type="number" min="1" value="1" />
             </div>
-            <button type="submit">Imprimir etiqueta</button>
+            <button id="labelPrintBtn" type="submit">Imprimir etiqueta</button>
           </form>
           <p id="zpl-status" class="status"></p>
-          <div class="zpl-output hidden" id="zpl-output">
-            <label for="zpl-textarea">ZPL generado</label>
-            <textarea id="zpl-textarea" readonly></textarea>
-            <div class="result-actions" style="margin-top: 12px;">
-              <button type="button" id="zpl-copy">Copiar ZPL</button>
-            </div>
-          </div>
         </section>
+
+        <div id="printRoot" aria-hidden="true"></div>
 
         <section class="section" id="base-datos-codigos">
           <div id="dbCodigosSection" class="card section-card">
@@ -1775,9 +1870,10 @@ const auth = getAuth(app);
 
       const zplForm = document.getElementById("zpl-form");
       const zplStatus = document.getElementById("zpl-status");
-      const zplOutput = document.getElementById("zpl-output");
-      const zplTextarea = document.getElementById("zpl-textarea");
-      const zplCopy = document.getElementById("zpl-copy");
+      const labelSkuInput = document.getElementById("labelSkuInput");
+      const labelQtyInput = document.getElementById("labelQtyInput");
+      const labelPrintBtn = document.getElementById("labelPrintBtn");
+      const printRoot = document.getElementById("printRoot");
 
       const prendasSearch = document.getElementById("prendas-search");
       const headerFilterButtons = document.querySelectorAll("[data-open-header-filter]");
@@ -4377,44 +4473,147 @@ const auth = getAuth(app);
         setRegistroStatus("");
       });
 
-      zplForm.addEventListener("submit", (event) => {
+      const formatPrice = (value) => {
+        const amount = Number(value);
+        if (!Number.isFinite(amount)) return "$0.00";
+        return `$${amount.toFixed(2)}`;
+      };
+
+      const fetchRowBySku = async (skuRaw) => {
+        const sku = safeString(skuRaw).trim().toUpperCase();
+        if (!sku) return null;
+        const docId = safeDocId(sku);
+
+        const publicSnap = await getDoc(doc(db, activePrendasPublicCollection, docId));
+        const publicData = publicSnap.exists() ? publicSnap.data() || {} : null;
+
+        if (isAdminViewEnabled()) {
+          const adminSnap = await getDoc(doc(db, PRENDAS_ADMIN_COLLECTION, docId));
+          if (adminSnap.exists()) {
+            const adminData = adminSnap.data() || {};
+            return {
+              ...(publicData || {}),
+              ...adminData,
+              codigo: safeString(publicData?.codigo || adminData?.codigo || sku).toUpperCase()
+            };
+          }
+        }
+
+        if (publicData) {
+          return {
+            ...publicData,
+            codigo: safeString(publicData?.codigo || sku).toUpperCase()
+          };
+        }
+        return null;
+      };
+
+      const buildLabelPrintPages = ({ sku, qty, price, logoSrc }) => {
+        if (!printRoot) return;
+        printRoot.innerHTML = "";
+
+        for (let i = 0; i < qty; i += 1) {
+          const page = document.createElement("div");
+          page.className = "label-page";
+
+          const left = document.createElement("div");
+          left.className = "label-left";
+
+          const codeTitle = document.createElement("div");
+          codeTitle.className = "label-code-title";
+          codeTitle.textContent = "CODIGO$";
+
+          const skuText = document.createElement("div");
+          skuText.className = "label-sku";
+          skuText.textContent = sku;
+
+          const priceTitle = document.createElement("div");
+          priceTitle.className = "label-price-title";
+          priceTitle.textContent = "PRECIO$";
+
+          const priceValue = document.createElement("div");
+          priceValue.className = "label-price-value";
+          priceValue.textContent = price;
+
+          left.append(codeTitle, skuText, priceTitle, priceValue);
+
+          const right = document.createElement("div");
+          right.className = "label-right";
+
+          const qrContainer = document.createElement("div");
+          qrContainer.className = "label-qr";
+          qrContainer.id = `label-qr-${i}`;
+
+          const logo = document.createElement("img");
+          logo.className = "label-logo";
+          logo.src = logoSrc;
+          logo.alt = "harujagdl";
+
+          right.append(qrContainer, logo);
+          page.append(left, right);
+          printRoot.appendChild(page);
+
+          if (window.QRCode) {
+            new QRCode(qrContainer, {
+              text: sku,
+              width: 140,
+              height: 140,
+              correctLevel: QRCode.CorrectLevel.M
+            });
+          }
+        }
+      };
+
+      const handlePrintLabel = async (event) => {
         event.preventDefault();
         setZplStatus("");
 
-        const codigo = document.getElementById("zpl-codigo").value.trim();
-        const cantidadValue = Number(document.getElementById("zpl-cantidad").value);
-        const cantidad = Number.isFinite(cantidadValue) && cantidadValue > 0 ? cantidadValue : 1;
+        const sku = safeString(labelSkuInput?.value).trim().toUpperCase();
+        const qtyValue = Number(labelQtyInput?.value);
+        const qty = Number.isInteger(qtyValue) ? qtyValue : 0;
 
-        const formatoValido = CODE_PATTERN.test(codigo.toUpperCase());
-        if (!codigo || !formatoValido) {
-          setZplStatus("Ingresa un código válido (HA{#}{A}{NNN}/COLOR-TALLA).", "error");
-          zplOutput.classList.add("hidden");
+        if (!sku) {
+          setZplStatus("Ingresa un SKU.", "error");
           return;
         }
 
-        const template = `^XA
-^CF0,40
-^FO30,30^FD${codigo}^FS
-^CF0,30
-^FO30,90^FDPRECIO$^FS
-^FO30,140^BQN,2,6^FDLA,${codigo}^FS
-^XZ`;
-
-        const zpl = Array.from({ length: cantidad }, () => template).join("\n");
-        zplTextarea.value = zpl;
-        zplOutput.classList.remove("hidden");
-        setZplStatus("ZPL generado correctamente.", "success");
-      });
-
-      zplCopy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(zplTextarea.value);
-          setZplStatus("ZPL copiado al portapapeles.", "success");
-        } catch (error) {
-          setZplStatus("No se pudo copiar el ZPL.", "error");
-          console.error(error);
+        if (qty < 1 || qty > 200) {
+          setZplStatus("La cantidad debe estar entre 1 y 200.", "error");
+          return;
         }
-      });
+
+        if (!printRoot) {
+          setZplStatus("No se encontró el contenedor de impresión (#printRoot).", "error");
+          return;
+        }
+
+        try {
+          labelPrintBtn.disabled = true;
+          const row = await fetchRowBySku(sku);
+          if (!row) {
+            setZplStatus("No se encontró el SKU en Firestore.", "error");
+            return;
+          }
+
+          const priceRaw = row?.precioVenta ?? row?.pVentaOverride ?? row?.pVenta ?? row?.precio ?? 0;
+          buildLabelPrintPages({
+            sku,
+            qty,
+            price: formatPrice(priceRaw),
+            logoSrc: getZplLogoDataUrl()
+          });
+
+          setZplStatus(`Imprimiendo ${qty} etiqueta(s)…`, "success");
+          window.print();
+        } catch (error) {
+          console.error(error);
+          setZplStatus("No se pudo preparar la impresión de etiquetas.", "error");
+        } finally {
+          labelPrintBtn.disabled = false;
+        }
+      };
+
+      zplForm.addEventListener("submit", handlePrintLabel);
 
       // ADMIN DB MODE START
       const DB_TAB_HASH = "#base-datos-codigos";
