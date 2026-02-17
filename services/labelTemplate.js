@@ -4,28 +4,29 @@ import path from "node:path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const GFA_LOGO = readFileSync(path.resolve(__dirname, "../tools/assets/haruja_logo_gfa.txt"), "utf8").trim();
+const GFA_LOGO = readFileSync(path.resolve(__dirname, "../tools/generated/harujagdl_logo.gfa.txt"), "utf8").trim();
 
 export function buildLabelZPL({ sku, price }) {
   return `
 ^XA
-^PW406
-^LL200
 ^CI28
+^PW406
+^LL203
+^LH0,0
 
-^FO20,25
-^A0N,40,40
-^FDCODIGO$^FS
+^FO25,40
+^A0N,30,30
+^FD${sku}^FS
 
-^FO20,70
-^A0N,70,70
+^FO25,100
+^A0N,55,55
 ^FD${price}^FS
 
-^FO260,20
-^BQN,2,5
-^FDLA,${sku}^FS
+^FO260,17
+^BQN,2,6
+^FD${sku}^FS
 
-^FO60,150
+^FO260,145
 ${GFA_LOGO}
 ^FS
 
