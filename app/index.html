@@ -2595,6 +2595,173 @@ const auth = getAuth(app);
         return `data:image/svg+xml;utf8,${encodeURIComponent(fallbackSvg)}`;
       };
 
+      // Pega aquí el ZPL completo de Haruja2025.zpl si no lo inyectas por window.__HARUJA_2025_ZPL__.
+      const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw``;
+
+      const extractGfaCommandFromZpl = (zplSource) => {
+        const source = safeString(zplSource);
+        const match = source.match(/\^GFA,(\d+),(\d+),(\d+),([\s\S]*?)\^FS/i);
+        if (!match) {
+          throw new Error("No se encontró bloque ^GFA ... ^FS en Haruja2025.zpl");
+        }
+        return {
+          bytesTotal: Number(match[1]),
+          bytesUsed: Number(match[2]),
+          bytesPerRow: Number(match[3]),
+          data: match[4]
+        };
+      };
+
+      const isHexDigit = (char) => /^[0-9A-Fa-f]$/.test(char);
+
+      const decodeCountCode = (char) => {
+        if (char >= "0" && char <= "9") return Number(char);
+        if (char >= "G" && char <= "Z") return char.charCodeAt(0) - 69;
+        if (char >= "g" && char <= "z") return (char.charCodeAt(0) - 102) * 20;
+        return null;
+      };
+
+      const decodeGfaToBitmap = ({ bytesTotal, bytesPerRow, data }) => {
+        if (!Number.isInteger(bytesTotal) || !Number.isInteger(bytesPerRow) || bytesPerRow <= 0) {
+          throw new Error("Parámetros GFA inválidos");
+        }
+
+        const rows = [];
+        let row = [];
+        let cursor = 0;
+        const source = safeString(data).trim();
+
+        const pushRow = () => {
+          while (row.length < bytesPerRow) row.push(0x00);
+          if (row.length > bytesPerRow) {
+            throw new Error("Fila GFA excede bytesPerRow");
+          }
+          rows.push(row);
+          row = [];
+        };
+
+        const pushByte = (value) => {
+          row.push(value);
+          if (row.length === bytesPerRow) pushRow();
+          if (row.length > bytesPerRow) {
+            throw new Error("Overflow de fila durante decode GFA");
+          }
+        };
+
+        while (cursor < source.length) {
+          const current = source[cursor];
+          if (/\s/.test(current)) {
+            cursor += 1;
+            continue;
+          }
+
+          let count = 0;
+          let hasCount = false;
+          while (cursor < source.length) {
+            const countValue = decodeCountCode(source[cursor]);
+            if (countValue === null) break;
+            hasCount = true;
+            count += countValue;
+            cursor += 1;
+          }
+          const repeat = hasCount ? count : 1;
+          if (repeat <= 0) {
+            throw new Error("Conteo inválido en compresión GFA");
+          }
+
+          const token = source[cursor];
+          if (!token) break;
+
+          if (token === ",") {
+            cursor += 1;
+            for (let i = 0; i < repeat; i += 1) pushRow();
+            continue;
+          }
+
+          if (token === "!") {
+            cursor += 1;
+            for (let i = 0; i < repeat; i += 1) {
+              while (row.length < bytesPerRow) row.push(0xff);
+              pushRow();
+            }
+            continue;
+          }
+
+          if (token === ":") {
+            cursor += 1;
+            if (!rows.length) {
+              throw new Error("Token ':' sin fila previa en GFA");
+            }
+            for (let i = 0; i < repeat; i += 1) {
+              rows.push(rows[rows.length - 1].slice());
+            }
+            continue;
+          }
+
+          const pairA = source[cursor];
+          const pairB = source[cursor + 1];
+          if (!isHexDigit(pairA) || !isHexDigit(pairB)) {
+            throw new Error(`Token inválido en GFA cerca de "${source.slice(cursor, cursor + 8)}"`);
+          }
+          const byteValue = parseInt(`${pairA}${pairB}`, 16);
+          cursor += 2;
+          for (let i = 0; i < repeat; i += 1) {
+            pushByte(byteValue);
+          }
+        }
+
+        if (row.length) pushRow();
+
+        const flattened = new Uint8Array(rows.flat());
+        if (flattened.length !== bytesTotal) {
+          throw new Error("GFA decode mismatch");
+        }
+        return flattened;
+      };
+
+      const renderGfaToPngDataUrl = ({ bytesTotal, bytesPerRow, data }) => {
+        const bitmap = decodeGfaToBitmap({ bytesTotal, bytesPerRow, data });
+        const widthDots = bytesPerRow * 8;
+        const heightDots = bytesTotal / bytesPerRow;
+        if (!Number.isInteger(heightDots)) {
+          throw new Error("Altura inválida para bitmap GFA");
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = widthDots;
+        canvas.height = heightDots;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("No se pudo obtener contexto 2D para logo GFA");
+
+        ctx.clearRect(0, 0, widthDots, heightDots);
+        ctx.fillStyle = "#000";
+
+        let offset = 0;
+        for (let y = 0; y < heightDots; y += 1) {
+          for (let byteIndex = 0; byteIndex < bytesPerRow; byteIndex += 1) {
+            const byteValue = bitmap[offset++];
+            for (let bit = 7; bit >= 0; bit -= 1) {
+              const x = byteIndex * 8 + (7 - bit);
+              if (((byteValue >> bit) & 1) === 1) {
+                ctx.fillRect(x, y, 1, 1);
+              }
+            }
+          }
+        }
+
+        return canvas.toDataURL("image/png");
+      };
+
+      const getZplLogoDataUrl = (() => {
+        let cachedDataUrl = "";
+        return () => {
+          if (cachedDataUrl) return cachedDataUrl;
+          const gfa = extractGfaCommandFromZpl(HARUJA_2025_ZPL);
+          cachedDataUrl = renderGfaToPngDataUrl(gfa);
+          return cachedDataUrl;
+        };
+      })();
+
       const escapeHtml = (value) => safeString(value)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -2622,7 +2789,7 @@ const auth = getAuth(app);
   .precio { position:absolute; left:3.13mm; top:12.51mm; font-size:6.88mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
   .qr { position:absolute; left:32.53mm; top:2.13mm; width:16.5mm; height:16.5mm; }
   .qr img { width:100%; height:100%; display:block; }
-  .logo { position:absolute; left:36.28mm; top:20.64mm; width:13.01mm; height:3.75mm; object-fit:contain; }
+  .logo { position:absolute; left:36.28mm; top:20.65mm; width:13.01mm; height:3.75mm; object-fit:contain; image-rendering:pixelated; }
   @media print { .print-actions { display:none; } }
 </style></head>
 <body>
@@ -2649,7 +2816,13 @@ const auth = getAuth(app);
           setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
           return;
         }
-        const logoSrc = getLabelLogoSrc();
+        let logoSrc = getLabelLogoSrc();
+        try {
+          logoSrc = getZplLogoDataUrl();
+        } catch (error) {
+          console.error("No se pudo renderizar el logo desde ^GFA:", error);
+          setPrendasAlert("No se pudo renderizar el logo ZPL (^GFA). Se usará logo alterno.");
+        }
         const labels = rows.map((row) => {
           const codigo = safeString(row.codigo || row.code).trim().toUpperCase();
           const precioNum = getLabelPriceNumber(row);
