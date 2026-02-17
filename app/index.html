@@ -2884,10 +2884,10 @@ const auth = getAuth(app);
           "^FO25,100",
           "^A0N,55,55",
           `^FD${price}^FS`,
-          "^FO260,17",
+          "^FO260,20",
           "^BQN,2,6",
-          `^FD${sku}^FS`,
-          "^FO260,145",
+          `^FDMM,A${sku}^FS`,
+          "^FO250,140",
           logoCommand,
           "^FS",
           "^XZ"
@@ -4635,10 +4635,12 @@ const auth = getAuth(app);
           const priceRaw = row?.precioVenta ?? row?.pVentaOverride ?? row?.pVenta ?? row?.precio ?? 0;
           const formattedPrice = formatPrice(priceRaw);
 
+          const zpl = buildLabelZpl({ sku, price: formattedPrice, qty });
+          console.log("[label-zpl] ZPL generado:\n", zpl);
+
           if (LABEL_ZPL_DEBUG) {
             try {
-              const debugZpl = buildLabelZpl({ sku, price: formattedPrice, qty });
-              console.log("[label-zpl-debug] ZPL generado:\n", debugZpl);
+              console.log("[label-zpl-debug] ZPL generado:\n", zpl);
             } catch (error) {
               console.error("[label-zpl-debug] No se pudo generar ZPL de depuración:", error);
             }
