@@ -1164,24 +1164,31 @@ button.secondary.small{
 .admin-only{ display:none; }
 body.admin-on .admin-only{ display:table-cell; }
 
-#dbCodigosSection .sort-toggle-btn {
-  border: 1px solid #d0d5dd;
+#dbCodigosSection .th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
   background: #fff;
-  border-radius: 10px;
-  font-size: 12px;
-  width: 28px;
-  height: 28px;
-  line-height: 1;
-  color: #344054;
+  color: #475467;
+  font-weight: 600;
   cursor: pointer;
 }
+#dbCodigosSection .th-sort:active {
+  transform: translateY(1px);
+}
 #dbCodigosSection .tableWrap {
+  width: 100%;
   overflow-x: auto;
-  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 #dbCodigosSection table.table {
   width: 100%;
-  min-width: max-content;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 920px;
 }
 #dbCodigosSection table.table .cell-desc {
   max-width: 320px;
@@ -1197,8 +1204,12 @@ body.admin-on .admin-only{ display:table-cell; }
 @media (max-width: 768px) {
   #dbCodigosSection table.table th,
   #dbCodigosSection table.table td {
-    padding: 6px 6px;
-    font-size: 12px;
+    padding: 8px 8px;
+    font-size: 13px;
+  }
+  #dbCodigosSection .th-sort {
+    padding: 10px 12px;
+    white-space: nowrap;
   }
   #dbCodigosSection table.table .badge {
     padding: 1px 5px;
@@ -1403,7 +1414,7 @@ body.admin-on .admin-only{ display:table-cell; }
       <table id="tablaPrendas" class="table">
         <thead>
                   <tr>
-                    <th class="col-orden" data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="sort-toggle-btn" id="orden-sort-toggle" data-sort-toggle="orden" aria-label="Alternar orden ascendente o descendente">▲</button></span></th>
+                    <th class="col-orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
                     <th class="col-codigo">Código</th>
                     <th class="col-descripcion">Descripción</th>
                     <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
@@ -1549,7 +1560,8 @@ const auth = getAuth(app);
 
       const prendasSearch = document.getElementById("prendas-search");
       const headerFilterButtons = document.querySelectorAll("[data-open-header-filter]");
-      const ordenSortToggle = document.getElementById("orden-sort-toggle");
+      const ordenSortBtn = document.getElementById("ordenSortBtn");
+      const ordenSortIcon = document.getElementById("ordenSortIcon");
       const prendasYear = document.getElementById("prendas-year");
       const prendasMonth = document.getElementById("prendas-month");
       const prendasPrecioMin = document.getElementById("prendas-precio-min");
@@ -2583,10 +2595,10 @@ const auth = getAuth(app);
       };
 
       const updateOrdenSortToggleUi = () => {
-        if (!ordenSortToggle) return;
+        if (!ordenSortBtn || !ordenSortIcon) return;
         const sort = normalizeSortConfig(prendasState.sort);
-        ordenSortToggle.textContent = sort.dir === "desc" ? "▼" : "▲";
-        ordenSortToggle.setAttribute("aria-label", `Orden ${sort.dir === "desc" ? "descendente" : "ascendente"}`);
+        ordenSortIcon.textContent = sort.dir === "desc" ? "↓" : "↑";
+        ordenSortBtn.setAttribute("aria-label", `Ordenar por Orden (${sort.dir === "desc" ? "descendente" : "ascendente"})`);
       };
 
       const persistSort = (sort) => {
@@ -2617,33 +2629,43 @@ const auth = getAuth(app);
         }
       };
 
+      const resolveRowOrderValue = (row, index) => {
+        const candidates = [row?.orden, row?._index, row?.__i, row?._rowNumber, row?.__order];
+        for (const value of candidates) {
+          const parsed = toNumberOrNull(value);
+          if (Number.isFinite(parsed)) return parsed;
+        }
+        return index + 1;
+      };
+
       const sortRows = (rows = [], sort = prendasState.sort) => {
         const activeSort = normalizeSortConfig(sort);
         const direction = activeSort.dir === "desc" ? -1 : 1;
-        return [...rows].sort((a, b) => {
+        const indexedRows = rows.map((row, index) => ({ row, index }));
+        return indexedRows.sort((a, b) => {
           if (activeSort.key === "orden") {
-            const orderA = Number(a?.orden) || 0;
-            const orderB = Number(b?.orden) || 0;
+            const orderA = resolveRowOrderValue(a.row, a.index);
+            const orderB = resolveRowOrderValue(b.row, b.index);
             if (orderA !== orderB) {
               return (orderA - orderB) * direction;
             }
-            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
+            return safeString(a.row?.codigo).localeCompare(safeString(b.row?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
           }
 
           if (activeSort.key === "fecha") {
-            const timeA = resolveComparableDate(a)?.getTime() ?? 0;
-            const timeB = resolveComparableDate(b)?.getTime() ?? 0;
+            const timeA = resolveComparableDate(a.row)?.getTime() ?? 0;
+            const timeB = resolveComparableDate(b.row)?.getTime() ?? 0;
             if (timeA !== timeB) {
               return (timeA - timeB) * direction;
             }
-            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
+            return safeString(a.row?.codigo).localeCompare(safeString(b.row?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
           }
 
-          return safeString(a?.[activeSort.key]).localeCompare(safeString(b?.[activeSort.key]), "es", {
+          return safeString(a.row?.[activeSort.key]).localeCompare(safeString(b.row?.[activeSort.key]), "es", {
             numeric: true,
             sensitivity: "base"
           }) * direction;
-        });
+        }).map(({ row }) => row);
       };
 
       const applyAllFilters = (rows) => {
@@ -3126,7 +3148,17 @@ const auth = getAuth(app);
           row.margen = null;
         });
 
-        prendasState.baseRows = rows.sort(compareItemsByOrdenAsc);
+        const orderedRows = rows.sort(compareItemsByOrdenAsc);
+        orderedRows.forEach((row, index) => {
+          const generatedOrder = index + 1;
+          row.__order = generatedOrder;
+          row._rowNumber = generatedOrder;
+          if (!Number.isFinite(toNumberOrNull(row.orden))) {
+            row.orden = generatedOrder;
+          }
+        });
+
+        prendasState.baseRows = orderedRows;
         prendasState.baseRowsCacheKey = cacheKey;
         return prendasState.baseRows;
       };
@@ -4007,13 +4039,12 @@ prendasSearch.addEventListener("input", handleSearchInput);
           await loadPrendasPage({ reset: true, reason: "page-size" });
         });
       }
-      if (ordenSortToggle) {
-        ordenSortToggle.addEventListener("pointerdown", async (event) => {
-          event.preventDefault();
+      if (ordenSortBtn) {
+        ordenSortBtn.addEventListener("click", async () => {
           const current = normalizeSortConfig(prendasState.sort);
           const nextDir = current.dir === "asc" ? "desc" : "asc";
           await setPrendasSort({ key: "orden", dir: nextDir });
-        });
+        }, { passive: true });
       }
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
