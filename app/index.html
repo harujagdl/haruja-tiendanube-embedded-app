@@ -3678,7 +3678,18 @@ const auth = getAuth(app);
             updatedBy: safeString(user?.email).trim().toLowerCase()
           }, { merge: true });
 
-          await loadPrendasPage({ reset: false, reason: "inline-edit" });
+          const nextPVenta = Number.isFinite(pVentaOverride)
+            ? pVentaOverride
+            : toNumber(prendasState.editing?.publicPVenta);
+          const hasMarginData = Number.isFinite(nextPVenta) && Number.isFinite(costo);
+          updateRowInMemory(docId, {
+            costo: Number.isFinite(costo) ? costo : null,
+            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
+            pVentaDisplay: Number.isFinite(nextPVenta) ? nextPVenta : null,
+            utilidad: hasMarginData ? utilidad : null,
+            margen: hasMarginData ? Number(margenPct.toFixed(1)) : null
+          });
+          await renderDocs(prendasState.filtered);
           closeEditModal();
         } catch (error) {
           if (editModalError) {
@@ -3904,6 +3915,10 @@ const auth = getAuth(app);
           if (isAdminViewEnabled()) {
             const costo = toNumber(adminCreateCostoInput?.value);
             const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
+            const pVentaVisible = Number.isFinite(pVentaOverride)
+              ? pVentaOverride
+              : null;
+            const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
             const payloadAdmin = {
               docId,
               updatedAt: serverTimestamp(),
@@ -3911,6 +3926,10 @@ const auth = getAuth(app);
             };
             if (Number.isFinite(costo)) payloadAdmin.costo = costo;
             if (Number.isFinite(pVentaOverride)) payloadAdmin.pVentaOverride = pVentaOverride;
+            if (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) {
+              payloadAdmin.utilidad = utilidad;
+              payloadAdmin.margen = margenPct;
+            }
             await setDoc(doc(db, PRENDAS_ADMIN_COLLECTION, docId), payloadAdmin, { merge: true });
           }
 
@@ -3922,6 +3941,8 @@ const auth = getAuth(app);
           registroResult.classList.remove("hidden");
           if (duplicateFound) {
             setRegistroStatus("Código actualizado en public/admin.", "warning");
+          } else if (isAdminViewEnabled()) {
+            setRegistroStatus("Prenda guardada correctamente en colecciones public/admin.", "success");
           } else {
             setRegistroStatus("Prenda guardada correctamente en colección public.", "success");
           }
