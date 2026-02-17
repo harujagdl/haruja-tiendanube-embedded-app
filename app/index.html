@@ -1122,7 +1122,31 @@ button.secondary.small{
 #dbCodigosSection .db-table { padding: 18px 24px 24px 24px; }
 #dbCodigosSection .db-table-toolbar { display:flex; justify-content:flex-end; margin-bottom: 10px; }
 #dbCodigosSection .table-wrap { width:100%; overflow:auto; border:1px solid #e6e8ef; border-radius:16px; background:#fff; }
-#dbCodigosSection table.table { width: 100%; border-collapse: collapse; min-width: 980px; }
+#dbCodigosSection table.table { width: 100%; border-collapse: collapse; min-width: 980px; table-layout: fixed; }
+#dbCodigosSection table.table th,
+#dbCodigosSection table.table td {
+  padding: 6px 8px;
+  font-size: 13px;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+#dbCodigosSection table.table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#dbCodigosSection table.table .col-orden { min-width: 70px; width: 70px; }
+#dbCodigosSection table.table .col-codigo { min-width: 140px; width: 140px; }
+#dbCodigosSection table.table .col-descripcion { min-width: 320px; max-width: 420px; }
+#dbCodigosSection table.table .col-tipo { min-width: 110px; }
+#dbCodigosSection table.table .col-color { min-width: 110px; }
+#dbCodigosSection table.table .col-talla { min-width: 90px; }
+#dbCodigosSection table.table .col-proveedor { min-width: 130px; }
+#dbCodigosSection table.table .col-status { min-width: 120px; }
+#dbCodigosSection table.table .col-disponibilidad { min-width: 130px; }
+#dbCodigosSection table.table .col-fecha { min-width: 120px; }
+#dbCodigosSection table.table .col-pventa { min-width: 110px; }
+#dbCodigosSection table.table .badge { padding: 2px 6px; font-size: 11px; }
 #dbCodigosSection thead th { position: sticky; top: 0; background:#fff; z-index:2; }
 #dbCodigosSection .th-filter { margin-left: 8px; border:1px solid #e6e8ef; background:#fff; border-radius: 10px; padding: 4px 8px; cursor:pointer; }
 #dbCodigosSection .pager { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top: 12px; flex-wrap:wrap; }
@@ -1320,17 +1344,17 @@ body.admin-on .admin-only{ display:table-cell; }
       <table id="tablaPrendas" class="table">
         <thead>
                   <tr>
-                    <th data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
-                    <th>Código</th>
-                    <th>Descripción</th>
-                    <th data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
-                    <th data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
-                    <th data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
-                    <th data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
-                    <th data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
-                    <th data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
-                    <th data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
-                    <th data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
+                    <th class="col-orden" data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
+                    <th class="col-codigo">Código</th>
+                    <th class="col-descripcion">Descripción</th>
+                    <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
+                    <th class="col-color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
+                    <th class="col-talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
+                    <th class="col-proveedor" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
+                    <th class="col-status" data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
+                    <th class="col-disponibilidad" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
+                    <th class="col-fecha" data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
+                    <th class="col-pventa" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
                     <th class="admin-only">(Admin) Utilidad</th>
@@ -1806,10 +1830,10 @@ const auth = getAuth(app);
         disponibilidad: new Set(),
         pventaMin: null,
         pventaMax: null,
-        ordenSortDir: null,
         fechaYear: "",
         fechaMonth: ""
       });
+      const DEFAULT_PRENDAS_SORT = Object.freeze({ key: "Orden", dir: "asc" });
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
       const METADATA_COUNTS_DOC = {
@@ -1855,7 +1879,8 @@ const auth = getAuth(app);
         countToken: 0,
         metadataTotal: null,
         metadataLoaded: false,
-        headerPopover: null
+        headerPopover: null,
+        sort: { ...DEFAULT_PRENDAS_SORT }
       };
       let isBooting = true;
 
@@ -2424,7 +2449,7 @@ const auth = getAuth(app);
           );
         }
         if (key === "orden") {
-          return Boolean(prendasState.filters.header.ordenSortDir);
+          return (prendasState.sort?.dir || DEFAULT_PRENDAS_SORT.dir) !== DEFAULT_PRENDAS_SORT.dir;
         }
         if (key === "fecha") {
           return Boolean(prendasState.filters.header.fechaYear || prendasState.filters.header.fechaMonth);
@@ -2465,15 +2490,6 @@ const auth = getAuth(app);
           });
           if (!hasChecklistMatch) return false;
 
-          // Orden (rango)
-          const hasOrdenRange = headerFilters.ordenMin != null || headerFilters.ordenMax != null;
-          if (hasOrdenRange) {
-            const ord = toNum(item.orden);
-            if (ord === null) return false;
-            if (headerFilters.ordenMin != null && ord < headerFilters.ordenMin) return false;
-            if (headerFilters.ordenMax != null && ord > headerFilters.ordenMax) return false;
-          }
-
           // Fecha (año/mes)
           const hasFechaFilter = Boolean(headerFilters.fechaYear || headerFilters.fechaMonth);
           if (hasFechaFilter) {
@@ -2497,6 +2513,44 @@ const auth = getAuth(app);
           return true;
         });
 
+      const toNumberSafe = (value, fallback = Number.POSITIVE_INFINITY) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : fallback;
+      };
+
+      const applySort = (rows = []) => {
+        const activeSort = prendasState.sort || DEFAULT_PRENDAS_SORT;
+        const key = safeString(activeSort.key || DEFAULT_PRENDAS_SORT.key).trim() || DEFAULT_PRENDAS_SORT.key;
+        const dir = safeString(activeSort.dir || DEFAULT_PRENDAS_SORT.dir).toLowerCase() === "desc" ? "desc" : "asc";
+        const direction = dir === "desc" ? -1 : 1;
+        const numberFallback = dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+
+        return [...rows].sort((a, b) => {
+          if (key === "Orden") {
+            const orderA = toNumberSafe(a?.orden, numberFallback);
+            const orderB = toNumberSafe(b?.orden, numberFallback);
+            if (orderA !== orderB) {
+              return (orderA - orderB) * direction;
+            }
+            return compareItemsByDateDesc(a, b);
+          }
+
+          if (key === "Fecha") {
+            const timeA = resolveComparableDate(a)?.getTime() ?? Number.NEGATIVE_INFINITY;
+            const timeB = resolveComparableDate(b)?.getTime() ?? Number.NEGATIVE_INFINITY;
+            if (timeA !== timeB) {
+              return (timeA - timeB) * direction;
+            }
+            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { sensitivity: "base" }) * direction;
+          }
+
+          return safeString(a?.[key]).localeCompare(safeString(b?.[key]), "es", {
+            sensitivity: "base",
+            numeric: true
+          }) * direction;
+        });
+      };
+
       const applyAllFilters = (rows) => {
         const globalFilters = getCurrentGlobalFilters();
         prendasState.filters.global = globalFilters;
@@ -2519,16 +2573,7 @@ const auth = getAuth(app);
         const rowsAfterGlobal = applyGlobalFilters(rowsAfterNoPrice, globalFilters);
         prendasState.rowsAfterGlobal = rowsAfterGlobal;
         let rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
-        // Orden (asc/desc) — solo ordena, no filtra por rango
-        const ordDir = (prendasState.filters.header.ordenSortDir || '').toLowerCase();
-        if (ordDir === 'asc' || ordDir === 'desc') {
-          const mult = ordDir === 'asc' ? 1 : -1;
-          rowsAfterAll = [...rowsAfterAll].sort((a, b) => {
-            const av = Number(a.orden ?? 0);
-            const bv = Number(b.orden ?? 0);
-            return (av - bv) * mult;
-          });
-        }
+        rowsAfterAll = applySort(rowsAfterAll);
         prendasState.rowsAfterAll = rowsAfterAll;
         return rowsAfterAll;
       };
@@ -2689,42 +2734,27 @@ const auth = getAuth(app);
 
         }
 
-                if (key === "orden") {
+        if (key === "orden") {
           container.classList.add("range-popover");
-          const currentDir = prendasState.filters.header.ordenSortDir || "";
+          const currentDir = (prendasState.sort?.dir || DEFAULT_PRENDAS_SORT.dir).toLowerCase();
           container.innerHTML = `
             <div class="popover-title">Orden</div>
             <div class="popover-body">
-              <select class="select" data-orden-sort>
-                <option value="">Sin orden</option>
-                <option value="asc">Ascendente</option>
-                <option value="desc">Descendente</option>
-              </select>
-            </div>
-            <div class="popover-actions">
-              <button class="btn btn-muted" data-clear>Limpiar</button>
-              <button class="btn btn-primary" data-apply>Aplicar</button>
+              <button type="button" class="btn btn-muted" data-orden-option="asc">Ascendente</button>
+              <button type="button" class="btn btn-muted" data-orden-option="desc">Descendente</button>
             </div>
           `;
-          const sel = container.querySelector("[data-orden-sort]");
-          sel.value = currentDir;
-          sel.addEventListener("change", async () => {
-            prendasState.filters.header.ordenSortDir = safeString(sel.value || "");
-            closeHeaderPopover();
-            await applyFilters();
-          });
 
-          container.querySelector("[data-clear]").addEventListener("click", async () => {
-            prendasState.filters.header.ordenSortDir = null;
-            closeHeaderPopover();
-            await applyFilters();
-          });
-
-          container.querySelector("[data-apply]").addEventListener("click", async () => {
-            const v = (sel.value || "").trim();
-            prendasState.filters.header.ordenSortDir = v ? v : null;
-            closeHeaderPopover();
-            await applyFilters();
+          const optionButtons = [...container.querySelectorAll("[data-orden-option]")];
+          optionButtons.forEach((button) => {
+            button.classList.toggle("btn-primary", button.dataset.ordenOption === currentDir);
+            button.classList.toggle("btn-muted", button.dataset.ordenOption !== currentDir);
+            button.addEventListener("click", async () => {
+              const nextDir = button.dataset.ordenOption === "desc" ? "desc" : "asc";
+              prendasState.sort = { key: "Orden", dir: nextDir };
+              closeHeaderPopover();
+              await applyFilters();
+            });
           });
 
           bindHeaderPopoverPositioning(container, anchorButton, key);
@@ -3037,6 +3067,7 @@ const auth = getAuth(app);
         prendasState.hasNextPage = false;
         prendasState.filters.global = getCurrentGlobalFilters();
         prendasState.filters.header = createEmptyHeaderFilters();
+        prendasState.sort = { ...DEFAULT_PRENDAS_SORT };
         prendasState.uniqueOptions = {};
         closeHeaderPopover();
         resetCounters();
@@ -3204,14 +3235,32 @@ const auth = getAuth(app);
         const row = document.createElement("tr");
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
         const cells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
+        const columnClassByIndex = [
+          "col-orden",
+          "col-codigo",
+          "col-descripcion",
+          "col-tipo",
+          "col-color",
+          "col-talla",
+          "col-proveedor",
+          "col-status",
+          "col-disponibilidad",
+          "col-fecha",
+          "col-pventa",
+          "col-costo",
+          "col-margen",
+          "col-utilidad"
+        ];
         cells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
+            value.classList.add(columnClassByIndex[index] || "");
             if (index >= 11) value.classList.add("admin-only");
             row.appendChild(value);
             return;
           }
           const cell = document.createElement("td");
           cell.textContent = value;
+          cell.classList.add(columnClassByIndex[index] || "");
           if (index >= 11) cell.classList.add("admin-only");
           row.appendChild(cell);
         });
@@ -3575,14 +3624,14 @@ const auth = getAuth(app);
           if (prendasState.adminByAuth) {
             setAdminViewEnabled(true);
             applyAdminUI();
-            try { await refreshList(); } catch (_) {}
+            try { await applyFilters(); } catch (_) {}
           }
           return;
         }
         const nextEnabled = !getAdminViewEnabled();
         setAdminViewEnabled(nextEnabled);
         applyAdminUI();
-        try { await refreshList(); } catch (_) {}
+        try { await applyFilters(); } catch (_) {}
       };
 
       const handleAdminLogin = async () => {
