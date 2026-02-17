@@ -2858,6 +2858,43 @@ const auth = getAuth(app);
         };
       })();
 
+      const getZplLogoCommand = (() => {
+        let cachedCommand = "";
+        return () => {
+          if (cachedCommand) return cachedCommand;
+          const gfa = extractGfaCommandFromZpl(HARUJA_2025_ZPL);
+          cachedCommand = `^GFA,${gfa.bytesTotal},${gfa.bytesUsed},${gfa.bytesPerRow},${gfa.data}`;
+          return cachedCommand;
+        };
+      })();
+
+      const LABEL_ZPL_DEBUG = window.localStorage.getItem("label-zpl-debug") === "1";
+
+      const buildLabelZpl = ({ sku, price, qty = 1 }) => {
+        const logoCommand = getZplLogoCommand();
+        const single = [
+          "^XA",
+          "^CI28",
+          "^PW406",
+          "^LL203",
+          "^LH0,0",
+          "^FO25,40",
+          "^A0N,30,30",
+          `^FD${sku}^FS`,
+          "^FO25,100",
+          "^A0N,55,55",
+          `^FD${price}^FS`,
+          "^FO260,17",
+          "^BQN,2,6",
+          `^FD${sku}^FS`,
+          "^FO260,145",
+          logoCommand,
+          "^FS",
+          "^XZ"
+        ].join("\n");
+        return Array.from({ length: qty }, () => single).join("\n");
+      };
+
       const escapeHtml = (value) => safeString(value)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -2925,7 +2962,7 @@ const auth = getAuth(app);
           return {
             codigo,
             precioTexto: formatLabelPrice(precioNum),
-            qrValue: `LA,${codigo}`,
+            qrValue: codigo,
             logoSrc
           };
         });
@@ -4596,10 +4633,21 @@ const auth = getAuth(app);
           }
 
           const priceRaw = row?.precioVenta ?? row?.pVentaOverride ?? row?.pVenta ?? row?.precio ?? 0;
+          const formattedPrice = formatPrice(priceRaw);
+
+          if (LABEL_ZPL_DEBUG) {
+            try {
+              const debugZpl = buildLabelZpl({ sku, price: formattedPrice, qty });
+              console.log("[label-zpl-debug] ZPL generado:\n", debugZpl);
+            } catch (error) {
+              console.error("[label-zpl-debug] No se pudo generar ZPL de depuración:", error);
+            }
+          }
+
           buildLabelPrintPages({
             sku,
             qty,
-            price: formatPrice(priceRaw),
+            price: formattedPrice,
             logoSrc: getZplLogoDataUrl()
           });
 
