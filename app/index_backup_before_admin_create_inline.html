@@ -608,34 +608,6 @@
         color: var(--text);
       }
 
-
-
-      .admin-create-fields {
-        grid-column: 1 / -1;
-        border: 1px solid #e5e7eb;
-        background: #f8fafc;
-        border-radius: 12px;
-        padding: 12px;
-        display: none;
-        gap: 10px;
-      }
-
-      .admin-create-fields .admin-create-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #374151;
-      }
-
-      .admin-create-fields .admin-create-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-      }
-
-      .admin-create-fields small {
-        color: #6b7280;
-        font-size: 12px;
-      }
       .admin-optional {
         display: flex;
         align-items: center;
@@ -1426,26 +1398,16 @@ body.admin-on .admin-only{ display:table-cell; }
               </select>
             </div>
             <div>
+              <label for="registro-costo">Costo (opcional)</label>
+              <input id="registro-costo" name="costo" type="number" min="0" step="0.01" placeholder="0" />
+            </div>
+            <div>
               <label for="registro-created-by">Creado por (opcional)</label>
               <input id="registro-created-by" name="createdBy" type="text" placeholder="Nombre" />
             </div>
             <div>
               <label for="registro-detalles">Detalles (opcional)</label>
               <input id="registro-detalles" name="detalles" type="text" placeholder="Ej: Pelly estampada" />
-            </div>
-            <div id="adminCreateFields" class="admin-create-fields" aria-hidden="true">
-              <div class="admin-create-title">Admin (opcional)</div>
-              <div class="admin-create-grid">
-                <div>
-                  <label for="adminCreateCosto">Costo</label>
-                  <input id="adminCreateCosto" type="number" step="0.01" min="0" placeholder="0" />
-                </div>
-                <div>
-                  <label for="adminCreatePVenta">P.Venta override (opcional)</label>
-                  <input id="adminCreatePVenta" type="number" step="0.01" min="0" placeholder="0" />
-                </div>
-              </div>
-              <small>Solo visible en Modo Admin</small>
             </div>
             <button type="submit">Generar código</button>
           </form>
@@ -1606,7 +1568,7 @@ body.admin-on .admin-only{ display:table-cell; }
     <h3 id="editModalTitle" style="margin:0 0 12px;">Editar fila</h3>
     <div class="edit-modal-grid">
       <div>
-        <label for="editPVenta">P.Venta override (vacío = usar público)</label>
+        <label for="editPVenta">P.Venta</label>
         <input id="editPVenta" type="number" min="0" step="0.01" />
       </div>
       <div>
@@ -1632,6 +1594,7 @@ body.admin-on .admin-only{ display:table-cell; }
         getFirestore,
         initializeFirestore,
         collection,
+        addDoc,
         doc,
         getDoc,
         getDocs,
@@ -1641,8 +1604,8 @@ body.admin-on .admin-only{ display:table-cell; }
         runTransaction,
         serverTimestamp,
         setDoc,
-        deleteField,
         startAfter,
+        updateDoc,
         where,
         limit,
         persistentLocalCache,
@@ -1709,9 +1672,6 @@ const auth = getAuth(app);
       const registroColor = document.getElementById("registro-color");
       const registroTalla = document.getElementById("registro-talla");
       const registroDetalles = document.getElementById("registro-detalles");
-      const adminCreateFields = document.getElementById("adminCreateFields");
-      const adminCreateCostoInput = document.getElementById("adminCreateCosto");
-      const adminCreatePVentaInput = document.getElementById("adminCreatePVenta");
 
       const zplForm = document.getElementById("zpl-form");
       const zplStatus = document.getElementById("zpl-status");
@@ -1825,8 +1785,6 @@ const auth = getAuth(app);
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
       };
-
-      const toNumber = (value) => toNumberOrNull(value);
 
       const debounce = (fn, wait = 200) => {
         let timeoutId;
@@ -2452,12 +2410,6 @@ const auth = getAuth(app);
         const amount = Number(value);
         if (!Number.isFinite(amount)) return "--";
         return formatCurrency(amount);
-      };
-
-      const moneyFmt = (value) => formatMoney(value);
-      const pctFmt = (value) => {
-        const formatted = formatPercent(value);
-        return formatted || "—";
       };
 
       const formatDateCell = (item) => {
@@ -3214,7 +3166,6 @@ const auth = getAuth(app);
             if (!lookupId) return;
             map.set(lookupId, {
               costo: toNumberOrNull(data.costo),
-              pVentaOverride: toNumberOrNull(data.pVentaOverride ?? data.pVenta),
               margen: toNumberOrNull(data.margen),
               utilidad: toNumberOrNull(data.utilidad),
             });
@@ -3225,7 +3176,7 @@ const auth = getAuth(app);
       };
 
       const mergeAdminFields = async (rows = []) => {
-        if (!(isAdminViewEnabled() && rows.length)) {
+        if (!(prendasState.isAdmin && auth.currentUser && rows.length)) {
           return rows;
         }
 
@@ -3238,16 +3189,13 @@ const auth = getAuth(app);
           const costo = toNumberOrNull(adminExtra.costo);
           const utilidadFromAdmin = toNumberOrNull(adminExtra.utilidad);
           const margenFromAdmin = toNumberOrNull(adminExtra.margen);
-          const pVentaOverride = toNumberOrNull(adminExtra.pVentaOverride);
 
           row.costo = Number.isFinite(costo) ? costo : null;
-          row.pVentaOverride = Number.isFinite(pVentaOverride) ? pVentaOverride : null;
-          const precioVisible = Number.isFinite(row.pVentaOverride)
-            ? row.pVentaOverride
+          const precioConIva = Number.isFinite(row.precioConIva)
+            ? row.precioConIva
             : (Number.isFinite(row.pVenta) ? row.pVenta : null);
-          row.pVentaDisplay = precioVisible;
           const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
-            computeMarginUtility(precioVisible, row.costo);
+            computeMarginUtility(precioConIva, row.costo);
 
           row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
             ? utilidadFromAdmin
@@ -3506,7 +3454,6 @@ const auth = getAuth(app);
       };
 
       const createPrendaRow = (item) => {
-        const adminEnabled = isAdminViewEnabled();
         const ordenValue = Number(item.orden);
         const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "";
         const codigo = safeString(item.codigo || item.code) || "--";
@@ -3518,47 +3465,50 @@ const auth = getAuth(app);
         const statusCell = renderStatusCell(item.statusCanon || item.status);
         const disponibilidadCell = renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status);
         const fecha = formatDateCell(item);
-        const pVentaVisible = adminEnabled
-          ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta))
-          : toNumber(item.pVenta);
-        const pVenta = moneyFmt(pVentaVisible);
-        const costo = moneyFmt(item.costo);
-        const margen = pctFmt(item.margen);
-        const utilidad = moneyFmt(item.utilidad);
+        const pVenta = formatMoney(item.pVenta);
+        const costo = formatMoney(item.costo);
+        const margen = formatPercent(item.margen);
+        const utilidad = formatMoney(item.utilidad);
 
         const row = document.createElement("tr");
         row.dataset.docId = safeString(item.docId || item.id).trim();
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
-        const baseCells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta];
-        const baseClasses = [
-          "col-orden","col-codigo","col-descripcion","col-tipo","col-color","col-talla","col-proveedor","col-status","col-disponibilidad","col-fecha","col-pventa"
+        const cells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta, costo, margen, utilidad];
+        const columnClassByIndex = [
+          "col-orden",
+          "col-codigo",
+          "col-descripcion",
+          "col-tipo",
+          "col-color",
+          "col-talla",
+          "col-proveedor",
+          "col-status",
+          "col-disponibilidad",
+          "col-fecha",
+          "col-pventa",
+          "col-costo",
+          "col-margen",
+          "col-utilidad"
         ];
-        baseCells.forEach((value, index) => {
+        cells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
-            value.classList.add(baseClasses[index] || "");
+            value.classList.add(columnClassByIndex[index] || "");
+            if (index >= 11) value.classList.add("admin-only");
             row.appendChild(value);
             return;
           }
           const cell = document.createElement("td");
           cell.textContent = value;
-          cell.classList.add(baseClasses[index] || "");
+          cell.classList.add(columnClassByIndex[index] || "");
           if (index === 2) {
             cell.classList.add("cell-desc");
             cell.title = value;
           }
+          if (index >= 11) cell.classList.add("admin-only");
           row.appendChild(cell);
         });
 
-        if (adminEnabled) {
-          const adminValues = [costo, margen, utilidad];
-          const adminClasses = ["col-costo", "col-margen", "col-utilidad"];
-          adminValues.forEach((value, index) => {
-            const cell = document.createElement("td");
-            cell.textContent = value;
-            cell.classList.add("admin-only", adminClasses[index]);
-            row.appendChild(cell);
-          });
-
+        if (prendasState.isAdmin) {
           const actionCell = document.createElement("td");
           actionCell.className = "admin-only col-actions";
           const editButton = document.createElement("button");
@@ -3575,13 +3525,11 @@ const auth = getAuth(app);
 
       const updateEditPreview = () => {
         if (!editPVentaInput || !editCostoInput) return;
-        const pOverride = toNumber(editPVentaInput.value);
-        const pPublic = toNumber(prendasState.editing?.publicPVenta);
-        const p = Number.isFinite(pOverride) ? pOverride : (pPublic ?? 0);
-        const c = toNumber(editCostoInput.value) ?? 0;
+        const p = toNumberOrNull(editPVentaInput.value) ?? 0;
+        const c = toNumberOrNull(editCostoInput.value) ?? 0;
         const { utilidad, margenPct } = computeMarginUtility(p, c);
-        if (editUtilidadPreview) editUtilidadPreview.textContent = moneyFmt(utilidad);
-        if (editMargenPreview) editMargenPreview.textContent = pctFmt(margenPct);
+        if (editUtilidadPreview) editUtilidadPreview.textContent = formatMoney(utilidad);
+        if (editMargenPreview) editMargenPreview.textContent = formatPercent(margenPct);
       };
 
       const closeEditModal = () => {
@@ -3598,15 +3546,12 @@ const auth = getAuth(app);
 
       const openEditModal = (rowData) => {
         if (!editModal || !rowData) return;
-        const publicPVenta = toNumber(rowData.pVenta);
-        const pVentaOverride = toNumber(rowData.pVentaOverride);
         prendasState.editing = {
           docId: safeString(rowData.docId || rowData.id).trim(),
-          publicPVenta,
           rowDataSnapshot: { ...rowData }
         };
-        if (editPVentaInput) editPVentaInput.value = Number.isFinite(pVentaOverride) ? pVentaOverride : "";
-        if (editCostoInput) editCostoInput.value = toNumber(rowData.costo) ?? "";
+        if (editPVentaInput) editPVentaInput.value = toNumberOrNull(rowData.pVenta) ?? 0;
+        if (editCostoInput) editCostoInput.value = toNumberOrNull(rowData.costo) ?? 0;
         if (editModalError) {
           editModalError.textContent = "";
           editModalError.classList.add("hidden");
@@ -3650,32 +3595,37 @@ const auth = getAuth(app);
         try {
           if (!prendasState.editing?.docId) return;
           const docId = prendasState.editing.docId;
-          const pVentaOverride = toNumber(editPVentaInput?.value);
-          const costo = toNumber(editCostoInput?.value);
-          if (Number.isFinite(pVentaOverride) && pVentaOverride < 0) {
+          const pVenta = toNumberOrNull(editPVentaInput?.value);
+          const costo = toNumberOrNull(editCostoInput?.value);
+          if (!Number.isFinite(pVenta) || pVenta < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
-          if (Number.isFinite(costo) && costo < 0) {
+          if (!Number.isFinite(costo) || costo < 0) {
             throw new Error("Costo debe ser mayor o igual a 0.");
           }
           editModalSaveButton.disabled = true;
           const user = await ensureAdminSession();
-          const pVentaVisible = Number.isFinite(pVentaOverride)
-            ? pVentaOverride
-            : toNumber(prendasState.editing?.publicPVenta);
-          const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
+          const { utilidad, margenPct } = computeMarginUtility(pVenta, costo);
           const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, docId);
           await setDoc(adminRef, {
             docId,
-            costo: Number.isFinite(costo) ? costo : deleteField(),
-            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : deleteField(),
-            utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : deleteField(),
-            margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : deleteField(),
+            pVenta,
+            costo,
+            utilidad,
+            margen: margenPct,
             updatedAt: serverTimestamp(),
             updatedBy: safeString(user?.email).trim().toLowerCase()
           }, { merge: true });
 
-          await loadPrendasPage({ reset: false, reason: "inline-edit" });
+          const publicRef = doc(db, activePrendasPublicCollection, docId);
+          await updateDoc(publicRef, {
+            pVenta,
+            precioConIva: pVenta,
+            updatedAt: serverTimestamp()
+          });
+
+          updateRowInMemory(docId, { pVenta, precioConIva: pVenta, costo, utilidad, margen: margenPct });
+          await renderDocs(prendasState.filtered);
           closeEditModal();
         } catch (error) {
           if (editModalError) {
@@ -3856,6 +3806,7 @@ const auth = getAuth(app);
           const codigo = `HA${providerCode}${typeCode}${consecutivo}/${colorClave}-${tallaClave}`;
           console.info(`Generando código ${codigo} para counter ${key}.`);
 
+          const costoValue = Number(document.getElementById("registro-costo").value);
           const createdByValue = document.getElementById("registro-created-by").value.trim();
           const detallesValue = registroDetalles.value.trim();
           const tipoNombre = getSelectedName(registroProducto).trim();
@@ -3865,10 +3816,8 @@ const auth = getAuth(app);
           const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
             .filter(Boolean)
             .join(" ");
-          const docId = normalizeSku(codigo);
 
-          const payloadPublic = {
-            docId,
+          const data = {
             codigo,
             proveedor: providerCode,
             tipo: typeCode,
@@ -3876,51 +3825,33 @@ const auth = getAuth(app);
             talla: tallaClave,
             descripcion: descripcion || null,
             detalles: detallesValue || null,
+            costo: Number.isFinite(costoValue) ? costoValue : 0,
             code: codigo,
             providerCode,
             typeCode,
             seqNumber: nextValue,
-            orden: nextValue,
             colorCode: colorClave,
             sizeCode: tallaClave,
-            status: "Disponible",
-            statusCanon: "Disponible",
-            disponibilidad: "Disponible",
-            disponibilidadCanon: "Disponible",
-            fecha: new Date().toISOString(),
-            fechaAlta: serverTimestamp(),
             creadoPor: createdByValue || null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+            createdAt: serverTimestamp()
           };
 
-          const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, docId);
-          const duplicateFound = (await getDoc(publicRef)).exists();
-          await setDoc(publicRef, payloadPublic, { merge: true });
+          const codeQuery = query(prendasRef, where("code", "==", codigo));
+          const legacyQuery = query(prendasRef, where("codigo", "==", codigo));
+          const [codeSnapshot, legacySnapshot] = await Promise.all([
+            getDocs(codeQuery),
+            getDocs(legacyQuery)
+          ]);
+          const duplicateFound = !codeSnapshot.empty || !legacySnapshot.empty;
 
-          if (isAdminViewEnabled()) {
-            const costo = toNumber(adminCreateCostoInput?.value);
-            const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
-            const payloadAdmin = {
-              docId,
-              updatedAt: serverTimestamp(),
-              updatedBy: safeString(auth.currentUser?.email).trim().toLowerCase()
-            };
-            if (Number.isFinite(costo)) payloadAdmin.costo = costo;
-            if (Number.isFinite(pVentaOverride)) payloadAdmin.pVentaOverride = pVentaOverride;
-            await setDoc(doc(db, PRENDAS_ADMIN_COLLECTION, docId), payloadAdmin, { merge: true });
-          }
-
-          if (adminCreateCostoInput) adminCreateCostoInput.value = "";
-          if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
-          await loadPrendasPage({ reset: true, reason: "create-code" });
+          await addDoc(prendasRef, data);
 
           registroCodigo.textContent = codigo;
           registroResult.classList.remove("hidden");
           if (duplicateFound) {
-            setRegistroStatus("Código actualizado en public/admin.", "warning");
+            setRegistroStatus("Código ya existe (duplicado).", "warning");
           } else {
-            setRegistroStatus("Prenda guardada correctamente en colección public.", "success");
+            setRegistroStatus("Prenda guardada correctamente.", "success");
           }
         } catch (error) {
           const message =
@@ -3998,9 +3929,6 @@ const auth = getAuth(app);
       const getAdminViewEnabled = () =>
         sessionStorage.getItem(ADMIN_VIEW_KEY) === "1";
 
-      const isAdminAuthenticated = () => prendasState.adminByAuth === true;
-      const isAdminViewEnabled = () => getAdminViewEnabled() === true && isAdminAuthenticated();
-
       const setAdminViewEnabled = (enabled) => {
         // Solo permitir modo admin si el usuario está autenticado y en allowlist
         const adminByAuth = Boolean(prendasState.adminByAuth);
@@ -4056,18 +3984,6 @@ const auth = getAuth(app);
         } else {
           setAdminLoginStatus("Inicia sesión con un correo admin permitido.");
           setAdminViewEnabled(false);
-        }
-        if (adminCreateFields) {
-          adminCreateFields.style.display = enabled ? "grid" : "none";
-          adminCreateFields.setAttribute("aria-hidden", enabled ? "false" : "true");
-        }
-        if (adminCreateCostoInput) {
-          adminCreateCostoInput.disabled = !enabled;
-          if (!enabled) adminCreateCostoInput.value = "";
-        }
-        if (adminCreatePVentaInput) {
-          adminCreatePVentaInput.disabled = !enabled;
-          if (!enabled) adminCreatePVentaInput.value = "";
         }
         if (!enabled) {
           closeEditModal();
@@ -4250,7 +4166,7 @@ const auth = getAuth(app);
 
       const updateAdminModeBtn = () => {
         if (!adminModeBtn) return;
-        const enabled = isAdminViewEnabled();
+        const enabled = getAdminViewEnabled() && prendasState.adminByAuth;
         adminModeBtn.classList.toggle("is-on", enabled);
         adminModeBtn.setAttribute("aria-pressed", enabled ? "true" : "false");
         if (!prendasState.adminByAuth) {
@@ -4258,8 +4174,8 @@ const auth = getAuth(app);
           adminModeBtn.title = "Inicia sesión con Google para ver Costos/Margen/Utilidad";
           return;
         }
-        adminModeBtn.textContent = enabled ? "Salir admin" : "Modo admin";
-        adminModeBtn.title = enabled ? "Salir de la vista admin" : "Mostrar columnas admin";
+        adminModeBtn.textContent = enabled ? "Ocultar modo admin" : "Modo admin";
+        adminModeBtn.title = enabled ? "Ocultar columnas admin" : "Mostrar columnas admin";
       };
 
       
@@ -4277,7 +4193,7 @@ const auth = getAuth(app);
         prendasTable.addEventListener("click", (event) => {
           const button = event.target.closest(".rowEditBtn");
           if (!button) return;
-          if (!isAdminViewEnabled()) return;
+          if (!prendasState.adminByAuth || !getAdminViewEnabled()) return;
           const docId = safeString(button.dataset.editDoc).trim();
           if (!docId) return;
           const rowData = prendasState.filtered.find((row) => safeString(row.docId || row.id).trim() === docId)

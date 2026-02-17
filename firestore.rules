@@ -14,7 +14,7 @@ service cloud.firestore {
     // ✅ Público: lectura abierta, sin escrituras directas
     match /HarujaPrendas_2025_public/{docId} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
     }
 
     // 🔒 Privado: datos reales (solo admin)
