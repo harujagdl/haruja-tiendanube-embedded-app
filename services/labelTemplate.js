@@ -22,11 +22,11 @@ export function buildLabelZPL({ sku, price }) {
 ^A0N,55,55
 ^FD${price}^FS
 
-^FO260,17
+^FO260,20
 ^BQN,2,6
-^FD${sku}^FS
+^FDMM,A${sku}^FS
 
-^FO260,145
+^FO250,140
 ${GFA_LOGO}
 ^FS
 
