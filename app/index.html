@@ -1163,6 +1163,65 @@ button.secondary.small{
 /* Admin-only cols hidden by default */
 .admin-only{ display:none; }
 body.admin-on .admin-only{ display:table-cell; }
+
+#dbCodigosSection .sort-toggle-btn {
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 10px;
+  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  line-height: 1;
+  color: #344054;
+  cursor: pointer;
+}
+#dbCodigosSection .tableWrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+#dbCodigosSection table.table {
+  width: 100%;
+  min-width: max-content;
+}
+#dbCodigosSection table.table .cell-desc {
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#dbCodigosSection .pager-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 768px) {
+  #dbCodigosSection table.table th,
+  #dbCodigosSection table.table td {
+    padding: 6px 6px;
+    font-size: 12px;
+  }
+  #dbCodigosSection table.table .badge {
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+  #dbCodigosSection table.table .cell-desc { max-width: 220px; }
+  #dbCodigosSection .pager,
+  #dbCodigosSection .pager-bottom {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .filter-popover.mobile-sheet {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 78vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -1340,11 +1399,11 @@ body.admin-on .admin-only{ display:table-cell; }
     <div id="prendas-alert" class="prendas-alert" style="display:none; margin:10px 0;"></div>
     <template id="prendas-empty-template"><tr><td colspan="99" style="padding:18px; text-align:center; color:#6b7280;">Sin resultados</td></tr></template>
 
-    <div class="table-wrap">
+    <div class="table-wrap tableWrap">
       <table id="tablaPrendas" class="table">
         <thead>
                   <tr>
-                    <th class="col-orden" data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="filter-btn" data-open-header-filter="orden" aria-label="Filtrar Orden">⌄</button></span></th>
+                    <th class="col-orden" data-filter-key="orden"><span class="th-filter">Orden <button type="button" class="sort-toggle-btn" id="orden-sort-toggle" data-sort-toggle="orden" aria-label="Alternar orden ascendente o descendente">▲</button></span></th>
                     <th class="col-codigo">Código</th>
                     <th class="col-descripcion">Descripción</th>
                     <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
@@ -1490,6 +1549,7 @@ const auth = getAuth(app);
 
       const prendasSearch = document.getElementById("prendas-search");
       const headerFilterButtons = document.querySelectorAll("[data-open-header-filter]");
+      const ordenSortToggle = document.getElementById("orden-sort-toggle");
       const prendasYear = document.getElementById("prendas-year");
       const prendasMonth = document.getElementById("prendas-month");
       const prendasPrecioMin = document.getElementById("prendas-precio-min");
@@ -1833,7 +1893,9 @@ const auth = getAuth(app);
         fechaYear: "",
         fechaMonth: ""
       });
-      const DEFAULT_PRENDAS_SORT = Object.freeze({ key: "Orden", dir: "asc" });
+      const DEFAULT_PRENDAS_SORT = Object.freeze({ key: "orden", dir: "asc" });
+      const PRENDAS_SORT_KEY_STORAGE = "prendas_sort_key";
+      const PRENDAS_SORT_DIR_STORAGE = "prendas_sort_dir";
       const ADMIN_VIEW_KEY = "haruja_admin_view";
       const DICTS_CACHE_KEY = "haruja_dicts_cache_v2";
       const METADATA_COUNTS_DOC = {
@@ -2513,40 +2575,73 @@ const auth = getAuth(app);
           return true;
         });
 
-      const toNumberSafe = (value, fallback = Number.POSITIVE_INFINITY) => {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? numeric : fallback;
+      const normalizeSortConfig = (sort) => {
+        const rawKey = normalizeText(sort?.key || DEFAULT_PRENDAS_SORT.key);
+        const key = rawKey === "fecha" ? "fecha" : "orden";
+        const dir = normalizeText(sort?.dir) === "desc" ? "desc" : "asc";
+        return { key, dir };
       };
 
-      const applySort = (rows = []) => {
-        const activeSort = prendasState.sort || DEFAULT_PRENDAS_SORT;
-        const key = safeString(activeSort.key || DEFAULT_PRENDAS_SORT.key).trim() || DEFAULT_PRENDAS_SORT.key;
-        const dir = safeString(activeSort.dir || DEFAULT_PRENDAS_SORT.dir).toLowerCase() === "desc" ? "desc" : "asc";
-        const direction = dir === "desc" ? -1 : 1;
-        const numberFallback = dir === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+      const updateOrdenSortToggleUi = () => {
+        if (!ordenSortToggle) return;
+        const sort = normalizeSortConfig(prendasState.sort);
+        ordenSortToggle.textContent = sort.dir === "desc" ? "▼" : "▲";
+        ordenSortToggle.setAttribute("aria-label", `Orden ${sort.dir === "desc" ? "descendente" : "ascendente"}`);
+      };
 
+      const persistSort = (sort) => {
+        try {
+          localStorage.setItem(PRENDAS_SORT_KEY_STORAGE, sort.key);
+          localStorage.setItem(PRENDAS_SORT_DIR_STORAGE, sort.dir);
+        } catch (_) {}
+      };
+
+      const restorePersistedSort = () => {
+        try {
+          const key = localStorage.getItem(PRENDAS_SORT_KEY_STORAGE);
+          const dir = localStorage.getItem(PRENDAS_SORT_DIR_STORAGE);
+          return normalizeSortConfig({ key, dir });
+        } catch (_) {
+          return { ...DEFAULT_PRENDAS_SORT };
+        }
+      };
+
+      const setPrendasSort = async (nextSort, { refresh = true } = {}) => {
+        prendasState.sort = normalizeSortConfig(nextSort);
+        prendasState.pageIndex = 0;
+        persistSort(prendasState.sort);
+        updateOrdenSortToggleUi();
+        updateHeaderFilterButtonsState();
+        if (refresh && !isBooting) {
+          await loadPrendasPage({ reset: true, reason: "sort-change" });
+        }
+      };
+
+      const sortRows = (rows = [], sort = prendasState.sort) => {
+        const activeSort = normalizeSortConfig(sort);
+        const direction = activeSort.dir === "desc" ? -1 : 1;
         return [...rows].sort((a, b) => {
-          if (key === "Orden") {
-            const orderA = toNumberSafe(a?.orden, numberFallback);
-            const orderB = toNumberSafe(b?.orden, numberFallback);
+          if (activeSort.key === "orden") {
+            const orderA = Number(a?.orden) || 0;
+            const orderB = Number(b?.orden) || 0;
             if (orderA !== orderB) {
               return (orderA - orderB) * direction;
             }
-            return compareItemsByDateDesc(a, b);
+            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
           }
 
-          if (key === "Fecha") {
-            const timeA = resolveComparableDate(a)?.getTime() ?? Number.NEGATIVE_INFINITY;
-            const timeB = resolveComparableDate(b)?.getTime() ?? Number.NEGATIVE_INFINITY;
+          if (activeSort.key === "fecha") {
+            const timeA = resolveComparableDate(a)?.getTime() ?? 0;
+            const timeB = resolveComparableDate(b)?.getTime() ?? 0;
             if (timeA !== timeB) {
               return (timeA - timeB) * direction;
             }
-            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { sensitivity: "base" }) * direction;
+            return safeString(a?.codigo).localeCompare(safeString(b?.codigo), "es", { numeric: true, sensitivity: "base" }) * direction;
           }
 
-          return safeString(a?.[key]).localeCompare(safeString(b?.[key]), "es", {
-            sensitivity: "base",
-            numeric: true
+          return safeString(a?.[activeSort.key]).localeCompare(safeString(b?.[activeSort.key]), "es", {
+            numeric: true,
+            sensitivity: "base"
           }) * direction;
         });
       };
@@ -2573,7 +2668,7 @@ const auth = getAuth(app);
         const rowsAfterGlobal = applyGlobalFilters(rowsAfterNoPrice, globalFilters);
         prendasState.rowsAfterGlobal = rowsAfterGlobal;
         let rowsAfterAll = applyHeaderFilters(rowsAfterGlobal, prendasState.filters.header);
-        rowsAfterAll = applySort(rowsAfterAll);
+        rowsAfterAll = sortRows(rowsAfterAll, prendasState.sort);
         prendasState.rowsAfterAll = rowsAfterAll;
         return rowsAfterAll;
       };
@@ -2618,6 +2713,7 @@ const auth = getAuth(app);
           const key = button.dataset.openHeaderFilter;
           button.classList.toggle("active", isHeaderFilterActive(key));
         });
+        updateOrdenSortToggleUi();
       };
 
       const closeHeaderPopover = () => {
@@ -2631,9 +2727,13 @@ const auth = getAuth(app);
       };
 
       const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+      const isMobileViewport = () => window.matchMedia("(max-width: 768px)").matches;
 
       const positionHeaderPopover = () => {
         if (!prendasState.headerPopover?.container || !prendasState.headerPopover?.anchorButton) {
+          return;
+        }
+        if (prendasState.headerPopover?.isMobileSheet) {
           return;
         }
         const { container, anchorButton } = prendasState.headerPopover;
@@ -2658,6 +2758,10 @@ const auth = getAuth(app);
       };
 
       const bindHeaderPopoverPositioning = (container, anchorButton, key) => {
+        const mobileSheet = isMobileViewport();
+        if (mobileSheet) {
+          container.classList.add("mobile-sheet");
+        }
         const handleResize = () => positionHeaderPopover();
         const handleScroll = () => positionHeaderPopover();
 
@@ -2668,6 +2772,7 @@ const auth = getAuth(app);
           key,
           container,
           anchorButton,
+          isMobileSheet: mobileSheet,
           cleanup: () => {
             window.removeEventListener("resize", handleResize);
             window.removeEventListener("scroll", handleScroll, true);
@@ -2732,33 +2837,6 @@ const auth = getAuth(app);
           bindHeaderPopoverPositioning(container, anchorButton, key);
           return;
 
-        }
-
-        if (key === "orden") {
-          container.classList.add("range-popover");
-          const currentDir = (prendasState.sort?.dir || DEFAULT_PRENDAS_SORT.dir).toLowerCase();
-          container.innerHTML = `
-            <div class="popover-title">Orden</div>
-            <div class="popover-body">
-              <button type="button" class="btn btn-muted" data-orden-option="asc">Ascendente</button>
-              <button type="button" class="btn btn-muted" data-orden-option="desc">Descendente</button>
-            </div>
-          `;
-
-          const optionButtons = [...container.querySelectorAll("[data-orden-option]")];
-          optionButtons.forEach((button) => {
-            button.classList.toggle("btn-primary", button.dataset.ordenOption === currentDir);
-            button.classList.toggle("btn-muted", button.dataset.ordenOption !== currentDir);
-            button.addEventListener("click", async () => {
-              const nextDir = button.dataset.ordenOption === "desc" ? "desc" : "asc";
-              prendasState.sort = { key: "Orden", dir: nextDir };
-              closeHeaderPopover();
-              await applyFilters();
-            });
-          });
-
-          bindHeaderPopoverPositioning(container, anchorButton, key);
-          return;
         }
 
         if (key === "fecha") {
@@ -3067,7 +3145,7 @@ const auth = getAuth(app);
         prendasState.hasNextPage = false;
         prendasState.filters.global = getCurrentGlobalFilters();
         prendasState.filters.header = createEmptyHeaderFilters();
-        prendasState.sort = { ...DEFAULT_PRENDAS_SORT };
+        prendasState.sort = restorePersistedSort();
         prendasState.uniqueOptions = {};
         closeHeaderPopover();
         resetCounters();
@@ -3261,6 +3339,10 @@ const auth = getAuth(app);
           const cell = document.createElement("td");
           cell.textContent = value;
           cell.classList.add(columnClassByIndex[index] || "");
+          if (index === 2) {
+            cell.classList.add("cell-desc");
+            cell.title = value;
+          }
           if (index >= 11) cell.classList.add("admin-only");
           row.appendChild(cell);
         });
@@ -3867,7 +3949,7 @@ window.addEventListener("hashchange", () => {
     };
 
     if (btnMoreFilters) {
-      btnMoreFilters.addEventListener("click", (e) => {
+      btnMoreFilters.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         e.stopPropagation();
         const isOpen = moreFiltersPanel && moreFiltersPanel.style.display !== "none";
@@ -3876,7 +3958,7 @@ window.addEventListener("hashchange", () => {
     }
 
     // Cerrar al dar click fuera
-    document.addEventListener("click", (e) => {
+    document.addEventListener("pointerdown", (e) => {
       if (!moreFiltersPanel || moreFiltersPanel.style.display === "none") return;
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
@@ -3889,7 +3971,7 @@ window.addEventListener("hashchange", () => {
     if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
 prendasSearch.addEventListener("input", handleSearchInput);
       headerFilterButtons.forEach((button) => {
-        button.addEventListener("click", (event) => {
+        button.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
           const key = button.dataset.openHeaderFilter;
           if (prendasState.headerPopover?.key === key) {
@@ -3899,7 +3981,7 @@ prendasSearch.addEventListener("input", handleSearchInput);
           renderHeaderFilterPopover(key, button);
         });
       });
-      document.addEventListener("click", (event) => {
+      document.addEventListener("pointerdown", (event) => {
         const target = event.target;
         if (prendasState.headerPopover?.container && !prendasState.headerPopover.container.contains(target)) {
           closeHeaderPopover();
@@ -3910,9 +3992,9 @@ prendasSearch.addEventListener("input", handleSearchInput);
           closeHeaderPopover();
         }
       });
-      prendasPrecioApply.addEventListener("click", handleFilterApply);
+      prendasPrecioApply.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterApply(); });
       if (prendasFiltersClear) {
-        prendasFiltersClear.addEventListener("click", handleFilterClear);
+        prendasFiltersClear.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterClear(); });
       }
       if (prendasYear) {
         prendasYear.addEventListener("change", () => {
@@ -3923,6 +4005,14 @@ prendasSearch.addEventListener("input", handleSearchInput);
         prendasPageSize.addEventListener("change", async () => {
           if (isBooting) return;
           await loadPrendasPage({ reset: true, reason: "page-size" });
+        });
+      }
+      if (ordenSortToggle) {
+        ordenSortToggle.addEventListener("pointerdown", async (event) => {
+          event.preventDefault();
+          const current = normalizeSortConfig(prendasState.sort);
+          const nextDir = current.dir === "asc" ? "desc" : "asc";
+          await setPrendasSort({ key: "orden", dir: nextDir });
         });
       }
 
@@ -3937,7 +4027,8 @@ prendasSearch.addEventListener("input", handleSearchInput);
       });
 
       if (prendasPrev) {
-        prendasPrev.addEventListener("click", async () => {
+        prendasPrev.addEventListener("pointerdown", async (event) => {
+          event.preventDefault();
           if (isBooting) return;
           const prevIndex = Math.max(prendasState.pageIndex - 1, 0);
           await loadPrendasPage({ pageIndex: prevIndex, reason: "pagination-prev" });
@@ -3945,7 +4036,8 @@ prendasSearch.addEventListener("input", handleSearchInput);
       }
 
       if (prendasNext) {
-        prendasNext.addEventListener("click", async () => {
+        prendasNext.addEventListener("pointerdown", async (event) => {
+          event.preventDefault();
           if (isBooting) return;
           const nextIndex = prendasState.pageIndex + 1;
           await loadPrendasPage({ pageIndex: nextIndex, reason: "pagination-next" });
@@ -3955,6 +4047,7 @@ prendasSearch.addEventListener("input", handleSearchInput);
       const init = async () => {
         isBooting = true;
         resetPrendasState();
+        updateOrdenSortToggleUi();
         resetCounters();
         populateYearFilter();
         populateMonthFilter();
