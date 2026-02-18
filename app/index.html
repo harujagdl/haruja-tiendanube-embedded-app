@@ -2871,49 +2871,35 @@ const auth = getAuth(app);
       const LABEL_ZPL_DEBUG = window.localStorage.getItem("label-zpl-debug") === "1";
 
       
-      const buildLabelZpl = ({ sku, price, qty = 1 }) => {
-        // Plantilla ZPL 51x25mm (406x203 dots @203dpi)
-        // Objetivo: igualar el layout que compartiste:
-        // - Código arriba izquierda (30)
-        // - Precio abajo izquierda (55)
-        // - QR arriba derecha (BQN 2,6) con prefijo LA,
-        // - "harujagdl" debajo del QR con subrayado (en texto, sin ^GFA)
-        const codigo = safeString(sku).trim();
-        const precio = safeString(price).trim();
+const buildLabelZpl = ({ sku, price, qty = 1 }) => {
+  const codigo = safeString(sku).trim();
+  const precio = safeString(price).trim();
 
-        const single = [
-          "^XA",
-          "^CI28",
-          "^PW406",
-          "^LL203",
-          "^LH0,0",
-          "",
-          "^FX --- Texto izquierda ---",
-          "^FO25,40",
-          "^A0N,30,30",
-          `^FD${codigo}^FS`,
-          "",
-          "^FO25,100",
-          "^A0N,55,55",
-          `^FD${precio}^FS`,
-          "",
-          "^FX --- QR derecha ---",
-          "^FO260,17",
-          "^BQN,2,6",
-          `^FDLA,${codigo}^FS`,
-          "",
-          "^FX --- Logo debajo del QR (texto) ---",
-          "^FO285,168",
-          "^A0N,22,22",
-          "^FDharujagdl^FS",
-          "^FO285,192^GB110,2,2^FS",
-          "",
-          "^XZ"
-        ].join("
-");
+  const template = `
+^XA
+^CI28
+^PW406
+^LL203
+^LH0,0
 
-        return Array.from({ length: qty }, () => single).join("
-");
+^FO25,40
+^A0N,30,30
+^FD${codigo}^FS
+
+^FO25,100
+^A0N,55,55
+^FD${precio}^FS
+
+^FO260,17
+^BQN,2,6
+^FDLA,${codigo}^FS
+
+^FO290,165^GFA,390,390,13,,:1EP01CM07FF,1EP01EM03CF,0EP01EM01CF,0EQ0CM03CF,0EY03CF,0E301E001L0E01C031CF,0EF87F9E7F8F3E3F877EFFCF,0FBCE38EFF8F1E63CE39E3CF,0F1CE3CFBF8F1EF3DE39C3CF,0E1CE3CF078F1EF3DE3FC1CF,0E1C47CF078F1E63DE3FC3CF,0E1C0FCF078F1E0FDE3FC3CF,0E1C33CE078F1E3BCE3BC3CF,0E1C63CE078F1E73C773C3CF,0E1CE3CE078F1EE3C7C3C1CF,0E1DE3CE078F1EF3CC01E3CF,1E1DFFCE079F1EFFDC01E3CF,1F3FFBFF03FF9EF9IF8JF,J0608001C01E20CFFE79,R01EI0FFE,R01EI0C0E,Q019C001806,Q01DC00180C,R0F8I0FF8,,:7gIFC,,^FS
+
+^XZ`;
+
+  return Array.from({ length: qty }, () => template).join("\n");
+};
       };
 
       const escapeHtml = (value) => safeString(value)
