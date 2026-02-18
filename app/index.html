@@ -228,7 +228,11 @@
       }
 
       .hidden {
-        display: none;
+        display: none !important;
+      }
+
+      .tool-page {
+        width: 100%;
       }
 
       table {
@@ -1620,13 +1624,13 @@ body.admin-on .admin-only{ display:table-cell; }
     <div class="app">
       
       <main>
-        <section class="launcher">
+        <section id="panel-tools" class="launcher">
           <div class="launcher-inner">
             <h1 class="launcher-title">Panel de Herramientas HarujaGdl</h1>
             <p class="launcher-subtitle">Selecciona una herramienta para empezar.</p>
 
             <div class="launcher-grid">
-              <a class="toolcard" href="#registro" aria-label="Abrir Registro de nuevas prendas">
+              <div class="toolcard" aria-label="Abrir Registro de nuevas prendas">
                 <div class="toolcard-icon" aria-hidden="true">
                   <!-- tag/label icon -->
                   <svg viewBox="0 0 24 24" fill="none">
@@ -1638,12 +1642,12 @@ body.admin-on .admin-only{ display:table-cell; }
                   <div class="toolcard-title">Registro de nuevas prendas</div>
                   <div class="toolcard-desc">Genera el código y guarda la prenda en Firestore.</div>
                   <div class="toolcard-actions">
-                    <span class="btn btn-primary">Abrir</span>
+                    <button type="button" class="btn btn-primary tool-open" data-tool="registro">Abrir</button>
                   </div>
                 </div>
-              </a>
+              </div>
 
-              <a class="toolcard" href="#base-datos-codigos" aria-label="Abrir Base de datos códigos HarujaGdl">
+              <div class="toolcard" aria-label="Abrir Base de datos códigos HarujaGdl">
                 <div class="toolcard-icon" aria-hidden="true">
                   <!-- database icon -->
                   <svg viewBox="0 0 24 24" fill="none">
@@ -1656,15 +1660,15 @@ body.admin-on .admin-only{ display:table-cell; }
                   <div class="toolcard-title">Base de datos códigos HarujaGdl</div>
                   <div class="toolcard-desc">Consulta códigos, imprime etiquetas y administra en modo admin.</div>
                   <div class="toolcard-actions">
-                    <span class="btn btn-primary">Abrir</span>
+                    <button type="button" class="btn btn-primary tool-open" data-tool="codigos">Abrir</button>
                   </div>
                 </div>
-              </a>
+              </div>
             </div>
           </div>
         </section>
 
-
+        <section id="tool-registro" class="tool-page">
         <section class="section" id="registro">
           <h2>Registro de nuevas prendas</h2>
           <p>Selecciona los atributos clave para generar el código y guardar la prenda en Firestore.</p>
@@ -1727,8 +1731,9 @@ body.admin-on .admin-only{ display:table-cell; }
             </div>
           </div>
         </section>
+        </section>
 
-        <section class="section" id="etiquetas">
+        <section class="section tool-page" id="etiquetas">
           <h2>Impresión de etiquetas</h2>
           <p>Ingresa el código y la cantidad de etiquetas a generar.</p>
           <form class="form" id="zpl-form">
@@ -1747,6 +1752,7 @@ body.admin-on .admin-only{ display:table-cell; }
 
         <div id="printRoot" aria-hidden="true"></div>
 
+        <section id="tool-codigos" class="tool-page">
         <section class="section" id="base-datos-codigos">
           <div id="dbCodigosSection" class="card section-card">
   <div class="card-header">
@@ -1873,6 +1879,8 @@ body.admin-on .admin-only{ display:table-cell; }
     </div>
   </div>
 </div>
+        </section>
+        </section>
 
 <div id="editModal" class="edit-modal hidden" aria-hidden="true">
   <div id="editModalOverlay" class="edit-modal-overlay"></div>
@@ -2054,6 +2062,50 @@ const auth = getAuth(app);
       const editModalError = document.getElementById("editModalError");
       const editModalSaveButton = document.getElementById("editModalSave");
       const editModalCancelButton = document.getElementById("editModalCancel");
+      const panelTools = document.getElementById("panel-tools");
+      const toolPages = {
+        registro: document.getElementById("tool-registro"),
+        codigos: document.getElementById("tool-codigos")
+      };
+
+      const openTool = (tool) => {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("tool", tool);
+        window.open(nextUrl.toString(), "_blank", "noopener,noreferrer");
+      };
+
+      const applyToolMode = (tool) => {
+        const headerEl = document.querySelector("header.haruja-header");
+        const mainTitle = document.querySelector(".launcher-title")?.closest(".launcher-inner");
+        const targetPage = toolPages[tool] || null;
+
+        if (tool && targetPage) {
+          panelTools?.classList.add("hidden");
+          headerEl?.classList.add("hidden");
+          mainTitle?.classList.add("hidden");
+          document.querySelectorAll(".tool-page").forEach((page) => page.classList.add("hidden"));
+          targetPage.classList.remove("hidden");
+          return;
+        }
+
+        panelTools?.classList.remove("hidden");
+        headerEl?.classList.remove("hidden");
+        mainTitle?.classList.remove("hidden");
+        document.querySelectorAll(".tool-page").forEach((page) => page.classList.add("hidden"));
+      };
+
+      const setupToolRouting = () => {
+        document.querySelectorAll(".tool-open").forEach((button) => {
+          button.addEventListener("click", () => {
+            const tool = button.dataset.tool;
+            if (!tool) return;
+            openTool(tool);
+          });
+        });
+
+        const tool = new URLSearchParams(window.location.search).get("tool");
+        applyToolMode(tool);
+      };
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
       console.assert(loadingRow, "No existe loader de prendas");
@@ -5183,6 +5235,12 @@ window.addEventListener("hashchange", () => {
           handleTabChange(hash);
         });
       });
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupToolRouting);
+      } else {
+        setupToolRouting();
+      }
       // ADMIN DB MODE END
 
       const handleSearchInput = debounce(async () => {
@@ -5254,7 +5312,7 @@ window.addEventListener("hashchange", () => {
     // Actualiza dot cuando cambia algo
     [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
     if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
-prendasSearch.addEventListener("input", handleSearchInput);
+if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
       headerFilterButtons.forEach((button) => {
         button.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
@@ -5277,7 +5335,7 @@ prendasSearch.addEventListener("input", handleSearchInput);
           closeHeaderPopover();
         }
       });
-      prendasPrecioApply.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterApply(); });
+      if (prendasPrecioApply) prendasPrecioApply.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterApply(); });
       if (prendasFiltersClear) {
         prendasFiltersClear.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterClear(); });
       }
@@ -5301,6 +5359,7 @@ prendasSearch.addEventListener("input", handleSearchInput);
       }
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
+        if (!input) return;
         input.addEventListener("keydown", (event) => {
           if (isBooting) return;
           if (event.key === "Enter") {
