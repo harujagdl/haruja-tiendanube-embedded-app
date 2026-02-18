@@ -2937,14 +2937,15 @@ return `<!doctype html>
 .logoImg {
   position:absolute;
   left:33.8mm;
-  top:18.9mm;
-  width:16.0mm;
+  top:17.0mm;
+  width:16.5mm;
   height:auto;
   display:block;
 
     /* para evitar la “rayita blanca” por reescalado */
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
+  outline: 1px solid red;   /* 👈 agrega esto */
 }
 
   @media print { .print-actions { display:none; } }
