@@ -2916,7 +2916,6 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             <div class="precio">${escapeHtml(label.precioTexto)}</div>
             <div class="qr" data-qr="${escapeHtml(label.qrValue)}"></div>
             <img class="logoImg" alt="harujagdl" src="${LOGO_DATA_URI}" />
-            <div class="logoLine"></div>
           </section>
         `).join("\n");
 return `<!doctype html>
@@ -2937,21 +2936,17 @@ return `<!doctype html>
   
 .logoImg {
   position:absolute;
-  left:35.2mm;
-  top:19.6mm;
-  width:14.5mm;
+  left:33.8mm;
+  top:18.9mm;
+  width:16.0mm;
   height:auto;
   display:block;
+
+    /* para evitar la “rayita blanca” por reescalado */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
-.logoLine {
-  position:absolute;
-  left:35.2mm;
-  top:23.15mm;
-  width:13.8mm;
-  height:0.4mm;
-  background:#000;
-}
   @media print { .print-actions { display:none; } }
 </style></head>
 <body>
