@@ -2691,13 +2691,8 @@ const auth = getAuth(app);
         return `data:image/svg+xml;utf8,${encodeURIComponent(fallbackSvg)}`;
       };
 
-      // Logo Haruja (ZPL ^GFA) en formato "plain" compatible con el decoder de este panel.
-// Si lo inyectas por window.__HARUJA_2025_ZPL__, esa versión tendrá prioridad.
-const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw`^XA
-^FO0,0
-^GFA,1254,1254,19,00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000700000000E000001DC00000000000000000000700000000E000001DC000000000000000000007000000004000001DC000000000000000000007000000000000001DC00000000000000000000770FBDF9DE3E37DFDC000000000000000000007BB19DF8CE676331DC0000000000000000000073B9DE78CEE763F1DC0000000000000000000073B9DC38CE67E3F1DC000000000000000000007387DC38CE1F63F1DC000000000000000000007399DC38CE377371DC0000000000000000000073B9DC38CE671C71DC0000000000000000000073B9DC39CEE76071DC0000000000000000000073BFFC1EEEFFFE3BDC00000000000000000000FFD8FE1CE6637F9DBE000000000000000000000000000006003FC0000000000000000000000000000000260040C00000000000000000000000000000002600C0800000000000000000000000000000003C007F00000000000000000000000000000000000000000000000000000000000001FFFFFFFFFFFFFFFFFF00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-^FS
-^XZ`;
+      // Pega aquí el ZPL completo de Haruja2025.zpl si no lo inyectas por window.__HARUJA_2025_ZPL__.
+      const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw``;
 
       const extractGfaCommandFromZpl = (zplSource) => {
         const source = safeString(zplSource);
@@ -2875,33 +2870,50 @@ const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw`^XA
 
       const LABEL_ZPL_DEBUG = window.localStorage.getItem("label-zpl-debug") === "1";
 
+      
       const buildLabelZpl = ({ sku, price, qty = 1 }) => {
-        const logoCommand = getZplLogoCommand();
+        // Plantilla ZPL 51x25mm (406x203 dots @203dpi)
+        // Objetivo: igualar el layout que compartiste:
+        // - Código arriba izquierda (30)
+        // - Precio abajo izquierda (55)
+        // - QR arriba derecha (BQN 2,6) con prefijo LA,
+        // - "harujagdl" debajo del QR con subrayado (en texto, sin ^GFA)
+        const codigo = safeString(sku).trim();
+        const precio = safeString(price).trim();
+
         const single = [
           "^XA",
           "^CI28",
           "^PW406",
           "^LL203",
           "^LH0,0",
-          "^FX --- SKU (arriba izquierda, grande) ---",
-          "^FO25,20",
-          "^A0N,52,52",
-          `^FD${sku}^FS`,
-          "^FX --- PRECIO (abajo izquierda, enorme) ---",
-          "^FO25,90",
-          "^A0N,96,96",
-          `^FD${price}^FS`,
-          "^FX --- QR (arriba derecha, grande) ---",
-          "^FO255,18",
-          "^BQN,2,7",
-          `^FDMM,A${sku}^FS`,
-          "^FX --- Logo debajo del QR (mismo GFA) ---",
-          "^FO290,165",
-          logoCommand,
-          "^FS",
+          "",
+          "^FX --- Texto izquierda ---",
+          "^FO25,40",
+          "^A0N,30,30",
+          `^FD${codigo}^FS`,
+          "",
+          "^FO25,100",
+          "^A0N,55,55",
+          `^FD${precio}^FS`,
+          "",
+          "^FX --- QR derecha ---",
+          "^FO260,17",
+          "^BQN,2,6",
+          `^FDLA,${codigo}^FS`,
+          "",
+          "^FX --- Logo debajo del QR (texto) ---",
+          "^FO285,168",
+          "^A0N,22,22",
+          "^FDharujagdl^FS",
+          "^FO285,192^GB110,2,2^FS",
+          "",
           "^XZ"
-        ].join("\n");
-        return Array.from({ length: qty }, () => single).join("\n");
+        ].join("
+");
+
+        return Array.from({ length: qty }, () => single).join("
+");
       };
 
       const escapeHtml = (value) => safeString(value)
@@ -2917,7 +2929,8 @@ const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw`^XA
             <div class="codigo">${escapeHtml(label.codigo)}</div>
             <div class="precio">${escapeHtml(label.precioTexto)}</div>
             <div class="qr" data-qr="${escapeHtml(label.qrValue)}"></div>
-            <img class="logo" src="${escapeHtml(label.logoSrc)}" alt="logo" />
+            <div class="logoText">harujagdl</div>
+            <div class="logoLine"></div>
           </section>
         `).join("\n");
         return `<!doctype html>
@@ -2927,11 +2940,13 @@ const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw`^XA
   html,body { margin:0; padding:0; }
   .print-actions { position: fixed; top: 8px; left: 8px; z-index: 10; }
   .page { width:51mm; height:25mm; page-break-after:always; position:relative; overflow:hidden; }
-  .codigo { position:absolute; left:3.13mm; top:5mm; font-size:3.75mm; font-weight:600; font-family: Arial, sans-serif; }
-  .precio { position:absolute; left:3.13mm; top:12.51mm; font-size:6.88mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
-  .qr { position:absolute; left:32.53mm; top:2.13mm; width:16.5mm; height:16.5mm; }
+  .codigo { position:absolute; left:3.13mm; top:5.0mm; font-size:3.3mm; font-weight:600; font-family: Arial, sans-serif; }
+  .precio { position:absolute; left:3.13mm; top:12.5mm; font-size:6.2mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
+  .qr { position:absolute; left:32.53mm; top:2.13mm; width:15.5mm; height:15.5mm; }
   .qr img { width:100%; height:100%; display:block; }
-  .logo { position:absolute; left:36.28mm; top:20.65mm; width:13.01mm; height:3.75mm; object-fit:contain; image-rendering:pixelated; }
+  
+.logoText { position:absolute; left:35.2mm; top:20.1mm; font-size:3.1mm; font-weight:600; font-family: Arial, sans-serif; }
+.logoLine { position:absolute; left:35.2mm; top:23.15mm; width:13.8mm; height:0.4mm; background:#000; }
   @media print { .print-actions { display:none; } }
 </style></head>
 <body>
@@ -2958,14 +2973,11 @@ const HARUJA_2025_ZPL = window.__HARUJA_2025_ZPL__ || String.raw`^XA
           setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
           return;
         }
-        let logoSrc = getLabelLogoSrc();
-        try {
-          logoSrc = getZplLogoDataUrl();
-        } catch (error) {
-          console.error("No se pudo renderizar el logo desde ^GFA:", error);
-          setPrendasAlert("No se pudo renderizar el logo ZPL (^GFA). Se usará logo alterno.");
-        }
-        const labels = rows.map((row) => {
+        
+        const logoSrc = "";
+                // Nota: el layout objetivo usa el logo como texto (harujagdl) debajo del QR,
+                // así que no intentamos renderizar ^GFA aquí para evitar errores por compresión.
+                const labels = rows.map((row) => {
           const codigo = safeString(row.codigo || row.code).trim().toUpperCase();
           const precioNum = getLabelPriceNumber(row);
           return {
