@@ -14,19 +14,23 @@ export function buildLabelZPL({ sku, price }) {
 ^LL203
 ^LH0,0
 
-^FO25,40
-^A0N,30,30
+^FX --- SKU (arriba izquierda, grande) ---
+^FO25,20
+^A0N,52,52
 ^FD${sku}^FS
 
-^FO25,100
-^A0N,55,55
+^FX --- PRECIO (abajo izquierda, enorme) ---
+^FO25,90
+^A0N,96,96
 ^FD${price}^FS
 
-^FO260,20
-^BQN,2,6
+^FX --- QR (arriba derecha, grande) ---
+^FO255,18
+^BQN,2,7
 ^FDMM,A${sku}^FS
 
-^FO250,140
+^FX --- Logo debajo del QR (mismo GFA) ---
+^FO290,165
 ${GFA_LOGO}
 ^FS
 
