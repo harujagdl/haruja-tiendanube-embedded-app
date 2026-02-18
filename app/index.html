@@ -1500,108 +1500,116 @@ body.admin-on .admin-only{ display:table-cell; }
 }
 
 
-      /* ===== Dashboard (PWA style) ===== */
-      .dashboard{
-        padding: 6px 0 18px;
-        text-align: center;
-      }
-      .dash-title{
-        margin: 10px 0 6px;
-        font-size: 26px;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-      }
-      .dash-subtitle{
-        margin: 0 0 18px;
-        color: var(--muted);
-        font-size: 14px;
-      }
-      .tool-grid{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-      @media (max-width: 860px){
-        .tool-grid{ grid-template-columns: 1fr; }
-      }
+/* ===== Haruja header (logo) ===== */
+.haruja-header{
+  background:#fff;
+  padding: 26px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+.haruja-header .wrap{
+  max-width: 1100px;
+  margin: 0 auto;
+  display:flex;
+  justify-content:center;
+}
+.haruja-header img{
+  width:100%;
+  max-width: 520px;
+  height:auto;
+  display:block;
+}
+@media (max-width: 640px){
+  .haruja-header{ padding: 18px 14px; }
+  .haruja-header img{ max-width: 360px; }
+}
 
-      .tool{
-        appearance: none;
-        border: 1px solid var(--border);
-        background: var(--card);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
-        padding: 18px 16px 14px;
-        display: grid;
-        grid-template-columns: 56px 1fr;
-        grid-template-rows: auto auto auto;
-        gap: 8px 14px;
-        text-align: left;
-        cursor: pointer;
-        transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-      }
-      .tool:hover{
-        transform: translateY(-1px);
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.10);
-        border-color: rgba(31, 111, 235, .35);
-      }
-      .tool:active{ transform: translateY(0px); }
+/* ===== Launcher (PWA-style) ===== */
+.launcher{
+  background: #f6f7fb;
+  padding: 28px 16px 24px;
+}
+.launcher-inner{
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.launcher-title{
+  margin: 0;
+  text-align: center;
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+.launcher-subtitle{
+  margin: 8px 0 18px;
+  text-align: center;
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 13px;
+}
+.launcher-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 900px){
+  .launcher-grid{ grid-template-columns: 1fr; }
+}
 
-      .tool-icon{
-        width: 56px;
-        height: 56px;
-        border-radius: 999px;
-        background: #f1f5ff;
-        color: var(--primary);
-        display: grid;
-        place-items: center;
-        border: 1px solid rgba(31, 111, 235, .18);
-        grid-row: 1 / span 3;
-      }
-      .tool-title{
-        font-weight: 800;
-        font-size: 16px;
-        color: #111827;
-        margin-top: 2px;
-      }
-      .tool-desc{
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.3;
-      }
-      .tool-cta{
-        justify-self: start;
-        margin-top: 2px;
-        background: var(--primary);
-        color: #fff;
-        border-radius: 999px;
-        padding: 8px 12px;
-        font-size: 13px;
-        font-weight: 700;
-      }
+.toolcard{
+  text-decoration:none;
+  color:inherit;
+  display:flex;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.toolcard:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.12);
+}
+.toolcard-icon{
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex: 0 0 48px;
+}
+.toolcard-icon svg{ width: 24px; height: 24px; }
+.toolcard-title{
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.toolcard-desc{
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.toolcard-actions{ margin-top: 10px; }
+.launcher .btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 13px;
+}
+.launcher .btn-primary{
+  background: #2563eb;
+  color: #fff;
+}
 
-      /* ===== Sections visibility ===== */
-      .app-section{ display: none; }
-      .app-section.active{ display: block; }
-
-      .section-topbar{
-        display:flex;
-        justify-content:flex-start;
-        margin: 2px 0 10px;
-      }
-      .btn-back{
-        padding: 8px 10px;
-        border-radius: 10px;
-        border: 1px solid var(--border);
-        background: #fff;
-        color: #111827;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      .btn-back:hover{ border-color: rgba(31,111,235,.35); color: var(--primary); }
-
-      /* Make existing "cards" look consistent inside panels on mobile */
-      .section > h2, section > h2{ scroll-margin-top: 110px; }
 </style>
   </head>
   <body>
@@ -1610,45 +1618,54 @@ body.admin-on .admin-only{ display:table-cell; }
 </header>
     
     <div class="app">
+      
       <main>
-        <section class="dashboard" id="inicio" aria-label="Panel de herramientas">
-      <h1 class="dash-title">Panel de Herramientas HarujaGdl</h1>
-      <p class="dash-subtitle">Selecciona una herramienta para empezar.</p>
+        <section class="launcher">
+          <div class="launcher-inner">
+            <h1 class="launcher-title">Panel de Herramientas HarujaGdl</h1>
+            <p class="launcher-subtitle">Selecciona una herramienta para empezar.</p>
 
-      <div class="tool-grid">
-        <button class="tool" type="button" data-target="registro" aria-label="Abrir Registro de nuevas prendas">
-          <span class="tool-icon" aria-hidden="true">
-            <!-- Tag icon -->
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 12V7a2 2 0 0 0-2-2h-5L4 14l6 6 9-9z"></path>
-              <circle cx="15.5" cy="8.5" r="1.25"></circle>
-            </svg>
-          </span>
-          <span class="tool-title">Registro de nuevas prendas</span>
-          <span class="tool-desc">Genera el código y guarda la prenda en Firestore.</span>
-          <span class="tool-cta">Abrir</span>
-        </button>
+            <div class="launcher-grid">
+              <a class="toolcard" href="#registro" aria-label="Abrir Registro de nuevas prendas">
+                <div class="toolcard-icon" aria-hidden="true">
+                  <!-- tag/label icon -->
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M20 13l-7 7a2 2 0 0 1-2.8 0L3 12.8V4h8.8L20 11.2a2 2 0 0 1 0 2.8Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    <path d="M7.5 7.5h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="toolcard-body">
+                  <div class="toolcard-title">Registro de nuevas prendas</div>
+                  <div class="toolcard-desc">Genera el código y guarda la prenda en Firestore.</div>
+                  <div class="toolcard-actions">
+                    <span class="btn btn-primary">Abrir</span>
+                  </div>
+                </div>
+              </a>
 
-        <button class="tool" type="button" data-target="base-datos-codigos" aria-label="Abrir Base de datos códigos HarujaGdl">
-          <span class="tool-icon" aria-hidden="true">
-            <!-- Database icon -->
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-              <ellipse cx="12" cy="5" rx="7" ry="3"></ellipse>
-              <path d="M5 5v6c0 1.66 3.13 3 7 3s7-1.34 7-3V5"></path>
-              <path d="M5 11v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"></path>
-            </svg>
-          </span>
-          <span class="tool-title">Base de datos códigos HarujaGdl</span>
-          <span class="tool-desc">Consulta códigos, imprime etiquetas y administra en modo admin.</span>
-          <span class="tool-cta">Abrir</span>
-        </button>
-      </div>
-    </section>
+              <a class="toolcard" href="#base-datos-codigos" aria-label="Abrir Base de datos códigos HarujaGdl">
+                <div class="toolcard-icon" aria-hidden="true">
+                  <!-- database icon -->
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <ellipse cx="12" cy="5" rx="7" ry="3" stroke="currentColor" stroke-width="2"/>
+                    <path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5" stroke="currentColor" stroke-width="2"/>
+                    <path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                </div>
+                <div class="toolcard-body">
+                  <div class="toolcard-title">Base de datos códigos HarujaGdl</div>
+                  <div class="toolcard-desc">Consulta códigos, imprime etiquetas y administra en modo admin.</div>
+                  <div class="toolcard-actions">
+                    <span class="btn btn-primary">Abrir</span>
+                  </div>
+                </div>
+              </a>
+            </div>
+          </div>
+        </section>
 
-        <section class="section app-section" id="registro">
-      <div class="section-topbar">
-        <button class="btn btn-ghost btn-back" type="button" data-go-home="true" aria-label="Volver al panel">← Inicio</button>
-      </div>
+
+        <section class="section" id="registro">
           <h2>Registro de nuevas prendas</h2>
           <p>Selecciona los atributos clave para generar el código y guardar la prenda en Firestore.</p>
           <form class="form" id="registro-form">
@@ -1711,12 +1728,26 @@ body.admin-on .admin-only{ display:table-cell; }
           </div>
         </section>
 
-<div id="printRoot" aria-hidden="true"></div>
+        <section class="section" id="etiquetas">
+          <h2>Impresión de etiquetas</h2>
+          <p>Ingresa el código y la cantidad de etiquetas a generar.</p>
+          <form class="form" id="zpl-form">
+            <div>
+              <label for="labelSkuInput">Código (SKU)</label>
+              <input id="labelSkuInput" name="codigo" type="text" placeholder="HA2A007/NG-M" />
+            </div>
+            <div>
+              <label for="labelQtyInput">Cantidad</label>
+              <input id="labelQtyInput" name="cantidad" type="number" min="1" value="1" />
+            </div>
+            <button id="labelPrintBtn" type="submit">Imprimir etiqueta</button>
+          </form>
+          <p id="zpl-status" class="status"></p>
+        </section>
 
-        <section class="section app-section" id="base-datos-codigos">
-      <div class="section-topbar">
-        <button class="btn btn-ghost btn-back" type="button" data-go-home="true" aria-label="Volver al panel">← Inicio</button>
-      </div>
+        <div id="printRoot" aria-hidden="true"></div>
+
+        <section class="section" id="base-datos-codigos">
           <div id="dbCodigosSection" class="card section-card">
   <div class="card-header">
     <div class="card-title">Base de datos códigos HarujaGdl</div>
@@ -2036,7 +2067,6 @@ const auth = getAuth(app);
       };
 
       const setZplStatus = (message, type = "") => {
-        if (!zplStatus) return;
         zplStatus.textContent = message;
         zplStatus.className = `status ${type}`.trim();
       };
@@ -3037,23 +3067,6 @@ return `<!doctype html>
 }
 
   @media print { .print-actions { display:none; } }
-
-
-/* --- Haruja logo header (centrado y tamaño controlado) --- */
-.haruja-header{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  padding:22px 16px;
-  background:#ffffff;
-  border-bottom:1px solid rgba(0,0,0,.06);
-}
-.haruja-header img{
-  width:min(420px, 86vw);
-  height:auto;
-  display:block;
-}
-
 </style></head>
 <body>
   <div class="print-actions"><button onclick="window.print()">Imprimir</button></div>
@@ -5241,7 +5254,7 @@ window.addEventListener("hashchange", () => {
     // Actualiza dot cuando cambia algo
     [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
     if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
-      if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
+prendasSearch.addEventListener("input", handleSearchInput);
       headerFilterButtons.forEach((button) => {
         button.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
@@ -5439,57 +5452,6 @@ window.addEventListener("hashchange", () => {
       };
 
       init();
-    
-/* ===== Dashboard navigation (show/hide main tools) ===== */
-(function(){
-  const dashboardId = "inicio";
-  const sectionIds = ["registro","base-datos-codigos"];
-
-  function setActive(sectionId){
-    // hide all
-    document.getElementById(dashboardId)?.classList.toggle("hidden", !!sectionId);
-    sectionIds.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.classList.toggle("active", id === sectionId);
-    });
-
-    if (sectionId){
-      const el = document.getElementById(sectionId);
-      if (el) el.scrollIntoView({behavior:"smooth", block:"start"});
-      history.replaceState(null, "", "#" + sectionId);
-    } else {
-      document.getElementById(dashboardId)?.scrollIntoView({behavior:"smooth", block:"start"});
-      history.replaceState(null, "", "#");
-    }
-  }
-
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-target]");
-    if (btn){
-      e.preventDefault();
-      const target = btn.getAttribute("data-target");
-      if (target) setActive(target);
-      return;
-    }
-    const back = e.target.closest("[data-go-home]");
-    if (back){
-      e.preventDefault();
-      setActive(null);
-      return;
-    }
-  });
-
-  // initial state based on hash
-  function initFromHash(){
-    const hash = (location.hash || "").replace("#","");
-    if (sectionIds.includes(hash)) setActive(hash);
-    else setActive(null);
-  }
-  window.addEventListener("hashchange", initFromHash);
-  initFromHash();
-})();
-
-</script>
+    </script>
   </body>
 </html>
