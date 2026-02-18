@@ -2914,7 +2914,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             <div class="codigo">${escapeHtml(label.codigo)}</div>
             <div class="precio">${escapeHtml(label.precioTexto)}</div>
             <div class="qr" data-qr="${escapeHtml(label.qrValue)}"></div>
-            <div class="logoText">harujagdl</div>
+            <img class="logoImg" alt="harujagdl" src="assets/haruja-logo.png" />
             <div class="logoLine"></div>
           </section>
         `).join("\n");
@@ -2930,8 +2930,23 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
   .qr { position:absolute; left:32.53mm; top:2.13mm; width:15.5mm; height:15.5mm; }
   .qr img { width:100%; height:100%; display:block; }
   
-.logoText { position:absolute; left:35.2mm; top:20.1mm; font-size:3.1mm; font-weight:600; font-family: Arial, sans-serif; }
-.logoLine { position:absolute; left:35.2mm; top:23.15mm; width:13.8mm; height:0.4mm; background:#000; }
+.logoImg {
+  position:absolute;
+  left:35.2mm;
+  top:19.6mm;
+  width:14.5mm;
+  height:auto;
+  display:block;
+}
+
+.logoLine {
+  position:absolute;
+  left:35.2mm;
+  top:23.15mm;
+  width:13.8mm;
+  height:0.4mm;
+  background:#000;
+}
   @media print { .print-actions { display:none; } }
 </style></head>
 <body>
