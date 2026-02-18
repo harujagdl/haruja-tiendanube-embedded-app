@@ -2899,8 +2899,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
 ^XZ`;
 
   return Array.from({ length: qty }, () => template).join("\n");
-};
-      };
+}; // fin buildLabelZpl
 
       const escapeHtml = (value) => safeString(value)
         .replace(/&/g, "&amp;")
