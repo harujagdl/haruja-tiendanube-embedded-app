@@ -1610,11 +1610,6 @@ body.admin-on .admin-only{ display:table-cell; }
 </header>
     
     <div class="app">
-      <header>
-        <h1>Panel Haruja-Prueba </h1>
-        <p>Gestión rápida de prendas, precios y etiquetas dentro de Tiendanube.</p>
-      </header>
-
       <main>
         <section class="dashboard" id="inicio" aria-label="Panel de herramientas">
       <h1 class="dash-title">Panel de Herramientas HarujaGdl</h1>
@@ -2041,6 +2036,7 @@ const auth = getAuth(app);
       };
 
       const setZplStatus = (message, type = "") => {
+        if (!zplStatus) return;
         zplStatus.textContent = message;
         zplStatus.className = `status ${type}`.trim();
       };
@@ -3041,6 +3037,23 @@ return `<!doctype html>
 }
 
   @media print { .print-actions { display:none; } }
+
+
+/* --- Haruja logo header (centrado y tamaño controlado) --- */
+.haruja-header{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:22px 16px;
+  background:#ffffff;
+  border-bottom:1px solid rgba(0,0,0,.06);
+}
+.haruja-header img{
+  width:min(420px, 86vw);
+  height:auto;
+  display:block;
+}
+
 </style></head>
 <body>
   <div class="print-actions"><button onclick="window.print()">Imprimir</button></div>
@@ -5228,7 +5241,7 @@ window.addEventListener("hashchange", () => {
     // Actualiza dot cuando cambia algo
     [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
     if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
-prendasSearch.addEventListener("input", handleSearchInput);
+      if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
       headerFilterButtons.forEach((button) => {
         button.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
