@@ -26,20 +26,23 @@
       "**/.*",
       "**/node_modules/**"
     ],
-"rewrites": [
-  {
-    "source": "/apartados",
-    "destination": "/apartados/index.html"
-  },
-  {
-    "source": "/apartados/**",
-    "destination": "/apartados/index.html"
-  },
-  {
-    "source": "**",
-    "destination": "/index.html"
-  }
-]
-
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "function": "api"
+      },
+      {
+        "source": "/apartados",
+        "destination": "/apartados/index.html"
+      },
+      {
+        "source": "/apartados/**",
+        "destination": "/apartados/index.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
 }
