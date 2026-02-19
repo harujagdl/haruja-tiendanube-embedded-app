@@ -32,6 +32,14 @@
         "function": "api"
       },
       {
+        "source": "/apartados-historial",
+        "destination": "/apartados-historial/index.html"
+      },
+      {
+        "source": "/apartados-historial/**",
+        "destination": "/apartados-historial/index.html"
+      },
+      {
         "source": "/apartados",
         "destination": "/apartados/index.html"
       },

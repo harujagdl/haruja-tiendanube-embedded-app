@@ -149,6 +149,7 @@
     <div class="top-actions">
       <button class="btn-ghost" onclick="history.back()">← Volver</button>
       <a class="btn-ghost" href="/" style="text-decoration:none; display:inline-block;">Panel</a>
+      <button class="btn-ghost" onclick="window.location.href='/apartados-historial'">Historial</button>
     </div>
 
     <div class="card">
@@ -158,7 +159,7 @@
         <div class="grid cols-3">
           <div class="row">
             <label class="lab">Folio</label>
-            <input id="folio" class="inpt" type="text" placeholder="HARUJA24-000001" readonly>
+            <input id="folio" class="inpt" type="text" placeholder="HARUJA26-001" readonly>
             <div class="hint">Se genera automático para apartados nuevos.</div>
           </div>
           <div class="row">
@@ -453,6 +454,27 @@
     }
   }
 
+
+  function applyAbonoQueryParams(){
+    const params = new URLSearchParams(window.location.search);
+    const folioParam = String(params.get('folio') || '').trim().toUpperCase();
+    const abonoParam = params.get('abono') === '1';
+    if (!folioParam && !abonoParam) return;
+
+    if (abonoParam) {
+      $('usarFolioExistente').checked = true;
+      $('folio').readOnly = false;
+      setDescuentoDisabled(true);
+      $('codigos').disabled = true;
+      $('cliente').disabled = true;
+      $('contacto').disabled = true;
+    }
+
+    if (folioParam) {
+      $('folio').value = folioParam;
+    }
+  }
+
   // init
   (async function init(){
     const today = new Date();
@@ -477,7 +499,10 @@
       }
     });
 
-    try { $('folio').value = await fetchNextFolio(); } catch(e){ showMsg('Aviso: '+e.message, 'err'); }
+    applyAbonoQueryParams();
+    if (!$('usarFolioExistente').checked) {
+      try { $('folio').value = await fetchNextFolio(); } catch(e){ showMsg('Aviso: '+e.message, 'err'); }
+    }
   })();
 </script>
 

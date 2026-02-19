@@ -1156,7 +1156,41 @@ const parseCodes = (input = "") => String(input)
   .map((item) => normalizeCodigo(item))
   .filter(Boolean);
 
-const buildFolio = (year, seq) => `HARUJA${String(year).slice(-2)}-${String(seq).padStart(6, "0")}`;
+const buildFolio = (year, seq) => `HARUJA${String(year).slice(-2)}-${String(seq).padStart(3, "0")}`;
+
+const encodeApartadosCursor = (payload) => Buffer.from(JSON.stringify(payload)).toString("base64url");
+
+const decodeApartadosCursor = (cursor) => {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+    const createdAtMs = Number(parsed?.createdAtMs);
+    if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return null;
+    return {
+      createdAt: admin.firestore.Timestamp.fromMillis(createdAtMs),
+      folio: String(parsed?.folio || "")
+    };
+  } catch (_err) {
+    return null;
+  }
+};
+
+const normalizeApartadoItem = (docSnap) => {
+  const data = docSnap.data() || {};
+  const createdAtTs = data.createdAt instanceof admin.firestore.Timestamp ? data.createdAt : null;
+  const updatedAtTs = data.updatedAt instanceof admin.firestore.Timestamp ? data.updatedAt : null;
+  return {
+    folio: docSnap.id,
+    fecha: String(data.fecha || ""),
+    cliente: String(data.cliente || ""),
+    contacto: String(data.contacto || ""),
+    anticipo: Number(data.anticipo) || 0,
+    total: Number(data.total) || 0,
+    pdfUrl: String(data.pdfUrl || ""),
+    createdAt: createdAtTs ? createdAtTs.toMillis() : null,
+    updatedAt: updatedAtTs ? updatedAtTs.toMillis() : null
+  };
+};
 
 const reserveNextFolio = async () => {
   const now = new Date();
@@ -1382,6 +1416,85 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
     if (path === "/api/apartados/next-folio" && req.method === "GET") {
       const folio = await peekNextFolio();
       res.status(200).json({ok: true, folio});
+      return;
+    }
+
+    if (path === "/api/apartados/list" && req.method === "GET") {
+      const requestedLimit = Number(req.query?.limit);
+      const limit = Math.max(1, Math.min(100, Number.isFinite(requestedLimit) ? requestedLimit : 50));
+      const cursor = decodeApartadosCursor(req.query?.cursor);
+      const q = String(req.query?.q || "").trim().toUpperCase();
+
+      let items = [];
+      let nextCursor = null;
+
+      if (q.startsWith("HARUJA")) {
+        const exactRef = db.collection(APARTADOS_COLLECTION).doc(q);
+        const exactSnap = await exactRef.get();
+        if (exactSnap.exists) {
+          items = [normalizeApartadoItem(exactSnap)];
+        } else {
+          const prefixQuery = db.collection(APARTADOS_COLLECTION)
+            .orderBy(admin.firestore.FieldPath.documentId())
+            .startAt(q)
+            .endAt(`${q}\uf8ff`)
+            .limit(limit);
+          const prefixSnap = await prefixQuery.get();
+          items = prefixSnap.docs.map(normalizeApartadoItem);
+        }
+      } else {
+        let query = db.collection(APARTADOS_COLLECTION)
+          .orderBy("createdAt", "desc")
+          .limit(limit);
+
+        if (cursor?.createdAt) {
+          query = query.startAfter(cursor.createdAt);
+        }
+
+        const snap = await query.get();
+        items = snap.docs.map(normalizeApartadoItem);
+
+        if (snap.size === limit) {
+          const lastDoc = snap.docs[snap.docs.length - 1];
+          const lastCreatedAt = lastDoc.get("createdAt");
+          if (lastCreatedAt instanceof admin.firestore.Timestamp) {
+            nextCursor = encodeApartadosCursor({
+              createdAtMs: lastCreatedAt.toMillis(),
+              folio: lastDoc.id
+            });
+          }
+        }
+      }
+
+      res.status(200).json({ok: true, items, nextCursor});
+      return;
+    }
+
+    if (path === "/api/apartados/get" && req.method === "GET") {
+      const folio = String(req.query?.folio || "").trim().toUpperCase();
+      if (!folio) {
+        res.status(400).json({ok: false, error: "Falta query param folio."});
+        return;
+      }
+
+      const snap = await db.collection(APARTADOS_COLLECTION).doc(folio).get();
+      if (!snap.exists) {
+        res.status(404).json({ok: false, error: `No encontré el folio "${folio}".`});
+        return;
+      }
+
+      const data = snap.data() || {};
+      const createdAtTs = data.createdAt instanceof admin.firestore.Timestamp ? data.createdAt : null;
+      const updatedAtTs = data.updatedAt instanceof admin.firestore.Timestamp ? data.updatedAt : null;
+      res.status(200).json({
+        ok: true,
+        item: {
+          folio: snap.id,
+          ...data,
+          createdAt: createdAtTs ? createdAtTs.toMillis() : null,
+          updatedAt: updatedAtTs ? updatedAtTs.toMillis() : null
+        }
+      });
       return;
     }
 
