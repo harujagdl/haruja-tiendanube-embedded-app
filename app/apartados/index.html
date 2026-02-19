@@ -260,22 +260,15 @@
     </div>
   </div>
 
-<!-- =========================================================
-  Firebase Auth (NECESARIO)
-  - Pega aquí los mismos scripts y config que ya usas en tu panel.
-  - Si ya tienes un archivo compartido, cámbialo por: <script src="/shared/firebase-init.js"></script>
-========================================================= -->
-
-<!-- TODO: Pega aquí lo mismo que en tu app/index.html (firebase-app + firebase-auth + initializeApp) -->
-<!-- Ejemplo (NO lo uses si tu panel usa otras versiones): -->
-<!--
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script src="/__/firebase/8.10.1/firebase-app.js"></script>
+<script src="/__/firebase/8.10.1/firebase-auth.js"></script>
+<script src="/__/firebase/init.js"></script>
+<script src="/shared/firebase-init.js"></script>
 <script>
-  const firebaseConfig = { ...tu config... };
-  firebase.initializeApp(firebaseConfig);
+  firebase.auth().onAuthStateChanged((user) => {
+    if (!user) window.location.href = "/";
+  });
 </script>
--->
 
 <script>
   // -------- helpers --------
@@ -368,12 +361,10 @@
 
   // ---------- API (Firebase Functions) ----------
   async function getIdTokenOrThrow(){
-    if (!window.firebase || !firebase.auth) {
-      throw new Error("Firebase Auth no está cargado en /apartados. Copia los scripts/config del panel a esta página.");
+    if (!window.getFirebaseIdToken) {
+      throw new Error("Firebase init no cargó. Revisa /shared/firebase-init.js");
     }
-    const u = firebase.auth().currentUser;
-    if (!u) throw new Error("No hay sesión. Regresa al panel e inicia sesión.");
-    return await u.getIdToken();
+    return await window.getFirebaseIdToken();
   }
 
   async function apiFetch(path, opts={}){

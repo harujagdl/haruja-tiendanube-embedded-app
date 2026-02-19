@@ -1711,6 +1711,22 @@ body.admin-on .admin-only{ display:table-cell; }
                   </div>
                 </div>
               </div>
+
+              <div class="toolcard" aria-label="Abrir Registrar apartado">
+                <div class="toolcard-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2"/>
+                    <path d="M8 9h8M8 13h8M8 17h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="toolcard-body">
+                  <div class="toolcard-title">Registrar apartado</div>
+                  <div class="toolcard-desc">Crea apartados, registra abonos y genera ticket PDF.</div>
+                  <div class="toolcard-actions">
+                    <a class="btn btn-primary" href="/apartados">Abrir</a>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -1944,6 +1960,11 @@ body.admin-on .admin-only{ display:table-cell; }
   </div>
 </div>
 
+<script src="/__/firebase/8.10.1/firebase-app.js"></script>
+<script src="/__/firebase/8.10.1/firebase-auth.js"></script>
+<script src="/__/firebase/init.js"></script>
+<script src="/shared/firebase-init.js"></script>
+
 <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
       import {
@@ -1977,15 +1998,7 @@ body.admin-on .admin-only{ display:table-cell; }
 
       // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
 // Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
-const firebaseConfig = window.__HARUJA_FIREBASE_CONFIG__ || {
-  apiKey: "AIzaSyAK5_MuMseQm58AeRZlrPtGyEZ216-Xkno",
-  authDomain: "haruja-tiendanube.firebaseapp.com",
-  projectId: "haruja-tiendanube",
-  // OJO: Firebase ahora puede mostrarlo como *.firebasestorage.app; cualquiera de los 2 suele funcionar.
-  storageBucket: "haruja-tiendanube.firebasestorage.app",
-  messagingSenderId: "396461447684",
-  appId: "1:396461447684:web:770dc3bc9bbb40a2873351"
-};
+const firebaseConfig = window.HARUJA_FIREBASE_CONFIG || window.__HARUJA_FIREBASE_CONFIG__ || {};
 
 if (!firebaseConfig?.apiKey || firebaseConfig.apiKey.includes("PEGA_AQUI") || firebaseConfig.apiKey.includes("REEMPLAZAR")) {
   console.error("[Firebase] Falta configurar firebaseConfig.apiKey (y/o appId/messagingSenderId).");
