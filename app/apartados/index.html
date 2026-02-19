@@ -229,6 +229,7 @@
         <div style="margin-top:6px">
           <button id="btn" class="btn" onclick="enviar()">Registrar</button>
           <div id="estado" class="status"></div>
+          <div id="auth-guard" class="status warn" style="display:none; margin-top:8px"></div>
         </div>
       </div>
     </div>
@@ -263,13 +264,7 @@
 <script src="/__/firebase/8.10.1/firebase-app.js"></script>
 <script src="/__/firebase/8.10.1/firebase-auth.js"></script>
 <script src="/__/firebase/init.js"></script>
-<script src="/shared/firebase-init.js"></script>
-<script>
-  firebase.auth().onAuthStateChanged((user) => {
-    if (!user) window.location.href = "/";
-  });
-</script>
-
+<script src="/shared/firebase-compat.js"></script>
 <script>
   // -------- helpers --------
   const $ = (id)=>document.getElementById(id);
@@ -362,7 +357,7 @@
   // ---------- API (Firebase Functions) ----------
   async function getIdTokenOrThrow(){
     if (!window.getFirebaseIdToken) {
-      throw new Error("Firebase init no cargó. Revisa /shared/firebase-init.js");
+      throw new Error("Firebase init no cargó. Revisa /shared/firebase-compat.js");
     }
     return await window.getFirebaseIdToken();
   }
@@ -507,15 +502,52 @@
     }catch(_){}
   })();
 </script>
-  <!-- Firebase (compat) + Auth -->
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-<script src="/shared/firebase-compat.js"></script>
-
+  <!-- Guard de sesión con delay (sin redirección inmediata) -->
 <script>
-  // Protege /apartados si no hay sesión
+  const AUTH_GUARD_DELAY_MS = 900;
+  const AUTH_GUARD_REDIRECT_MS = 4500;
+  let authGuardTimer = null;
+  let authRedirectTimer = null;
+
+  function hideAuthGuardMessage(){
+    const box = document.getElementById('auth-guard');
+    if (!box) return;
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+
+  function showAuthGuardMessage(){
+    const box = document.getElementById('auth-guard');
+    if (!box) return;
+
+    box.style.display = 'block';
+    box.innerHTML = `
+      No detectamos sesión activa todavía.
+
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+        <a class="btn-mini secondary" href="/">Ir al panel</a>
+        <a class="btn-mini" href="/">Iniciar sesión</a>
+      </div>
+    `;
+
+    clearTimeout(authRedirectTimer);
+    authRedirectTimer = setTimeout(() => {
+      if (!firebase.auth().currentUser) window.location.href = '/';
+    }, AUTH_GUARD_REDIRECT_MS);
+  }
+
   firebase.auth().onAuthStateChanged((user) => {
-    if (!user) window.location.href = "/";
+    clearTimeout(authGuardTimer);
+
+    if (user) {
+      clearTimeout(authRedirectTimer);
+      hideAuthGuardMessage();
+      return;
+    }
+
+    authGuardTimer = setTimeout(() => {
+      if (!firebase.auth().currentUser) showAuthGuardMessage();
+    }, AUTH_GUARD_DELAY_MS);
   });
 </script>
 
