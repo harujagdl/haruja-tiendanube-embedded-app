@@ -229,7 +229,6 @@
         <div style="margin-top:6px">
           <button id="btn" class="btn" onclick="enviar()">Registrar</button>
           <div id="estado" class="status"></div>
-          <div id="auth-guard" class="status warn" style="display:none; margin-top:8px"></div>
         </div>
       </div>
     </div>
@@ -261,10 +260,6 @@
     </div>
   </div>
 
-<script src="/__/firebase/8.10.1/firebase-app.js"></script>
-<script src="/__/firebase/8.10.1/firebase-auth.js"></script>
-<script src="/__/firebase/init.js"></script>
-<script src="/shared/firebase-compat.js"></script>
 <script>
   // -------- helpers --------
   const $ = (id)=>document.getElementById(id);
@@ -355,21 +350,12 @@
 
 
   // ---------- API (Firebase Functions) ----------
-  async function getIdTokenOrThrow(){
-    if (!window.getFirebaseIdToken) {
-      throw new Error("Firebase init no cargó. Revisa /shared/firebase-compat.js");
-    }
-    return await window.getFirebaseIdToken();
-  }
-
   async function apiFetch(path, opts={}){
-    const token = await getIdTokenOrThrow();
     const res = await fetch(path, {
       method: opts.method || "GET",
       headers: {
         ...(opts.headers || {}),
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
+        "Content-Type": "application/json"
       },
       body: opts.body || undefined
     });
@@ -491,64 +477,8 @@
       }
     });
 
-    // Intentar traer folio cuando ya haya sesión
-    try{
-      if (window.firebase && firebase.auth) {
-        firebase.auth().onAuthStateChanged(async (u)=>{
-          if (!u) return;
-          try { $('folio').value = await fetchNextFolio(); } catch(e){ showMsg('Aviso: '+e.message, 'err'); }
-        });
-      }
-    }catch(_){}
+    try { $('folio').value = await fetchNextFolio(); } catch(e){ showMsg('Aviso: '+e.message, 'err'); }
   })();
-</script>
-  <!-- Guard de sesión con delay (sin redirección inmediata) -->
-<script>
-  const AUTH_GUARD_DELAY_MS = 900;
-  const AUTH_GUARD_REDIRECT_MS = 4500;
-  let authGuardTimer = null;
-  let authRedirectTimer = null;
-
-  function hideAuthGuardMessage(){
-    const box = document.getElementById('auth-guard');
-    if (!box) return;
-    box.style.display = 'none';
-    box.innerHTML = '';
-  }
-
-  function showAuthGuardMessage(){
-    const box = document.getElementById('auth-guard');
-    if (!box) return;
-
-    box.style.display = 'block';
-    box.innerHTML = `
-      No detectamos sesión activa todavía.
-
-      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
-        <a class="btn-mini secondary" href="/">Ir al panel</a>
-        <a class="btn-mini" href="/">Iniciar sesión</a>
-      </div>
-    `;
-
-    clearTimeout(authRedirectTimer);
-    authRedirectTimer = setTimeout(() => {
-      if (!firebase.auth().currentUser) window.location.href = '/';
-    }, AUTH_GUARD_REDIRECT_MS);
-  }
-
-  firebase.auth().onAuthStateChanged((user) => {
-    clearTimeout(authGuardTimer);
-
-    if (user) {
-      clearTimeout(authRedirectTimer);
-      hideAuthGuardMessage();
-      return;
-    }
-
-    authGuardTimer = setTimeout(() => {
-      if (!firebase.auth().currentUser) showAuthGuardMessage();
-    }, AUTH_GUARD_DELAY_MS);
-  });
 </script>
 
 </body>
