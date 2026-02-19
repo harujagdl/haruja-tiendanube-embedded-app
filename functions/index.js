@@ -4,6 +4,8 @@ const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
 const Busboy = require("busboy");
 const XLSX = require("xlsx");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1101,4 +1103,336 @@ exports.normalizePrendasPVenta = onCall(RUNTIME_OPTS, async (request) => {
     lastDocId,
     hasMore: snapshot.size === batchSize
   };
+});
+
+
+const APARTADOS_COLLECTION = "apartados";
+const APARTADOS_COUNTER_DOC = "apartados_folio";
+const TICKET_LOGO_PATH = "assets/haruja-logo.png";
+
+const escHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#39;");
+
+const fmtCurrency = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "$0.00";
+  return new Intl.NumberFormat("es-MX", {style: "currency", currency: "MXN"}).format(n);
+};
+
+const normalizeDiscountType = (value) => {
+  const raw = String(value || "").trim().toUpperCase();
+  return raw === "AMT" ? "AMT" : "PCT";
+};
+
+const calcDiscount = (subtotal, discountType, discountValue) => {
+  const safeSubtotal = Math.max(0, Number(subtotal) || 0);
+  const safeValue = Math.max(0, Number(discountValue) || 0);
+  if (normalizeDiscountType(discountType) === "AMT") {
+    return {
+      type: "AMT",
+      value: round2(safeValue) || 0,
+      amount: round2(Math.min(safeSubtotal, safeValue)) || 0,
+      label: `$${safeValue.toFixed(2)}`
+    };
+  }
+
+  const pct = Math.min(100, safeValue);
+  const amount = safeSubtotal * (pct / 100);
+  return {
+    type: "PCT",
+    value: round2(pct) || 0,
+    amount: round2(amount) || 0,
+    label: `${round2(pct) || 0}%`
+  };
+};
+
+const parseCodes = (input = "") => String(input)
+  .split(",")
+  .map((item) => normalizeCodigo(item))
+  .filter(Boolean);
+
+const buildFolio = (year, seq) => `HARUJA${String(year).slice(-2)}-${String(seq).padStart(6, "0")}`;
+
+const reserveNextFolio = async () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const counterRef = db.collection("counters").doc(APARTADOS_COUNTER_DOC);
+
+  const folio = await db.runTransaction(async (trx) => {
+    const snap = await trx.get(counterRef);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const currentYear = Number(data.year) || year;
+    const currentSeq = Number(data.value) || 0;
+    const nextSeq = currentYear === year ? currentSeq + 1 : 1;
+    trx.set(counterRef, {
+      year,
+      value: nextSeq,
+      lastNumber: nextSeq,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, {merge: true});
+    return buildFolio(year, nextSeq);
+  });
+
+  return folio;
+};
+
+const peekNextFolio = async () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const snap = await db.collection("counters").doc(APARTADOS_COUNTER_DOC).get();
+  const data = snap.exists ? (snap.data() || {}) : {};
+  const currentYear = Number(data.year) || year;
+  const currentSeq = Number(data.value) || 0;
+  const nextSeq = currentYear === year ? currentSeq + 1 : 1;
+  return buildFolio(year, nextSeq);
+};
+
+const buildTicketRows = async (codes = []) => {
+  const cleanCodes = Array.from(new Set(codes.map((code) => normalizeCodigo(code)).filter(Boolean)));
+  const rows = [];
+  for (const code of cleanCodes) {
+    const adminRef = db.collection(PRENDAS_ADMIN_COLLECTION).doc(code);
+    const masterRef = db.collection(PRENDAS_COLLECTION).doc(code);
+    const [adminSnap, masterSnap] = await Promise.all([adminRef.get(), masterRef.get()]);
+    const data = adminSnap.exists ? (adminSnap.data() || {}) : (masterSnap.exists ? (masterSnap.data() || {}) : {});
+    const precio = resolvePVenta(data) || 0;
+    rows.push({
+      codigo: code,
+      descripcion: data.descripcion || data.Descripción || "",
+      precio,
+      cantidad: 1,
+      subtotal: precio
+    });
+  }
+  return rows;
+};
+
+const buildLogoUrl = async () => {
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(TICKET_LOGO_PATH);
+  const [exists] = await file.exists();
+  if (!exists) return "https://i.postimg.cc/nMphkZcC/haruja-logo.png";
+  const [url] = await file.getSignedUrl({action: "read", expires: Date.now() + 60 * 60 * 1000});
+  return url;
+};
+
+const renderTicketHtml = (ctx) => {
+  const {
+    folio, fecha, cliente, contacto, filas = [], subtotal = 0, anticipo = 0,
+    descLabel = "0%", descVal = 0, total = 0, logoUrl = ""
+  } = ctx;
+
+  const fechaTxt = fecha ? String(fecha) : "";
+  const verde = "#A7B59E";
+  const marron = "#383234";
+  const beige = "#FAF6F1";
+
+  const rowsHtml = filas.map((f) => `
+    <tr>
+      <td>${escHtml(f.codigo)}</td>
+      <td>${escHtml(f.descripcion)}</td>
+      <td class="right">${fmtCurrency(f.precio)}</td>
+      <td class="right">${Number(f.cantidad) || 1}</td>
+      <td class="right">${fmtCurrency(f.subtotal)}</td>
+    </tr>`).join("");
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Ticket ${escHtml(folio)}</title>
+<style>*{box-sizing:border-box} body{font-family:Arial,sans-serif;color:${marron};margin:24px}
+.head{position:relative;border-bottom:2px solid ${verde};padding:0 0 8px 0;margin:0 0 14px 0}
+.title{font-size:18px;font-weight:bold}.badge{background:${verde};color:#fff;padding:4px 8px;border-radius:6px;font-weight:bold}
+.logo{position:absolute;top:0;right:0;max-height:60px}
+table{width:100%;border-collapse:collapse;margin-top:10px} th,td{border-bottom:1px solid #e7e7e7;padding:8px;font-size:12.5px;text-align:left;vertical-align:top}
+th{background:${beige};font-weight:bold}.right{text-align:right}.totals{width:100%;margin-top:14px}.totals td{padding:6px 8px}.totals .lbl{text-align:right}.totals .val{text-align:right;width:120px}
+.notes{margin-top:18px;font-size:11.5px;line-height:1.45}
+</style></head><body>
+<div class="head">
+  <img src="${escHtml(logoUrl)}" class="logo">
+  <div style="padding-right:120px">
+    <div class="title">Pedido <span class="badge">${escHtml(folio)}</span></div>
+    <div style="color:#555">Fecha ${escHtml(fechaTxt)}</div>
+    <div style="color:#555;margin-top:6px">
+      <div><b>Nombre del cliente</b>: ${escHtml(cliente)}</div>
+      <div><b>N° de contacto</b>: ${escHtml(contacto)}</div>
+    </div>
+  </div>
+</div>
+<div class="title" style="font-size:16px">Detalles del pedido</div>
+<table><thead><tr>
+  <th style="width:18%">Código</th>
+  <th style="width:52%">Descripción</th>
+  <th class="right" style="width:10%">Precio</th>
+  <th class="right" style="width:7%">Cant.</th>
+  <th class="right" style="width:13%">Subtotal</th>
+</tr></thead><tbody>${rowsHtml}</tbody></table>
+<table class="totals">
+  <tr><td class="lbl" colspan="4"><b>Subtotal</b></td><td class="val">${fmtCurrency(subtotal)}</td></tr>
+  <tr><td class="lbl" colspan="4"><b>Anticipo</b></td><td class="val">${fmtCurrency(anticipo)}</td></tr>
+  <tr><td class="lbl" colspan="4"><b>Descuento (${escHtml(descLabel)})</b></td><td class="val">-${fmtCurrency(descVal)}</td></tr>
+  <tr><td class="lbl" colspan="4"><b>Total de Cuenta</b></td><td class="val"><b>${fmtCurrency(total)}</b></td></tr>
+</table>
+<div class="notes">Gracias por tu compra en HarujaGdl</div>
+</body></html>`;
+};
+
+const generatePdfFromHtml = async (html) => {
+  const executablePath = await chromium.executablePath();
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath,
+    headless: chromium.headless
+  });
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, {waitUntil: "networkidle0"});
+    return await page.pdf({format: "A4", printBackground: true, margin: {top: "16px", right: "16px", bottom: "16px", left: "16px"}});
+  } finally {
+    await browser.close();
+  }
+};
+
+const requireApartadosAdmin = async (req) => {
+  const decoded = await requireAllowlistedAdmin(req);
+  return decoded;
+};
+
+const parseJsonBody = (req) => {
+  if (req.body && typeof req.body === "object") return req.body;
+  if (typeof req.body === "string" && req.body.trim()) {
+    return JSON.parse(req.body);
+  }
+  return {};
+};
+
+exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
+  if (applyCors(req, res)) return;
+  const path = String(req.path || req.url || "").split("?")[0];
+
+  try {
+    if (path === "/api/apartados/next-folio" && req.method === "GET") {
+      await requireApartadosAdmin(req);
+      const folio = await peekNextFolio();
+      res.status(200).json({ok: true, folio});
+      return;
+    }
+
+    if (path === "/api/apartados/registrar" && req.method === "POST") {
+      await requireApartadosAdmin(req);
+      const payload = parseJsonBody(req);
+      const usarFolioExistente = !!payload.usarFolioExistente;
+      const generarTicket = payload.generarTicket !== false;
+      const anticipoInput = Math.max(0, Number(payload.anticipo) || 0);
+
+      let folio = String(payload.folio || "").trim().toUpperCase();
+      let docRef;
+      let apartadoData;
+
+      if (usarFolioExistente) {
+        if (!folio) {
+          res.status(400).json({ok: false, error: "Ingresa el folio para aplicar el abono."});
+          return;
+        }
+        docRef = db.collection(APARTADOS_COLLECTION).doc(folio);
+        const snap = await docRef.get();
+        if (!snap.exists) {
+          res.status(404).json({ok: false, error: `No encontré el folio "${folio}".`});
+          return;
+        }
+        apartadoData = snap.data() || {};
+      } else {
+        folio = await reserveNextFolio();
+        docRef = db.collection(APARTADOS_COLLECTION).doc(folio);
+        const rows = await buildTicketRows(parseCodes(payload.codigos));
+        const subtotal = round2(rows.reduce((acc, row) => acc + (Number(row.subtotal) || 0), 0)) || 0;
+        const discount = calcDiscount(subtotal, payload.descuentoTipo, payload.descuentoValor ?? payload.descuentoPct);
+        const total = round2(Math.max(0, subtotal - discount.amount - anticipoInput)) || 0;
+
+        apartadoData = {
+          folio,
+          fecha: String(payload.fecha || ""),
+          cliente: String(payload.cliente || "").trim(),
+          contacto: String(payload.contacto || "").trim(),
+          codigos: rows.map((row) => row.codigo),
+          filas: rows,
+          subtotal,
+          anticipo: anticipoInput,
+          descTipo: discount.type,
+          descValor: discount.value,
+          descVal: discount.amount,
+          total,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        await docRef.set(apartadoData, {merge: true});
+      }
+
+      if (usarFolioExistente) {
+        const subtotal = Number(apartadoData.subtotal) || 0;
+        const anticipo = round2((Number(apartadoData.anticipo) || 0) + anticipoInput) || 0;
+        const discount = calcDiscount(subtotal, apartadoData.descTipo, apartadoData.descValor);
+        const total = round2(Math.max(0, subtotal - discount.amount - anticipo)) || 0;
+        apartadoData = {
+          ...apartadoData,
+          anticipo,
+          descVal: discount.amount,
+          total,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        await docRef.set(apartadoData, {merge: true});
+      }
+
+      let pdfUrl = "";
+      if (generarTicket) {
+        const logoUrl = await buildLogoUrl();
+        const html = renderTicketHtml({
+          folio,
+          fecha: apartadoData.fecha,
+          cliente: apartadoData.cliente,
+          contacto: apartadoData.contacto,
+          filas: apartadoData.filas || [],
+          subtotal: apartadoData.subtotal,
+          anticipo: apartadoData.anticipo,
+          descLabel: calcDiscount(apartadoData.subtotal, apartadoData.descTipo, apartadoData.descValor).label,
+          descVal: apartadoData.descVal,
+          total: apartadoData.total,
+          logoUrl
+        });
+        const pdfBuffer = await generatePdfFromHtml(html);
+        const bucket = admin.storage().bucket();
+        const ticketPath = `tickets/apartados/${folio}.pdf`;
+        const file = bucket.file(ticketPath);
+        await file.save(pdfBuffer, {contentType: "application/pdf", resumable: false});
+        const [signedUrl] = await file.getSignedUrl({action: "read", expires: "03-01-2500"});
+        pdfUrl = signedUrl;
+        await docRef.set({pdfPath: ticketPath, pdfUrl, updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
+      }
+
+      res.status(200).json({
+        ok: true,
+        folio,
+        resumen: {
+          subtotal: apartadoData.subtotal || 0,
+          anticipo: apartadoData.anticipo || 0,
+          descVal: apartadoData.descVal || 0,
+          total: apartadoData.total || 0
+        },
+        pdfUrl
+      });
+      return;
+    }
+
+    res.status(404).json({ok: false, error: "Ruta no encontrada."});
+  } catch (error) {
+    console.error("API apartados error", error);
+    const message = error instanceof HttpsError ? error.message : (error?.message || "Error interno");
+    const status = error instanceof HttpsError && error.code === "permission-denied" ? 403 : 500;
+    res.status(status).json({ok: false, error: message});
+  }
 });

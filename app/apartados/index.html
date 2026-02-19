@@ -255,6 +255,7 @@
       <div class="btns">
         <button class="btn-mini secondary" onclick="closeModal()">Cerrar</button>
         <a id="m-open-url" class="btn-mini" href="#" target="_blank" rel="noopener" style="display:none">Abrir PDF</a>
+        <button id="m-copy-url" class="btn-mini secondary" onclick="copyPdfUrl()" style="display:none">Copiar link WhatsApp</button>
       </div>
     </div>
   </div>
@@ -343,13 +344,27 @@
       $('m-open-url').href = payload.pdfUrl;
       $('m-link').style.display = 'block';
       $('m-open-url').style.display = 'inline-block';
+      $('m-copy-url').style.display = 'inline-block';
     } else {
       $('m-link').style.display = 'none';
       $('m-open-url').style.display = 'none';
+      $('m-copy-url').style.display = 'none';
     }
     $('modal').classList.add('open');
   }
   function closeModal(){ $('modal').classList.remove('open'); }
+
+  async function copyPdfUrl(){
+    const url = $('m-url')?.href || '';
+    if (!url) return;
+    try{
+      await navigator.clipboard.writeText(url);
+      showMsg('Link del ticket copiado para WhatsApp.', 'ok');
+    }catch(_){
+      showMsg('No se pudo copiar automáticamente. Copia manualmente el link del ticket.', 'err');
+    }
+  }
+
 
   // ---------- API (Firebase Functions) ----------
   async function getIdTokenOrThrow(){
