@@ -1195,10 +1195,23 @@ const buildTicketRows = async (codes = []) => {
   const cleanCodes = Array.from(new Set(codes.map((code) => normalizeCodigo(code)).filter(Boolean)));
   const rows = [];
   for (const code of cleanCodes) {
-    const adminRef = db.collection(PRENDAS_ADMIN_COLLECTION).doc(code);
-    const masterRef = db.collection(PRENDAS_COLLECTION).doc(code);
+    const docId = safeDocId(code);
+    const adminRef = db.collection(PRENDAS_ADMIN_COLLECTION).doc(docId);
+    const masterRef = db.collection(PRENDAS_COLLECTION).doc(docId);
     const [adminSnap, masterSnap] = await Promise.all([adminRef.get(), masterRef.get()]);
-    const data = adminSnap.exists ? (adminSnap.data() || {}) : (masterSnap.exists ? (masterSnap.data() || {}) : {});
+    const data = adminSnap.exists ? (adminSnap.data() || {}) : (masterSnap.exists ? (masterSnap.data() || {}) : null);
+
+    if (!data) {
+      rows.push({
+        codigo: code,
+        descripcion: "Código no encontrado",
+        precio: 0,
+        cantidad: 1,
+        subtotal: 0
+      });
+      continue;
+    }
+
     const precio = resolvePVenta(data) || 0;
     rows.push({
       codigo: code,
@@ -1297,10 +1310,6 @@ const generatePdfFromHtml = async (html) => {
   }
 };
 
-const requireApartadosAdmin = async (req) => {
-  const decoded = await requireAllowlistedAdmin(req);
-  return decoded;
-};
 
 const parseJsonBody = (req) => {
   if (req.body && typeof req.body === "object") return req.body;
@@ -1310,34 +1319,60 @@ const parseJsonBody = (req) => {
   return {};
 };
 
+const buildBadRequestError = (message, status = 400) => {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+};
+
+const validateApartadoPayload = (payload = {}, usarFolioExistente = false) => {
+  const cliente = String(payload.cliente || "").trim();
+  const contacto = String(payload.contacto || "").trim();
+  const codigos = parseCodes(payload.codigos);
+  const anticipo = Math.max(0, Number(payload.anticipo) || 0);
+  const descuentoValor = Math.max(0, Number(payload.descuentoValor ?? payload.descuentoPct) || 0);
+  const descuentoTipo = normalizeDiscountType(payload.descuentoTipo);
+  const folio = String(payload.folio || "").trim().toUpperCase();
+
+  if (!cliente) throw buildBadRequestError("El nombre del cliente es obligatorio.");
+  if (!contacto) throw buildBadRequestError("El contacto es obligatorio.");
+
+  if (usarFolioExistente) {
+    if (!folio) throw buildBadRequestError("Ingresa el folio para aplicar el abono.");
+    if (anticipo <= 0) throw buildBadRequestError("El anticipo debe ser mayor a 0 para abonos.");
+  } else {
+    if (!codigos.length) throw buildBadRequestError("Debes ingresar al menos un código de prenda.");
+    if (descuentoTipo === "PCT" && descuentoValor > 100) {
+      throw buildBadRequestError("El descuento en porcentaje no puede ser mayor a 100.");
+    }
+  }
+
+  return {cliente, contacto, codigos, anticipo, descuentoValor, descuentoTipo, folio};
+};
+
 exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
   if (applyCors(req, res)) return;
   const path = String(req.path || req.url || "").split("?")[0];
 
   try {
     if (path === "/api/apartados/next-folio" && req.method === "GET") {
-      await requireApartadosAdmin(req);
       const folio = await peekNextFolio();
       res.status(200).json({ok: true, folio});
       return;
     }
 
     if (path === "/api/apartados/registrar" && req.method === "POST") {
-      await requireApartadosAdmin(req);
       const payload = parseJsonBody(req);
       const usarFolioExistente = !!payload.usarFolioExistente;
       const generarTicket = payload.generarTicket !== false;
-      const anticipoInput = Math.max(0, Number(payload.anticipo) || 0);
+      const validated = validateApartadoPayload(payload, usarFolioExistente);
+      const anticipoInput = validated.anticipo;
 
-      let folio = String(payload.folio || "").trim().toUpperCase();
+      let folio = validated.folio;
       let docRef;
       let apartadoData;
 
       if (usarFolioExistente) {
-        if (!folio) {
-          res.status(400).json({ok: false, error: "Ingresa el folio para aplicar el abono."});
-          return;
-        }
         docRef = db.collection(APARTADOS_COLLECTION).doc(folio);
         const snap = await docRef.get();
         if (!snap.exists) {
@@ -1348,7 +1383,7 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       } else {
         folio = await reserveNextFolio();
         docRef = db.collection(APARTADOS_COLLECTION).doc(folio);
-        const rows = await buildTicketRows(parseCodes(payload.codigos));
+        const rows = await buildTicketRows(validated.codigos);
         const subtotal = round2(rows.reduce((acc, row) => acc + (Number(row.subtotal) || 0), 0)) || 0;
         const discount = calcDiscount(subtotal, payload.descuentoTipo, payload.descuentoValor ?? payload.descuentoPct);
         const total = round2(Math.max(0, subtotal - discount.amount - anticipoInput)) || 0;
@@ -1356,8 +1391,8 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
         apartadoData = {
           folio,
           fecha: String(payload.fecha || ""),
-          cliente: String(payload.cliente || "").trim(),
-          contacto: String(payload.contacto || "").trim(),
+          cliente: validated.cliente,
+          contacto: validated.contacto,
           codigos: rows.map((row) => row.codigo),
           filas: rows,
           subtotal,
@@ -1432,6 +1467,14 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
   } catch (error) {
     console.error("API apartados error", error);
     const message = error instanceof HttpsError ? error.message : (error?.message || "Error interno");
+    if (error instanceof SyntaxError) {
+      res.status(400).json({ok: false, error: "JSON inválido en el body."});
+      return;
+    }
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
+      res.status(error.status).json({ok: false, error: message});
+      return;
+    }
     const status = error instanceof HttpsError && error.code === "permission-denied" ? 403 : 500;
     res.status(status).json({ok: false, error: message});
   }
