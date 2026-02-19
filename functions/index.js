@@ -1225,13 +1225,36 @@ const buildTicketRows = async (codes = []) => {
   return rows;
 };
 
+const buildStorageDownloadUrl = (bucketName, objectPath, token) => (
+  `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(objectPath)}?alt=media&token=${token}`
+);
+
+const getOrCreateDownloadToken = async (file) => {
+  const [metadata] = await file.getMetadata();
+  const existing = String(metadata?.metadata?.firebaseStorageDownloadTokens || "")
+    .split(",")
+    .map((token) => token.trim())
+    .find(Boolean);
+
+  if (existing) return existing;
+
+  const downloadToken = uuidv4();
+  await file.setMetadata({
+    metadata: {
+      firebaseStorageDownloadTokens: downloadToken
+    }
+  });
+  return downloadToken;
+};
+
 const buildLogoUrl = async () => {
   const bucket = admin.storage().bucket();
   const file = bucket.file(TICKET_LOGO_PATH);
   const [exists] = await file.exists();
   if (!exists) return "https://i.postimg.cc/nMphkZcC/haruja-logo.png";
-  const [url] = await file.getSignedUrl({action: "read", expires: Date.now() + 60 * 60 * 1000});
-  return url;
+
+  const downloadToken = await getOrCreateDownloadToken(file);
+  return buildStorageDownloadUrl(bucket.name, TICKET_LOGO_PATH, downloadToken);
 };
 
 const renderTicketHtml = (ctx) => {
@@ -1454,7 +1477,8 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
             }
           }
         });
-        pdfUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(ticketPath)}?alt=media&token=${downloadToken}`;
+        pdfUrl = buildStorageDownloadUrl(bucket.name, ticketPath, downloadToken);
+        console.log("pdfUrl generado por token", {folio, ticketPath, pdfUrl});
         await docRef.set({pdfPath: ticketPath, pdfUrl, updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
       }
 
