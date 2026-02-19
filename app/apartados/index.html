@@ -1,13 +1,506 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Registrar apartado</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Registrar Apartado - HarujaGDL</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#f7f7f8;
+    --card:#ffffff;
+    --text:#111827;
+    --muted:#6b7280;
+    --line:#e5e7eb;
+    --brand:#5FA18E;
+    --brand-d:#4a8d7a;
+    --chip:#A7B59E;
+  }
+  *{ box-sizing:border-box }
+  html,body{ margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif }
+
+  .container{ max-width:980px; margin:28px auto; padding:0 16px }
+  .header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
+  .brand img{ height:22px; opacity:.9 }
+  .title{ font-size:28px; font-weight:800; letter-spacing:-.01em }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 10px 20px rgba(17,24,39,.05);
+    overflow:hidden;
+  }
+  .card-hd{
+    background:#fafafa;
+    border-bottom:1px solid var(--line);
+    padding:14px 18px;
+    font-weight:800;
+  }
+  .card-bd{ padding:18px }
+  .grid{ display:grid; grid-template-columns:1fr; gap:14px }
+  @media (min-width: 860px){
+    .grid.cols-2{ grid-template-columns:1fr 1fr }
+    .grid.cols-3{ grid-template-columns:1fr 1fr 1fr }
+  }
+
+  .row{ display:flex; flex-direction:column; gap:8px }
+  .lab{ font-weight:700; font-size:14px }
+  .hint{ color:var(--muted); font-size:12px }
+
+  .inpt, textarea, select{
+    width:100%; border:1px solid var(--line); background:#fff; color:var(--text);
+    border-radius:10px; padding:12px 12px; font-size:15px; outline:none;
+  }
+  .inpt:focus, textarea:focus, select:focus{ border-color:#cfd6dc; box-shadow:0 0 0 3px rgba(95,161,142,.12) }
+  textarea{ min-height:92px; resize:vertical }
+
+  .switch-row{
+    display:flex; align-items:center; gap:10px; margin:2px 0 6px;
+  }
+  .sw{ width:18px; height:18px }
+  .sw-lab{ font-size:14px; color:#374151 }
+
+  .btn{
+    appearance:none; border:0; border-radius:12px; padding:14px 18px; font-weight:800;
+    color:#fff; background:var(--brand); width:100%; cursor:pointer; font-size:16px;
+    box-shadow:0 8px 18px rgba(95,161,142,.25);
+  }
+  .btn:hover{ background:var(--brand-d) }
+  .btn:disabled{ background:#a2b7b0; cursor:not-allowed; box-shadow:none }
+
+  .status{ margin-top:10px; min-height:22px; font-size:14px }
+  .ok{ color:#0d7a4f; font-weight:700 }
+  .err{ color:#b91c1c; font-weight:700 }
+
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--chip); color:#fff; font-weight:800; border-radius:999px;
+    padding:4px 10px; font-size:13px;
+  }
+
+  .modal{
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.35);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9999; padding: 20px;
+  }
+  .modal.open{ display:flex; }
+  .modal .box{
+    width: 100%; max-width: 540px; background:#fff;
+    border:1px solid var(--line); border-radius:14px; padding:18px;
+    box-shadow:0 12px 28px rgba(17,24,39,.20);
+  }
+  .modal .box .hd{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px }
+  .modal .ttl{ font-weight:800; font-size:18px }
+  .modal .close{ border:0; background:transparent; font-size:22px; cursor:pointer; line-height:1; padding:6px }
+  .modal .grid{ display:grid; grid-template-columns:1fr auto; row-gap:6px; column-gap:18px; margin-top:10px }
+  .modal .k{ color:#374151 }
+  .modal .v{ font-weight:700; text-align:right }
+  .modal .btns{ display:flex; gap:10px; margin-top:14px; justify-content:flex-end }
+  .modal .btn-mini{
+    border:0; border-radius:10px; padding:10px 14px; cursor:pointer;
+    background:var(--brand); color:#fff; font-weight:700;
+  }
+  .modal .btn-mini.secondary{ background:#eef2f7; color:#111827 }
+  .link{ color:#2563eb; text-decoration:none }
+  .link:hover{ text-decoration:underline }
+
+  .desc-tipo{
+    display:flex; gap:14px; align-items:center;
+    padding:10px 12px; border:1px solid var(--line); border-radius:10px;
+    background:#fff;
+  }
+  .desc-tipo label{
+    display:flex; gap:8px; align-items:center;
+    font-size:14px; color:#374151; font-weight:700;
+    cursor:pointer;
+  }
+  .desc-tipo input{ transform: translateY(1px); }
+  .disabled{
+    opacity:.55;
+    pointer-events:none;
+    filter:grayscale(.2);
+  }
+
+  .top-actions{
+    display:flex; gap:10px; align-items:center; justify-content:flex-end;
+    margin-top:6px;
+  }
+  .btn-ghost{
+    appearance:none; border:1px solid var(--line); background:#fff; color:#111827;
+    border-radius:12px; padding:10px 12px; font-weight:800; cursor:pointer;
+  }
+</style>
 </head>
+
 <body>
-  <h1>Registrar apartado</h1>
-  <p>Si ves esto, la ruta /apartados ya está funcionando 😎</p>
-  <p><a href="/">Volver al panel</a></p>
+  <div class="container">
+    <div class="header">
+      <div class="title">Registrar Apartado</div>
+      <div class="brand">
+        <img src="https://i.postimg.cc/nMphkZcC/haruja-logo.png" alt="harujagdl">
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button class="btn-ghost" onclick="history.back()">← Volver</button>
+      <a class="btn-ghost" href="/" style="text-decoration:none; display:inline-block;">Panel</a>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">Datos del apartado</div>
+      <div class="card-bd">
+
+        <div class="grid cols-3">
+          <div class="row">
+            <label class="lab">Folio</label>
+            <input id="folio" class="inpt" type="text" placeholder="HARUJA24-000001" readonly>
+            <div class="hint">Se genera automático para apartados nuevos.</div>
+          </div>
+          <div class="row">
+            <label class="lab">Fecha</label>
+            <input id="fecha" class="inpt" type="date">
+          </div>
+          <div class="row">
+            <label class="lab">Modo</label>
+            <div class="switch-row" style="margin-top:2px">
+              <input id="usarFolioExistente" class="sw" type="checkbox">
+              <label class="sw-lab" for="usarFolioExistente">Usar folio existente (abono)</label>
+            </div>
+            <div class="hint">Actívalo solo para abonar a un folio ya creado.</div>
+          </div>
+        </div>
+
+        <div class="grid cols-2">
+          <div class="row">
+            <label class="lab">Nombre del cliente</label>
+            <input id="cliente" class="inpt" type="text" placeholder="Ej. Fernanda García">
+          </div>
+          <div class="row">
+            <label class="lab">N° de contacto</label>
+            <input id="contacto" class="inpt" type="text" placeholder="Ej. 3312345678">
+          </div>
+        </div>
+
+        <div class="grid">
+          <div class="row">
+            <label class="lab">Código(s) de prenda(s) <span class="hint">(separados por coma)</span></label>
+            <textarea id="codigos" placeholder="Ej. HA24008/NG-M, HA8L001/NG-S"></textarea>
+            <div class="hint">En abonos no es necesario volver a capturar códigos.</div>
+          </div>
+        </div>
+
+        <div class="grid cols-2">
+          <div class="row">
+            <label class="lab">Anticipo</label>
+            <input id="anticipo" class="inpt" type="text" value="0">
+          </div>
+
+          <div class="row" id="wrapDesc">
+            <label class="lab">Descuento</label>
+
+            <div class="desc-tipo" id="descTipoBox">
+              <label>
+                <input type="radio" name="descuentoTipo" id="descTipoPct" value="PCT" checked>
+                %
+              </label>
+              <label>
+                <input type="radio" name="descuentoTipo" id="descTipoAmt" value="AMT">
+                $
+              </label>
+              <span class="hint" id="descHelp" style="margin-left:auto">%</span>
+            </div>
+
+            <input id="descValor" class="inpt" type="number" step="0.01" min="0" value="0">
+
+            <div class="hint">Para abonos se respeta el descuento guardado originalmente.</div>
+          </div>
+        </div>
+
+        <div class="switch-row">
+          <input id="genTicket" class="sw" type="checkbox" checked>
+          <label class="sw-lab" for="genTicket">Generar ticket en PDF (Storage)</label>
+        </div>
+
+        <div style="margin-top:6px">
+          <button id="btn" class="btn" onclick="enviar()">Registrar</button>
+          <div id="estado" class="status"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="hd">
+        <div class="ttl">Apartado <span id="m-folio" class="badge" style="margin-left:6px"></span></div>
+        <button class="close" onclick="closeModal()" title="Cerrar">×</button>
+      </div>
+
+      <div class="grid">
+        <div class="k">Subtotal</div>       <div class="v" id="m-subtotal">$0.00</div>
+        <div class="k">Anticipo</div>       <div class="v" id="m-anticipo">$0.00</div>
+        <div class="k">Descuento</div>      <div class="v" id="m-desc">$0.00</div>
+        <div class="k">Total de cuenta</div><div class="v" id="m-total"><b>$0.00</b></div>
+      </div>
+
+      <div id="m-link" style="margin-top:10px; font-size:13px; color:#374151; display:none">
+        Ticket PDF: <a id="m-url" class="link" target="_blank" rel="noopener">abrir</a>
+      </div>
+
+      <div class="btns">
+        <button class="btn-mini secondary" onclick="closeModal()">Cerrar</button>
+        <a id="m-open-url" class="btn-mini" href="#" target="_blank" rel="noopener" style="display:none">Abrir PDF</a>
+      </div>
+    </div>
+  </div>
+
+<!-- =========================================================
+  Firebase Auth (NECESARIO)
+  - Pega aquí los mismos scripts y config que ya usas en tu panel.
+  - Si ya tienes un archivo compartido, cámbialo por: <script src="/shared/firebase-init.js"></script>
+========================================================= -->
+
+<!-- TODO: Pega aquí lo mismo que en tu app/index.html (firebase-app + firebase-auth + initializeApp) -->
+<!-- Ejemplo (NO lo uses si tu panel usa otras versiones): -->
+<!--
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script>
+  const firebaseConfig = { ...tu config... };
+  firebase.initializeApp(firebaseConfig);
+</script>
+-->
+
+<script>
+  // -------- helpers --------
+  const $ = (id)=>document.getElementById(id);
+
+  function fmtMX(n){
+    const v = Number(String(n ?? 0).replace(/[^\d.-]/g,'')) || 0;
+    return v.toLocaleString('es-MX', { style:'currency', currency:'MXN' });
+  }
+
+  function toNum(n){
+    const v = Number(String(n ?? 0).replace(/[^\d.-]/g,'')); 
+    return isNaN(v) ? 0 : v;
+  }
+
+  function setBtnLoading(flag){
+    const b = $('btn');
+    if (flag){
+      b.disabled = true;
+      b.innerText = 'Guardando...';
+    }else{
+      b.disabled = false;
+      b.innerText = 'Registrar';
+    }
+  }
+
+  function showMsg(html, cls){
+    $('estado').className = 'status ' + (cls||'');
+    $('estado').innerHTML = html || '';
+  }
+
+  // ✅ Descuento: tipo + UI
+  function getDescuentoTipo(){
+    const el = document.querySelector('input[name="descuentoTipo"]:checked');
+    return (el && el.value) ? el.value : 'PCT';
+  }
+  function updateDescuentoUI(){
+    const tipo = getDescuentoTipo();
+    $('descHelp').textContent = (tipo === 'AMT') ? '$' : '%';
+    if (tipo === 'PCT'){
+      $('descValor').max = '100';
+      $('descValor').step = '1';
+      $('descValor').placeholder = '0-100';
+    } else {
+      $('descValor').removeAttribute('max');
+      $('descValor').step = '0.01';
+      $('descValor').placeholder = '0';
+    }
+  }
+  function setDescuentoDisabled(disabled){
+    const box = $('wrapDesc');
+    if (disabled) box.classList.add('disabled');
+    else box.classList.remove('disabled');
+  }
+
+  // ---------- MODAL ----------
+  function openModal(payload){
+    $('m-folio').textContent    = payload.folio || '';
+    $('m-subtotal').textContent = fmtMX(payload.subtotal||0);
+    $('m-anticipo').textContent = fmtMX(payload.anticipo||0);
+    $('m-desc').textContent     = fmtMX(payload.descVal||0);
+    $('m-total').innerHTML      = '<b>'+fmtMX(payload.total||0)+'</b>';
+
+    if (payload.pdfUrl){
+      $('m-url').href = payload.pdfUrl;
+      $('m-open-url').href = payload.pdfUrl;
+      $('m-link').style.display = 'block';
+      $('m-open-url').style.display = 'inline-block';
+    } else {
+      $('m-link').style.display = 'none';
+      $('m-open-url').style.display = 'none';
+    }
+    $('modal').classList.add('open');
+  }
+  function closeModal(){ $('modal').classList.remove('open'); }
+
+  // ---------- API (Firebase Functions) ----------
+  async function getIdTokenOrThrow(){
+    if (!window.firebase || !firebase.auth) {
+      throw new Error("Firebase Auth no está cargado en /apartados. Copia los scripts/config del panel a esta página.");
+    }
+    const u = firebase.auth().currentUser;
+    if (!u) throw new Error("No hay sesión. Regresa al panel e inicia sesión.");
+    return await u.getIdToken();
+  }
+
+  async function apiFetch(path, opts={}){
+    const token = await getIdTokenOrThrow();
+    const res = await fetch(path, {
+      method: opts.method || "GET",
+      headers: {
+        ...(opts.headers || {}),
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: opts.body || undefined
+    });
+    const data = await res.json().catch(()=> ({}));
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || `HTTP ${res.status}`);
+    }
+    return data;
+  }
+
+  async function fetchNextFolio(){
+    const r = await apiFetch("/api/apartados/next-folio", { method:"GET" });
+    return r.folio;
+  }
+
+  async function postRegistrar(payload){
+    return await apiFetch("/api/apartados/registrar", {
+      method:"POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  // ---------- enviar ----------
+  async function enviar(){
+    try{
+      showMsg('', '');
+      setBtnLoading(true);
+
+      const usarFolioExistente = $('usarFolioExistente').checked;
+
+      const descuentoTipo  = getDescuentoTipo();          
+      const descuentoValor = toNum($('descValor').value); 
+
+      const payload = {
+        fecha:        $('fecha').value,
+        cliente:      $('cliente').value.trim(),
+        contacto:     $('contacto').value.trim(),
+        codigos:      $('codigos').value.trim(),
+        anticipo:     toNum($('anticipo').value),
+
+        descuentoTipo:  descuentoTipo,
+        descuentoValor: descuentoValor,
+        descuentoPct: (descuentoTipo === 'PCT') ? descuentoValor : 0,
+
+        generarTicket:$('genTicket').checked,
+        usarFolioExistente,
+        folio:        $('folio').value.trim()
+      };
+
+      if (!usarFolioExistente && !payload.codigos){
+        setBtnLoading(false);
+        showMsg('Debes ingresar al menos un código de prenda para un apartado nuevo.', 'err');
+        return;
+      }
+      if (usarFolioExistente && (!payload.folio || payload.anticipo <= 0)){
+        setBtnLoading(false);
+        showMsg('Para abono ingresa el Folio y un anticipo mayor a 0.', 'err');
+        return;
+      }
+      if (!usarFolioExistente && payload.descuentoValor < 0){
+        setBtnLoading(false);
+        showMsg('El descuento no puede ser negativo.', 'err');
+        return;
+      }
+      if (!usarFolioExistente && payload.descuentoTipo === 'PCT' && payload.descuentoValor > 100){
+        setBtnLoading(false);
+        showMsg('El descuento en % no puede ser mayor a 100.', 'err');
+        return;
+      }
+
+      const res = await postRegistrar(payload);
+
+      setBtnLoading(false);
+
+      showMsg('Guardado. Folio: <b>'+res.folio+'</b>', 'ok');
+
+      const r = res.resumen || {};
+      openModal({
+        folio:   res.folio,
+        subtotal:r.subtotal,
+        anticipo:r.anticipo,
+        descVal: r.descVal,
+        total:   r.total,
+        pdfUrl:  res.pdfUrl || ''
+      });
+
+      if (!usarFolioExistente) {
+        $('folio').value = await fetchNextFolio();
+      }
+
+    }catch(err){
+      setBtnLoading(false);
+      const msg = (err && err.message) ? err.message : String(err || 'Error sin respuesta');
+      showMsg('Error: '+msg, 'err');
+    }
+  }
+
+  // init
+  (async function init(){
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth()+1).padStart(2,'0');
+    const d = String(today.getDate()).padStart(2,'0');
+    $('fecha').value = `${y}-${m}-${d}`;
+
+    $('descTipoPct').addEventListener('change', updateDescuentoUI);
+    $('descTipoAmt').addEventListener('change', updateDescuentoUI);
+    updateDescuentoUI();
+
+    $('usarFolioExistente').addEventListener('change', async (e)=>{
+      const on = e.target.checked;
+      $('folio').readOnly = !on;
+      setDescuentoDisabled(on);
+
+      if (!on) {
+        try { $('folio').value = await fetchNextFolio(); } catch(_){}
+      } else {
+        $('folio').focus(); $('folio').select();
+      }
+    });
+
+    // Intentar traer folio cuando ya haya sesión
+    try{
+      if (window.firebase && firebase.auth) {
+        firebase.auth().onAuthStateChanged(async (u)=>{
+          if (!u) return;
+          try { $('folio').value = await fetchNextFolio(); } catch(e){ showMsg('Aviso: '+e.message, 'err'); }
+        });
+      }
+    }catch(_){}
+  })();
+</script>
+
 </body>
 </html>
