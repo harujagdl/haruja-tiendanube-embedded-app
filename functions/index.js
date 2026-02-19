@@ -2,6 +2,7 @@ const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
+const {v4: uuidv4} = require("uuid");
 const Busboy = require("busboy");
 const XLSX = require("xlsx");
 const puppeteer = require("puppeteer-core");
@@ -1443,9 +1444,17 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
         const bucket = admin.storage().bucket();
         const ticketPath = `tickets/apartados/${folio}.pdf`;
         const file = bucket.file(ticketPath);
-        await file.save(pdfBuffer, {contentType: "application/pdf", resumable: false});
-        const [signedUrl] = await file.getSignedUrl({action: "read", expires: "03-01-2500"});
-        pdfUrl = signedUrl;
+        const downloadToken = uuidv4();
+        await file.save(pdfBuffer, {
+          contentType: "application/pdf",
+          resumable: false,
+          metadata: {
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken
+            }
+          }
+        });
+        pdfUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(ticketPath)}?alt=media&token=${downloadToken}`;
         await docRef.set({pdfPath: ticketPath, pdfUrl, updatedAt: admin.firestore.FieldValue.serverTimestamp()}, {merge: true});
       }
 
