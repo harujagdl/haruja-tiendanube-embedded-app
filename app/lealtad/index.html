@@ -123,7 +123,6 @@
   <script src="/lealtad/vendor/qrcode-generator.min.js"></script>
   <script>
     const PWA_PUBLIC_BASE_URL = 'https://haruja-panel.vercel.app';
-    const ADMIN_PASSWORD_SESSION_KEY = 'loyaltyAdminPassword';
 
     const api = async (url, options={}) => {
       const authHeaders = options.headers || {};
@@ -141,23 +140,6 @@
     let dbLoaded = false;
     let selectedClient = null;
     let saveClientInFlight = false;
-
-    const readAdminPassword = () => sessionStorage.getItem(ADMIN_PASSWORD_SESSION_KEY) || '';
-    const askAdminPassword = () => {
-      const current = readAdminPassword();
-      const nextValue = window.prompt('Contraseña admin para editar cliente:', current);
-      if (nextValue === null) return '';
-      const trimmed = String(nextValue || '').trim();
-      if (!trimmed) return '';
-      sessionStorage.setItem(ADMIN_PASSWORD_SESSION_KEY, trimmed);
-      return trimmed;
-    };
-
-    const getAdminAuthHeaders = () => {
-      const password = readAdminPassword() || askAdminPassword();
-      if (!password) throw new Error('Se requiere contraseña admin.');
-      return {'X-Admin-Password': password};
-    };
 
     const toast = (msg, ok=true) => {
       const el = document.getElementById('toast');
@@ -331,9 +313,8 @@
       saveBtn.disabled = true;
       editMsg.textContent = 'Guardando...';
       try {
-        const {client} = await api('/api/loyalty/updateClient', {
+        const {client} = await api('/api/loyalty/updateClientPublic', {
           method:'PATCH',
-          headers: getAdminAuthHeaders(),
           body: JSON.stringify({
             clientId: selectedClient.clientId || selectedClient.id,
             name,
