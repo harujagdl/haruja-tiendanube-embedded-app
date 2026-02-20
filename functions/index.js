@@ -1653,7 +1653,11 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
     }
 
     if (path === "/api/loyalty/backfillQrLinks" && req.method === "POST") {
-      await requireAllowlistedAdmin(req);
+      const key = String(req.query?.key || "");
+      const expected = String(process.env.BACKFILL_KEY || "");
+      if (!expected || key !== expected) {
+        throw new Error("No autorizado");
+      }
       const response = await loyalty.backfillQrLinks(req, db);
       res.status(200).json(response);
       return;

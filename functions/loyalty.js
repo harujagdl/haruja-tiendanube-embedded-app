@@ -53,9 +53,17 @@ const buildBadRequestError = (message, status = 400) => {
   return error;
 };
 
+const sanitizeBaseUrl = (url) => {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  const cleaned = u.replace(/\/$/, "");
+  if (cleaned.includes("run.app")) return "";
+  return cleaned.replace(/\/api\/?$/, "");
+};
+
 const buildPublicBaseUrl = () => {
-  const configured = String(process.env.BASE_PUBLIC_URL || "").trim();
-  if (configured) return configured.replace(/\/$/, "");
+  const configured = sanitizeBaseUrl(process.env.BASE_PUBLIC_URL);
+  if (configured) return configured;
   return DEFAULT_PUBLIC_BASE_URL;
 };
 
