@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tarjeta de Lealtad Haruja</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#faf6f1;color:#383234;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .card{background:#fff;border:1px solid #e7ddd3;border-radius:14px;padding:20px;max-width:420px;width:92%}
+    h1{margin:0 0 10px;font-size:22px}
+    .pill{background:#d6c4b3;padding:4px 10px;border-radius:999px;display:inline-block}
+    ul{padding-left:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Tarjeta de Lealtad</h1>
+    <div id="content">Cargando...</div>
+  </div>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    const content = document.getElementById('content');
+    const rewardLine = (r) => `<li>${r.label} ${r.available ? '✅' : `(faltan ${r.missingPoints} pts)`}</li>`;
+
+    const run = async () => {
+      if (!token) { content.textContent = 'Token inválido'; return; }
+      try {
+        const res = await fetch(`/api/loyalty/getByToken?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo cargar');
+        fetch('/api/loyalty/addVisit', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({token})}).catch(() => null);
+        const c = data.clientPublic;
+        content.innerHTML = `
+          <p><b>${c.name}</b></p>
+          <p>Nivel: <span class="pill">${c.level}</span></p>
+          <p>Puntos: <b>${c.points}</b></p>
+          <p>Compras acumuladas: <b>$${Number(c.totalPurchases||0).toFixed(2)}</b></p>
+          <p>Recompensas:</p>
+          <ul>${(c.rewardOptions||[]).map(rewardLine).join('')}</ul>
+        `;
+      } catch (e) {
+        content.textContent = e.message;
+      }
+    };
+    run();
+  </script>
+</body>
+</html>
