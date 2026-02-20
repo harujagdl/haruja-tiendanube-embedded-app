@@ -93,6 +93,8 @@
 
   <div id="toast"></div>
   <script>
+    const PWA_PUBLIC_BASE_URL = 'https://haruja-panel.vercel.app';
+
     const api = async (url, options={}) => {
       const res = await fetch(url, {headers:{"Content-Type":"application/json"}, ...options});
       const data = await res.json().catch(() => ({}));
@@ -124,12 +126,11 @@
       }
     };
 
-    const safeLink = (url) => String(url || '').trim() || '#';
 
-    const buildHostingQrLink = (client) => {
+    const buildPwaQrLink = (client) => {
       const token = String(client?.token || '').trim();
       if (!token) return '#';
-      return `${location.origin}/tarjeta-lealtad.html?token=${encodeURIComponent(token)}`;
+      return `${PWA_PUBLIC_BASE_URL}/tarjeta-lealtad.html?token=${encodeURIComponent(token)}`;
     };
 
     const renderClient = (client) => {
@@ -137,8 +138,8 @@
       const summary = document.getElementById('clientSummary');
       const card = document.getElementById('card-selected');
       card.style.display = 'block';
-      const rawQr = safeLink(client.qrLink);
-      const qrLink = (!rawQr || rawQr.includes('run.app')) ? buildHostingQrLink(client) : rawQr;
+      const rawQr = String(client?.qrLink || '').trim();
+      const qrLink = (!rawQr || rawQr.toLowerCase().includes('run.app')) ? buildPwaQrLink(client) : rawQr;
       summary.innerHTML = `
         <div><b>${client.name}</b> <span class="pill">${client.clientId}</span></div>
         <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>

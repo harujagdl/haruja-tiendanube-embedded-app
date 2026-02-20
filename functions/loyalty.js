@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const LOYALTY_CLIENTS_COLLECTION = "loyalty_clients";
 const LOYALTY_MOVES_COLLECTION = "loyalty_moves";
 const LOYALTY_COUNTER_DOC = "loyaltyClientSeq";
-const DEFAULT_PUBLIC_BASE_URL = "https://tiendanube.web.app";
+const DEFAULT_PUBLIC_BASE_URL = "https://haruja-panel.vercel.app";
 
 const REWARDS = [
   {points: 150, label: "10% descuento"},
@@ -57,7 +57,7 @@ const sanitizeBaseUrl = (url) => {
   const u = String(url || "").trim();
   if (!u) return "";
   const cleaned = u.replace(/\/$/, "");
-  if (cleaned.includes("run.app")) return "";
+  if (cleaned.toLowerCase().includes("run.app")) return "";
   return cleaned.replace(/\/api\/?$/, "");
 };
 
@@ -67,7 +67,8 @@ const buildPublicBaseUrl = () => {
   return DEFAULT_PUBLIC_BASE_URL;
 };
 
-const buildQrLink = (token) => `${buildPublicBaseUrl()}/tarjeta-lealtad.html?token=${token}`;
+const buildQrLink = (token) =>
+  `${buildPublicBaseUrl()}/tarjeta-lealtad.html?token=${encodeURIComponent(String(token || "").trim())}`;
 
 const randomToken = (size = 12) => crypto.randomBytes(size).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
 
