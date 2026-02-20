@@ -33,6 +33,11 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:5173",
   "http://localhost:3000"
 ]);
+const LOYALTY_PUBLIC_UPDATE_ALLOWED_ORIGINS = new Set([
+  "https://tiendanube.web.app",
+  "https://haruja-tiendanube.web.app",
+  "https://haruja-panel.vercel.app"
+]);
 const RUNTIME_OPTS = {
   memory: "1GiB",
   timeoutSeconds: 540
@@ -1380,6 +1385,13 @@ const requireLoyaltyAdminHeader = (req) => {
   }
 };
 
+const requireAllowedLoyaltyPublicOrigin = (req) => {
+  const origin = String(req.get("origin") || "").trim();
+  if (!LOYALTY_PUBLIC_UPDATE_ALLOWED_ORIGINS.has(origin)) {
+    throw loyalty.buildBadRequestError("Origin not allowed", 403);
+  }
+};
+
 const parseJsonBody = (req) => {
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string" && req.body.trim()) {
@@ -1659,6 +1671,13 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
 
     if (path === "/api/loyalty/updateClient" && req.method === "PATCH") {
       requireLoyaltyAdminHeader(req);
+      const response = await loyalty.updateClient({body: parseJsonBody(req)}, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/updateClientPublic" && req.method === "PATCH") {
+      requireAllowedLoyaltyPublicOrigin(req);
       const response = await loyalty.updateClient({body: parseJsonBody(req)}, db);
       res.status(200).json(response);
       return;
