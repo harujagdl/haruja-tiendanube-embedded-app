@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const LOYALTY_CLIENTS_COLLECTION = "loyalty_clients";
 const LOYALTY_MOVES_COLLECTION = "loyalty_moves";
 const LOYALTY_COUNTER_DOC = "loyaltyClientSeq";
+const DEFAULT_PUBLIC_BASE_URL = "https://tiendanube.web.app";
 
 const REWARDS = [
   {points: 150, label: "10% descuento"},
@@ -55,9 +56,11 @@ const buildBadRequestError = (message, status = 400) => {
 const buildPublicBaseUrl = (req) => {
   const configured = String(process.env.BASE_PUBLIC_URL || "").trim();
   if (configured) return configured.replace(/\/$/, "");
+  if (!req) return DEFAULT_PUBLIC_BASE_URL;
   const host = String(req.get("host") || "").trim();
-  if (!host) return "";
+  if (!host) return DEFAULT_PUBLIC_BASE_URL;
   const protocol = host.includes("localhost") ? "http" : "https";
+  if (!host.includes("localhost") && host.includes("run.app")) return DEFAULT_PUBLIC_BASE_URL;
   return `${protocol}://${host}`;
 };
 
@@ -295,6 +298,19 @@ const addVisit = async (req, db) => {
   return {ok: true};
 };
 
+const listClients = async (req, db) => {
+  const limitRaw = Number(req.query?.limit);
+  const limit = Math.max(1, Math.min(100, Number.isFinite(limitRaw) ? limitRaw : 80));
+
+  const snap = await db.collection(LOYALTY_CLIENTS_COLLECTION)
+    .orderBy("updatedAt", "desc")
+    .limit(limit)
+    .get();
+
+  const items = snap.docs.map(normalizeClient);
+  return {ok: true, items, nextCursor: null};
+};
+
 module.exports = {
   registerClient,
   searchClients,
@@ -302,5 +318,6 @@ module.exports = {
   redeem,
   getByToken,
   addVisit,
+  listClients,
   buildBadRequestError
 };
