@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plan de Lealtad Haruja</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#faf6f1; color:#383234; margin:0; }
+    .container{max-width:1000px;margin:24px auto;padding:0 16px}
+    .card{background:#fff;border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid #e7ddd3}
+    h1,h2{margin:0 0 12px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    input,select,button,textarea{padding:10px;border:1px solid #c9b9aa;border-radius:8px;font:inherit}
+    input,textarea{flex:1;min-width:180px}
+    button{background:#6f7f5e;color:#fff;cursor:pointer}
+    button.secondary{background:#8c6f56}
+    .results button{display:block;width:100%;text-align:left;background:#fff;color:#333;border:1px solid #eee;margin-bottom:8px}
+    .muted{color:#666;font-size:14px}
+    .pill{display:inline-block;background:#efe5dc;padding:4px 8px;border-radius:999px;margin-right:6px}
+    #toast{position:fixed;bottom:16px;right:16px;display:none;padding:12px 14px;border-radius:8px;color:#fff}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Plan de Lealtad Haruja</h1>
+
+    <section class="card">
+      <h2>Buscar cliente</h2>
+      <div class="row">
+        <input id="searchInput" placeholder="HCL-0001, teléfono o nombre" />
+        <button id="searchBtn">Buscar</button>
+      </div>
+      <div id="results" class="results" style="margin-top:12px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Registrar cliente</h2>
+      <div class="row"><input id="name" placeholder="Nombre" /><input id="phone" placeholder="Teléfono" /></div>
+      <div class="row" style="margin-top:8px"><input id="instagram" placeholder="Instagram" /><input id="email" placeholder="Email" /></div>
+      <div class="row" style="margin-top:8px"><button id="registerBtn">Registrar</button></div>
+    </section>
+
+    <section class="card" id="clientCard" style="display:none">
+      <h2>Cliente seleccionado</h2>
+      <div id="clientSummary"></div>
+      <div class="row" style="margin-top:8px">
+        <input id="purchaseAmount" type="number" min="1" placeholder="Monto de compra" />
+        <input id="purchaseNotes" placeholder="Notas compra" />
+        <button id="addPurchaseBtn">Agregar compra</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="rewardPts"><option value="150">150</option><option value="300">300</option><option value="500">500</option><option value="800">800</option></select>
+        <input id="redeemNotes" placeholder="Notas canje" />
+        <button class="secondary" id="redeemBtn">Canjear</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+  <script>
+    const api = async (url, options={}) => {
+      const res = await fetch(url, {headers:{"Content-Type":"application/json"}, ...options});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || "Error en la solicitud");
+      return data;
+    };
+
+    let selectedClient = null;
+    const toast = (msg, ok=true) => {
+      const el = document.getElementById('toast');
+      el.textContent = msg; el.style.display = 'block'; el.style.background = ok ? '#2b7a4b' : '#a33c30';
+      setTimeout(() => { el.style.display = 'none'; }, 2200);
+    };
+
+    const renderClient = (client) => {
+      selectedClient = client;
+      const summary = document.getElementById('clientSummary');
+      const card = document.getElementById('clientCard');
+      card.style.display = 'block';
+      summary.innerHTML = `
+        <div><b>${client.name}</b> <span class="pill">${client.clientId}</span></div>
+        <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>
+        <div class="muted">Token: <code>${client.token||'-'}</code></div>
+        <div class="muted">QR: <a href="${client.qrLink}" target="_blank">${client.qrLink}</a></div>
+        <button onclick="navigator.clipboard.writeText('${client.qrLink||''}')">Copiar QR Link</button>
+      `;
+    };
+
+    document.getElementById('registerBtn').onclick = async () => {
+      try {
+        const payload = {
+          name: document.getElementById('name').value,
+          phone: document.getElementById('phone').value,
+          instagram: document.getElementById('instagram').value,
+          email: document.getElementById('email').value
+        };
+        const {client} = await api('/api/loyalty/registerClient', {method:'POST', body: JSON.stringify(payload)});
+        toast('Cliente registrado');
+        renderClient(client);
+      } catch (e) { toast(e.message, false); }
+    };
+
+    document.getElementById('searchBtn').onclick = async () => {
+      try {
+        const q = document.getElementById('searchInput').value.trim();
+        const {items} = await api(`/api/loyalty/searchClients?q=${encodeURIComponent(q)}`);
+        const box = document.getElementById('results');
+        box.innerHTML = items.length ? '' : '<p class="muted">Sin resultados</p>';
+        items.forEach((item) => {
+          const b = document.createElement('button');
+          b.textContent = `${item.clientId} · ${item.name} · ${item.points} pts`;
+          b.onclick = () => renderClient(item);
+          box.appendChild(b);
+        });
+      } catch (e) { toast(e.message, false); }
+    };
+
+    document.getElementById('addPurchaseBtn').onclick = async () => {
+      if (!selectedClient) return toast('Selecciona cliente', false);
+      try {
+        const payload = {
+          clientId: selectedClient.clientId,
+          amount: Number(document.getElementById('purchaseAmount').value),
+          notes: document.getElementById('purchaseNotes').value
+        };
+        const {client} = await api('/api/loyalty/addPurchase', {method:'POST', body: JSON.stringify(payload)});
+        toast('Compra registrada');
+        renderClient({...selectedClient, ...client});
+      } catch (e) { toast(e.message, false); }
+    };
+
+    document.getElementById('redeemBtn').onclick = async () => {
+      if (!selectedClient) return toast('Selecciona cliente', false);
+      try {
+        const payload = {
+          clientId: selectedClient.clientId,
+          rewardPts: Number(document.getElementById('rewardPts').value),
+          notes: document.getElementById('redeemNotes').value
+        };
+        const {client} = await api('/api/loyalty/redeem', {method:'POST', body: JSON.stringify(payload)});
+        toast('Canje aplicado');
+        renderClient({...selectedClient, ...client});
+      } catch (e) { toast(e.message, false); }
+    };
+  </script>
+</body>
+</html>

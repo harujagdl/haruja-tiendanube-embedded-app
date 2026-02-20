@@ -85,6 +85,20 @@
           "mode": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "loyalty_moves",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "clientId",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "mode": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

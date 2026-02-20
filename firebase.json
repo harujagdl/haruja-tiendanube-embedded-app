@@ -48,6 +48,14 @@
         "destination": "/apartados/index.html"
       },
       {
+        "source": "/lealtad",
+        "destination": "/lealtad/index.html"
+      },
+      {
+        "source": "/lealtad/**",
+        "destination": "/lealtad/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

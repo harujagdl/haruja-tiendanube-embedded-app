@@ -7,6 +7,7 @@ const Busboy = require("busboy");
 const XLSX = require("xlsx");
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
+const loyalty = require("./loyalty");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1606,6 +1607,42 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
         },
         pdfUrl
       });
+      return;
+    }
+
+    if (path === "/api/loyalty/registerClient" && req.method === "POST") {
+      const response = await loyalty.registerClient({body: parseJsonBody(req), get: (name) => req.get(name)}, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/searchClients" && req.method === "GET") {
+      const response = await loyalty.searchClients(req, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/addPurchase" && req.method === "POST") {
+      const response = await loyalty.addPurchase({body: parseJsonBody(req)}, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/redeem" && req.method === "POST") {
+      const response = await loyalty.redeem({body: parseJsonBody(req)}, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/getByToken" && req.method === "GET") {
+      const response = await loyalty.getByToken(req, db);
+      res.status(200).json(response);
+      return;
+    }
+
+    if (path === "/api/loyalty/addVisit" && req.method === "POST") {
+      const response = await loyalty.addVisit({body: parseJsonBody(req)}, db);
+      res.status(200).json(response);
       return;
     }
 
