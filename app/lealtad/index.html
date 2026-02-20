@@ -133,8 +133,11 @@
         <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>
         <div class="notice">Token: <code>${client.token||'-'}</code></div>
         <div class="notice">QR: <a href="${qrLink}" target="_blank" rel="noopener">${qrLink}</a></div>
+        <div class="top-8"><img id="qrPreview" alt="QR" width="220" height="220" loading="lazy" /></div>
         <button class="btn" type="button" id="copyQrBtn">Copiar QR Link</button>
       `;
+      const qrImg = `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(qrLink)}`;
+      document.getElementById('qrPreview').src = qrImg;
       const copyBtn = document.getElementById('copyQrBtn');
       copyBtn.onclick = async () => {
         try {

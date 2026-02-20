@@ -53,15 +53,10 @@ const buildBadRequestError = (message, status = 400) => {
   return error;
 };
 
-const buildPublicBaseUrl = (req) => {
+const buildPublicBaseUrl = () => {
   const configured = String(process.env.BASE_PUBLIC_URL || "").trim();
   if (configured) return configured.replace(/\/$/, "");
-  if (!req) return DEFAULT_PUBLIC_BASE_URL;
-  const host = String(req.get("host") || "").trim();
-  if (!host) return DEFAULT_PUBLIC_BASE_URL;
-  const protocol = host.includes("localhost") ? "http" : "https";
-  if (!host.includes("localhost") && host.includes("run.app")) return DEFAULT_PUBLIC_BASE_URL;
-  return `${protocol}://${host}`;
+  return DEFAULT_PUBLIC_BASE_URL;
 };
 
 const randomToken = (size = 12) => crypto.randomBytes(size).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
@@ -97,7 +92,7 @@ const registerClient = async (req, db) => {
   const counterRef = db.collection("counters").doc(LOYALTY_COUNTER_DOC);
   const clientRef = db.collection(LOYALTY_CLIENTS_COLLECTION).doc();
   const token = await generateUniqueToken(db);
-  const basePublicUrl = buildPublicBaseUrl(req);
+  const basePublicUrl = buildPublicBaseUrl();
   const qrLink = `${basePublicUrl}/tarjeta-lealtad.html?token=${token}`;
 
   const client = await db.runTransaction(async (trx) => {
