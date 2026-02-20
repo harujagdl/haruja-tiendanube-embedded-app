@@ -59,6 +59,8 @@ const buildPublicBaseUrl = () => {
   return DEFAULT_PUBLIC_BASE_URL;
 };
 
+const buildQrLink = (token) => `${buildPublicBaseUrl()}/tarjeta-lealtad.html?token=${token}`;
+
 const randomToken = (size = 12) => crypto.randomBytes(size).toString("base64url").replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
 
 const generateUniqueToken = async (db) => {
@@ -90,10 +92,8 @@ const registerClient = async (req, db) => {
   if (!name) throw buildBadRequestError("El nombre es obligatorio.");
 
   const counterRef = db.collection("counters").doc(LOYALTY_COUNTER_DOC);
-  const clientRef = db.collection(LOYALTY_CLIENTS_COLLECTION).doc();
   const token = await generateUniqueToken(db);
-  const basePublicUrl = buildPublicBaseUrl();
-  const qrLink = `${basePublicUrl}/tarjeta-lealtad.html?token=${token}`;
+  const qrLink = buildQrLink(token);
 
   const client = await db.runTransaction(async (trx) => {
     const counterSnap = await trx.get(counterRef);
@@ -306,6 +306,36 @@ const listClients = async (req, db) => {
   return {ok: true, items, nextCursor: null};
 };
 
+const backfillQrLinks = async (_req, db) => {
+  const snap = await db.collection(LOYALTY_CLIENTS_COLLECTION).get();
+  const batch = db.batch();
+  let updatedCount = 0;
+
+  snap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const token = String(data.token || "").trim();
+    const qrLink = String(data.qrLink || "").trim();
+    const needsBackfill = !qrLink || qrLink.includes("run.app");
+    if (!token || !needsBackfill) return;
+
+    batch.set(docSnap.ref, {
+      qrLink: buildQrLink(token),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, {merge: true});
+    updatedCount += 1;
+  });
+
+  if (updatedCount > 0) {
+    await batch.commit();
+  }
+
+  return {
+    ok: true,
+    scanned: snap.size,
+    updated: updatedCount
+  };
+};
+
 module.exports = {
   registerClient,
   searchClients,
@@ -314,5 +344,6 @@ module.exports = {
   getByToken,
   addVisit,
   listClients,
+  backfillQrLinks,
   buildBadRequestError
 };

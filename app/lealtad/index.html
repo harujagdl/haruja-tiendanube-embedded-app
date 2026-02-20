@@ -8,6 +8,10 @@
 </head>
 <body>
   <div class="container page">
+    <div class="topbar">
+      <a class="backlink" href="/">← Volver al panel</a>
+    </div>
+
     <header class="header">
       <h1>Plan de Lealtad Haruja</h1>
     </header>
@@ -46,7 +50,7 @@
 
         <section class="card" id="card-search">
           <h2>Buscar cliente</h2>
-          <div class="row">
+          <div class="row search-row">
             <input id="searchInput" placeholder="HCL-0001, teléfono o nombre" />
             <button class="btn" id="searchBtn" type="button">Buscar</button>
           </div>
@@ -131,9 +135,9 @@
       summary.innerHTML = `
         <div><b>${client.name}</b> <span class="pill">${client.clientId}</span></div>
         <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>
-        <div class="notice">Token: <code>${client.token||'-'}</code></div>
-        <div class="notice">QR: <a href="${qrLink}" target="_blank" rel="noopener">${qrLink}</a></div>
-        <div class="top-8"><img id="qrPreview" alt="QR" width="220" height="220" loading="lazy" /></div>
+        <div class="notice mono">Token: <code>${client.token||'-'}</code></div>
+        <div class="notice mono">QR: <a href="${qrLink}" target="_blank" rel="noopener">${qrLink}</a></div>
+        <div class="top-8"><img id="qrPreview" class="qr" alt="QR" width="220" height="220" loading="lazy" /></div>
         <button class="btn" type="button" id="copyQrBtn">Copiar QR Link</button>
       `;
       const qrImg = `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(qrLink)}`;
