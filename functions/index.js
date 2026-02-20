@@ -28,6 +28,7 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   "https://haruja-tiendanube.web.app",
   "https://haruja-tiendanube.firebaseapp.com",
+  "https://haruja-panel.vercel.app",
   "http://localhost:5000",
   "http://localhost:5173",
   "http://localhost:3000"
