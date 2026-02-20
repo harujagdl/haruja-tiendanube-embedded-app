@@ -1646,6 +1646,12 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       return;
     }
 
+    if (path === "/api/loyalty/listClients" && req.method === "GET") {
+      const response = await loyalty.listClients(req, db);
+      res.status(200).json(response);
+      return;
+    }
+
     res.status(404).json({ok: false, error: "Ruta no encontrada."});
   } catch (error) {
     console.error("API apartados error", error);

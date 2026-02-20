@@ -7,68 +7,84 @@
   <link rel="stylesheet" href="/lealtad/lealtad.css" />
 </head>
 <body>
-  <div class="container">
-    <div class="header">
+  <div class="container page">
+    <header class="header">
       <h1>Plan de Lealtad Haruja</h1>
+    </header>
+
+    <div class="segmented" role="tablist" aria-label="Vistas de lealtad">
+      <button data-view="panel" class="seg active" type="button">Panel</button>
+      <button data-view="db" class="seg" type="button">Clientes registrados</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab active" id="tabSearch" type="button">Buscar cliente</button>
-      <button class="tab" id="tabRegister" type="button">Registrar cliente</button>
-    </div>
+    <main id="view-panel" class="view active">
+      <div class="two-col">
+        <section class="card" id="card-register">
+          <h2>Registrar cliente</h2>
+          <div class="grid2">
+            <div>
+              <div class="label">Nombre</div>
+              <input id="name" placeholder="Nombre" />
+            </div>
+            <div>
+              <div class="label">Teléfono</div>
+              <input id="phone" placeholder="Teléfono" />
+            </div>
+            <div>
+              <div class="label">Instagram</div>
+              <input id="instagram" placeholder="Instagram" />
+            </div>
+            <div>
+              <div class="label">Email</div>
+              <input id="email" placeholder="Email" />
+            </div>
+          </div>
+          <div class="row top-12">
+            <button class="btn full" id="registerBtn" type="button">Registrar</button>
+          </div>
+        </section>
 
-    <section class="card" id="searchSection">
-      <h2>Buscar cliente</h2>
-      <div class="row">
-        <input id="searchInput" placeholder="HCL-0001, teléfono o nombre" />
-        <button class="btn" id="searchBtn" type="button">Buscar</button>
+        <section class="card" id="card-search">
+          <h2>Buscar cliente</h2>
+          <div class="row">
+            <input id="searchInput" placeholder="HCL-0001, teléfono o nombre" />
+            <button class="btn" id="searchBtn" type="button">Buscar</button>
+          </div>
+          <div id="results" class="results top-12"></div>
+        </section>
       </div>
-      <div id="results" class="results" style="margin-top:12px"></div>
-    </section>
 
-    <section class="card hidden" id="registerSection">
-      <h2>Registrar cliente</h2>
-      <div class="grid2">
-        <div>
-          <div class="label">Nombre</div>
-          <input id="name" placeholder="Nombre" />
+      <section class="card" id="card-selected" style="display:none">
+        <h2>Cliente seleccionado</h2>
+        <div id="clientSummary"></div>
+        <div class="grid2 top-8">
+          <input id="purchaseAmount" type="number" min="1" placeholder="Monto de compra" />
+          <input id="purchaseNotes" placeholder="Notas compra" />
         </div>
-        <div>
-          <div class="label">Teléfono</div>
-          <input id="phone" placeholder="Teléfono" />
+        <div class="row top-8">
+          <button class="btn full" id="addPurchaseBtn" type="button">Agregar compra</button>
         </div>
-        <div>
-          <div class="label">Instagram</div>
-          <input id="instagram" placeholder="Instagram" />
+        <div class="grid2 top-8">
+          <select id="rewardPts"><option value="150">150</option><option value="300">300</option><option value="500">500</option><option value="800">800</option></select>
+          <input id="redeemNotes" placeholder="Notas canje" />
         </div>
-        <div>
-          <div class="label">Email</div>
-          <input id="email" placeholder="Email" />
+        <div class="row top-8">
+          <button class="btn full" id="redeemBtn" type="button">Canjear</button>
         </div>
-      </div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn full" id="registerBtn" type="button">Registrar</button>
-      </div>
-    </section>
+      </section>
+    </main>
 
-    <section class="card" id="clientCard" style="display:none">
-      <h2>Cliente seleccionado</h2>
-      <div id="clientSummary"></div>
-      <div class="grid2" style="margin-top:8px">
-        <input id="purchaseAmount" type="number" min="1" placeholder="Monto de compra" />
-        <input id="purchaseNotes" placeholder="Notas compra" />
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn full" id="addPurchaseBtn" type="button">Agregar compra</button>
-      </div>
-      <div class="grid2" style="margin-top:8px">
-        <select id="rewardPts"><option value="150">150</option><option value="300">300</option><option value="500">500</option><option value="800">800</option></select>
-        <input id="redeemNotes" placeholder="Notas canje" />
-      </div>
-      <div class="row" style="margin-top:8px">
-        <button class="btn full" id="redeemBtn" type="button">Canjear</button>
-      </div>
-    </section>
+    <main id="view-db" class="view">
+      <section class="card">
+        <h2>Clientes registrados</h2>
+        <div class="row">
+          <input id="dbSearchInput" placeholder="Buscar por nombre, teléfono o ID" />
+          <button class="btn" id="dbSearchBtn" type="button">Buscar</button>
+          <button class="btn btn-secondary" id="dbReloadBtn" type="button">Recargar</button>
+        </div>
+        <div id="dbResults" class="results top-12"></div>
+      </section>
+    </main>
   </div>
 
   <div id="toast"></div>
@@ -80,23 +96,14 @@
       return data;
     };
 
-    const tabSearch = document.getElementById('tabSearch');
-    const tabRegister = document.getElementById('tabRegister');
-    const searchSection = document.getElementById('searchSection');
-    const registerSection = document.getElementById('registerSection');
-
-    const setTab = (tab) => {
-      const isSearch = tab === 'search';
-      tabSearch.classList.toggle('active', isSearch);
-      tabRegister.classList.toggle('active', !isSearch);
-      searchSection.classList.toggle('hidden', !isSearch);
-      registerSection.classList.toggle('hidden', isSearch);
+    const views = {
+      panel: document.getElementById('view-panel'),
+      db: document.getElementById('view-db')
     };
-
-    tabSearch.addEventListener('click', () => setTab('search'));
-    tabRegister.addEventListener('click', () => setTab('register'));
-
+    const segButtons = Array.from(document.querySelectorAll('.seg'));
+    let dbLoaded = false;
     let selectedClient = null;
+
     const toast = (msg, ok=true) => {
       const el = document.getElementById('toast');
       el.textContent = msg;
@@ -105,18 +112,79 @@
       setTimeout(() => { el.style.display = 'none'; }, 2200);
     };
 
+    const setView = async (viewName) => {
+      segButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewName));
+      Object.entries(views).forEach(([name, el]) => el.classList.toggle('active', name === viewName));
+      if (viewName === 'db' && !dbLoaded) {
+        await loadClientsRegistered();
+      }
+    };
+
+    const safeLink = (url) => String(url || '').trim() || '#';
+
     const renderClient = (client) => {
       selectedClient = client;
       const summary = document.getElementById('clientSummary');
-      const card = document.getElementById('clientCard');
+      const card = document.getElementById('card-selected');
       card.style.display = 'block';
+      const qrLink = safeLink(client.qrLink);
       summary.innerHTML = `
         <div><b>${client.name}</b> <span class="pill">${client.clientId}</span></div>
         <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>
         <div class="notice">Token: <code>${client.token||'-'}</code></div>
-        <div class="notice">QR: <a href="${client.qrLink}" target="_blank">${client.qrLink}</a></div>
-        <button class="btn" type="button" onclick="navigator.clipboard.writeText('${client.qrLink||''}')">Copiar QR Link</button>
+        <div class="notice">QR: <a href="${qrLink}" target="_blank" rel="noopener">${qrLink}</a></div>
+        <button class="btn" type="button" id="copyQrBtn">Copiar QR Link</button>
       `;
+      const copyBtn = document.getElementById('copyQrBtn');
+      copyBtn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(qrLink);
+          toast('QR link copiado');
+        } catch (_err) {
+          toast('No se pudo copiar el link', false);
+        }
+      };
+    };
+
+    const renderSearchItems = (items, targetId, openClientLabel = 'Seleccionar') => {
+      const box = document.getElementById(targetId);
+      box.innerHTML = items.length ? '' : '<p class="muted">Sin resultados</p>';
+      items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'result-item';
+        row.innerHTML = `
+          <div>
+            <div><b>${item.clientId}</b> · ${item.name}</div>
+            <div class="muted">Tel: ${item.phone || '-'} · Puntos: ${item.points} · Nivel: ${item.level}</div>
+          </div>
+          <button class="btn btn-small" type="button">${openClientLabel}</button>
+        `;
+        row.querySelector('button').onclick = () => {
+          renderClient(item);
+          setView('panel');
+        };
+        box.appendChild(row);
+      });
+    };
+
+    const loadClientsRegistered = async () => {
+      try {
+        const {items} = await api('/api/loyalty/listClients?limit=80');
+        dbLoaded = true;
+        renderSearchItems(items, 'dbResults', 'Abrir');
+      } catch (e) {
+        toast(e.message, false);
+      }
+    };
+
+    const runClientSearch = async (inputId, targetId) => {
+      try {
+        const q = document.getElementById(inputId).value.trim();
+        const {items} = await api(`/api/loyalty/searchClients?q=${encodeURIComponent(q)}`);
+        renderSearchItems(items, targetId);
+      } catch (e) {
+        toast(e.message, false);
+      }
     };
 
     document.getElementById('registerBtn').onclick = async () => {
@@ -133,20 +201,9 @@
       } catch (e) { toast(e.message, false); }
     };
 
-    document.getElementById('searchBtn').onclick = async () => {
-      try {
-        const q = document.getElementById('searchInput').value.trim();
-        const {items} = await api(`/api/loyalty/searchClients?q=${encodeURIComponent(q)}`);
-        const box = document.getElementById('results');
-        box.innerHTML = items.length ? '' : '<p class="muted">Sin resultados</p>';
-        items.forEach((item) => {
-          const b = document.createElement('button');
-          b.textContent = `${item.clientId} · ${item.name} · ${item.points} pts`;
-          b.onclick = () => renderClient(item);
-          box.appendChild(b);
-        });
-      } catch (e) { toast(e.message, false); }
-    };
+    document.getElementById('searchBtn').onclick = () => runClientSearch('searchInput', 'results');
+    document.getElementById('dbSearchBtn').onclick = () => runClientSearch('dbSearchInput', 'dbResults');
+    document.getElementById('dbReloadBtn').onclick = () => loadClientsRegistered();
 
     document.getElementById('addPurchaseBtn').onclick = async () => {
       if (!selectedClient) return toast('Selecciona cliente', false);
@@ -175,6 +232,10 @@
         renderClient({...selectedClient, ...client});
       } catch (e) { toast(e.message, false); }
     };
+
+    segButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setView(btn.dataset.view));
+    });
   </script>
 </body>
 </html>
