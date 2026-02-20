@@ -163,8 +163,8 @@ function applyCors(req, res) {
   const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "https://haruja-tiendanube.web.app";
   res.set("Access-Control-Allow-Origin", allowOrigin);
   res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Admin-Password");
   res.set("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") {
     res.status(204).send("");
@@ -1371,6 +1371,15 @@ const generatePdfFromHtml = async (html) => {
 };
 
 
+
+const requireLoyaltyAdminHeader = (req) => {
+  const expected = String(process.env.ADMIN_PASSWORD || "");
+  const provided = String(req.get("X-Admin-Password") || "").trim();
+  if (!expected || !provided || provided !== expected) {
+    throw loyalty.buildBadRequestError("No autorizado", 403);
+  }
+};
+
 const parseJsonBody = (req) => {
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string" && req.body.trim()) {
@@ -1643,6 +1652,14 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
 
     if (path === "/api/loyalty/addVisit" && req.method === "POST") {
       const response = await loyalty.addVisit({body: parseJsonBody(req)}, db);
+      res.status(200).json(response);
+      return;
+    }
+
+
+    if (path === "/api/loyalty/updateClient" && req.method === "PATCH") {
+      requireLoyaltyAdminHeader(req);
+      const response = await loyalty.updateClient({body: parseJsonBody(req)}, db);
       res.status(200).json(response);
       return;
     }

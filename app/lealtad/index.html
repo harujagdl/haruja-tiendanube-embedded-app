@@ -61,6 +61,34 @@
       <section class="card" id="card-selected" style="display:none">
         <h2>Cliente seleccionado</h2>
         <div id="clientSummary"></div>
+        <div class="edit-client-bar top-12">
+          <button class="btn btn-secondary" id="btnEditClient" type="button">Editar datos</button>
+        </div>
+        <div id="editClientForm" class="edit-client-form" style="display:none">
+          <div class="grid2">
+            <div>
+              <div class="label">Nombre</div>
+              <input id="editName" type="text" />
+            </div>
+            <div>
+              <div class="label">Teléfono</div>
+              <input id="editPhone" type="tel" />
+            </div>
+            <div>
+              <div class="label">Instagram</div>
+              <input id="editIg" type="text" />
+            </div>
+            <div>
+              <div class="label">Email</div>
+              <input id="editEmail" type="email" />
+            </div>
+          </div>
+          <div class="edit-actions">
+            <button class="btn" id="btnSaveClient" type="button">Guardar cambios</button>
+            <button class="btn btn-secondary" id="btnCancelEditClient" type="button">Cancelar</button>
+          </div>
+          <div id="editClientMsg" class="muted top-8"></div>
+        </div>
         <div class="grid2 top-8">
           <input id="purchaseAmount" type="number" min="1" placeholder="Monto de compra" />
           <input id="purchaseNotes" placeholder="Notas compra" />
@@ -95,9 +123,11 @@
   <script src="/lealtad/vendor/qrcode-generator.min.js"></script>
   <script>
     const PWA_PUBLIC_BASE_URL = 'https://haruja-panel.vercel.app';
+    const ADMIN_PASSWORD_SESSION_KEY = 'loyaltyAdminPassword';
 
     const api = async (url, options={}) => {
-      const res = await fetch(url, {headers:{"Content-Type":"application/json"}, ...options});
+      const authHeaders = options.headers || {};
+      const res = await fetch(url, {headers:{"Content-Type":"application/json", ...authHeaders}, ...options});
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || "Error en la solicitud");
       return data;
@@ -110,6 +140,24 @@
     const segButtons = Array.from(document.querySelectorAll('.seg'));
     let dbLoaded = false;
     let selectedClient = null;
+    let saveClientInFlight = false;
+
+    const readAdminPassword = () => sessionStorage.getItem(ADMIN_PASSWORD_SESSION_KEY) || '';
+    const askAdminPassword = () => {
+      const current = readAdminPassword();
+      const nextValue = window.prompt('Contraseña admin para editar cliente:', current);
+      if (nextValue === null) return '';
+      const trimmed = String(nextValue || '').trim();
+      if (!trimmed) return '';
+      sessionStorage.setItem(ADMIN_PASSWORD_SESSION_KEY, trimmed);
+      return trimmed;
+    };
+
+    const getAdminAuthHeaders = () => {
+      const password = readAdminPassword() || askAdminPassword();
+      if (!password) throw new Error('Se requiere contraseña admin.');
+      return {'X-Admin-Password': password};
+    };
 
     const toast = (msg, ok=true) => {
       const el = document.getElementById('toast');
@@ -162,10 +210,15 @@
         <div class="muted">Puntos: <b>${client.points}</b> · Nivel: <b>${client.level}</b> · Compras: <b>$${Number(client.totalPurchases||0).toFixed(2)}</b></div>
         <div class="notice mono">Token: <code>${client.token||'-'}</code></div>
         <div class="notice mono">QR: <a href="${qrLink}" target="_blank" rel="noopener">${qrLink}</a></div>
-        <div class="top-8"><div id="qrPreview" class="qr" aria-label="QR"></div></div>
-        <button class="btn" type="button" id="copyQrBtn">Copiar QR Link</button>
+        <div class="qr-section top-8">
+          <div class="qr-wrap"><div id="qrPreview" class="qr" aria-label="QR"></div></div>
+          <div class="qr-actions">
+            <button class="btn" type="button" id="copyQrBtn">Copiar QR Link</button>
+          </div>
+        </div>
       `;
       renderQrInto(document.getElementById('qrPreview'), qrLink);
+      fillEditForm(client);
       const copyBtn = document.getElementById('copyQrBtn');
       copyBtn.onclick = async () => {
         try {
@@ -175,6 +228,19 @@
           toast('No se pudo copiar el link', false);
         }
       };
+    };
+
+    const fillEditForm = (client) => {
+      document.getElementById('editName').value = client?.name || '';
+      document.getElementById('editPhone').value = client?.phone || '';
+      document.getElementById('editIg').value = client?.instagram || '';
+      document.getElementById('editEmail').value = client?.email || '';
+      document.getElementById('editClientMsg').textContent = '';
+    };
+
+    const toggleEditForm = (show) => {
+      document.getElementById('editClientForm').style.display = show ? 'block' : 'none';
+      if (!show && selectedClient) fillEditForm(selectedClient);
     };
 
     const renderSearchItems = (items, targetId, openClientLabel = 'Seleccionar') => {
@@ -235,6 +301,61 @@
     document.getElementById('searchBtn').onclick = () => runClientSearch('searchInput', 'results');
     document.getElementById('dbSearchBtn').onclick = () => runClientSearch('dbSearchInput', 'dbResults');
     document.getElementById('dbReloadBtn').onclick = () => loadClientsRegistered();
+    document.getElementById('btnEditClient').onclick = () => {
+      if (!selectedClient) return toast('Selecciona cliente', false);
+      const form = document.getElementById('editClientForm');
+      const shouldShow = form.style.display === 'none';
+      if (shouldShow) fillEditForm(selectedClient);
+      toggleEditForm(shouldShow);
+    };
+    document.getElementById('btnCancelEditClient').onclick = () => toggleEditForm(false);
+    document.getElementById('btnSaveClient').onclick = async () => {
+      if (!selectedClient) return toast('Selecciona cliente', false);
+      if (saveClientInFlight) return;
+      const editMsg = document.getElementById('editClientMsg');
+      const name = document.getElementById('editName').value.trim();
+      const phone = document.getElementById('editPhone').value.trim();
+      const instagram = document.getElementById('editIg').value.trim();
+      const email = document.getElementById('editEmail').value.trim();
+      if (!name) {
+        editMsg.textContent = 'El nombre es obligatorio.';
+        return;
+      }
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+        editMsg.textContent = 'Email inválido.';
+        return;
+      }
+
+      const saveBtn = document.getElementById('btnSaveClient');
+      saveClientInFlight = true;
+      saveBtn.disabled = true;
+      editMsg.textContent = 'Guardando...';
+      try {
+        const {client} = await api('/api/loyalty/updateClient', {
+          method:'PATCH',
+          headers: getAdminAuthHeaders(),
+          body: JSON.stringify({
+            clientId: selectedClient.clientId || selectedClient.id,
+            name,
+            phone,
+            instagram,
+            email
+          })
+        });
+        selectedClient = {...selectedClient, ...client};
+        renderClient(selectedClient);
+        toggleEditForm(false);
+        if (dbLoaded) await loadClientsRegistered();
+        editMsg.textContent = 'Guardado ✅';
+        toast('Cliente actualizado');
+      } catch (e) {
+        editMsg.textContent = e.message;
+        toast(e.message, false);
+      } finally {
+        saveClientInFlight = false;
+        saveBtn.disabled = false;
+      }
+    };
 
     document.getElementById('addPurchaseBtn').onclick = async () => {
       if (!selectedClient) return toast('Selecciona cliente', false);

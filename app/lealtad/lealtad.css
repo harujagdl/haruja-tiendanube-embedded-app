@@ -37,6 +37,14 @@ input:focus,select:focus,textarea:focus{border-color:rgba(37,99,235,.55);box-sha
 .pill{display:inline-block;background:#eff6ff;color:var(--blue);padding:4px 8px;border-radius:999px;margin-left:6px;font-weight:700}
 .notice{margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:14px;background:#fff;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .qr{width:180px;height:180px;border-radius:14px;border:1px solid var(--border);background:#fff}
+.qr-section{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.qr-wrap{width:220px;max-width:100%;background:#fff;border:1px solid rgba(15,23,42,.1);border-radius:12px;padding:10px}
+.qr-wrap svg{display:block;width:100%;height:auto}
+.qr-actions{width:220px;max-width:100%;display:flex;justify-content:flex-start}
+.qr-actions .btn{width:100%}
+.edit-client-form{margin-top:12px;padding:12px;border:1px solid rgba(15,23,42,.08);border-radius:12px;background:#fff}
+.edit-actions{display:flex;gap:10px;margin-top:10px}
+.edit-actions button{flex:1}
 #toast{position:fixed;bottom:16px;right:16px;display:none;padding:12px 14px;border-radius:12px;color:#fff;box-shadow:var(--shadow);z-index:50}
 
 .segmented{display:flex;gap:10px;padding:10px;border-radius:16px;background:#EEF2FF;margin:8px auto 16px}

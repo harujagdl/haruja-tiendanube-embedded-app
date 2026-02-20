@@ -315,6 +315,39 @@ const listClients = async (req, db) => {
   return {ok: true, items, nextCursor: null};
 };
 
+
+const updateClient = async (req, db) => {
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const clientId = String(body.clientId || body.id || "").trim().toUpperCase();
+  const name = typeof body.name === "string" ? body.name.trim() : null;
+  const phone = typeof body.phone === "string" ? body.phone.trim() : null;
+  const instagram = typeof body.instagram === "string" ? body.instagram.trim() : null;
+  const email = typeof body.email === "string" ? body.email.trim() : null;
+
+  if (!clientId) throw buildBadRequestError("Falta clientId.");
+
+  const updates = {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (name !== null) {
+    if (!name) throw buildBadRequestError("El nombre es obligatorio.");
+    updates.name = name;
+    updates.nameLower = name.toLowerCase();
+  }
+  if (phone !== null) updates.phone = phone;
+  if (instagram !== null) updates.instagram = instagram;
+  if (email !== null) updates.email = email;
+
+  const clientRef = db.collection(LOYALTY_CLIENTS_COLLECTION).doc(clientId);
+  const snap = await clientRef.get();
+  if (!snap.exists) throw buildBadRequestError(`No existe cliente ${clientId}.`, 404);
+
+  await clientRef.set(updates, {merge: true});
+  const updatedSnap = await clientRef.get();
+  return {ok: true, client: normalizeClient(updatedSnap)};
+};
+
 const backfillQrLinks = async (_req, db) => {
   const snap = await db.collection(LOYALTY_CLIENTS_COLLECTION).get();
   const batch = db.batch();
@@ -353,6 +386,7 @@ module.exports = {
   getByToken,
   addVisit,
   listClients,
+  updateClient,
   backfillQrLinks,
   buildBadRequestError
 };
