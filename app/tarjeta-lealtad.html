@@ -23,7 +23,7 @@
     const rewardLine = (r) => `<li>${r.label} ${r.available ? '✅' : `(faltan ${r.missingPoints} pts)`}</li>`;
 
     const run = async () => {
-      if (!token) { content.textContent = 'Token inválido'; return; }
+      if (!token) { content.textContent = 'Falta token.'; return; }
       try {
         const res = await fetch(`/api/loyalty/getByToken?token=${encodeURIComponent(token)}`);
         const data = await res.json();
