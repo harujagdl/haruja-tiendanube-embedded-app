@@ -60,7 +60,23 @@ service cloud.firestore {
     }
 
     match /counters/{doc} {
-      allow read, write: if isAdminEmail();
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /modelos/{doc} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /modelos/{doc}/variantes/{variantDoc} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /modelos_index/{doc} {
+      allow read: if true;
+      allow write: if isAdminEmail();
     }
 
     match /metadata/{doc} {

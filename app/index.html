@@ -1798,7 +1798,10 @@ body.admin-on .admin-only{ display:table-cell; }
               </div>
               <small>Solo en Modo Admin</small>
             </div>
-            <button type="submit">Generar código</button>
+            <div class="result-actions">
+              <button type="submit">Generar código</button>
+              <button type="button" id="registro-save" class="secondary">Guardar prenda</button>
+            </div>
           </form>
           <p id="registro-status" class="status"></p>
           <div id="registro-result" class="result-card hidden">
@@ -2049,6 +2052,7 @@ const auth = getAuth(app);
       const registroCodigo = document.getElementById("registro-codigo");
       const registroCopy = document.getElementById("registro-copy");
       const registroReset = document.getElementById("registro-reset");
+      const registroSave = document.getElementById("registro-save");
       const registroSubmit = registroForm.querySelector("button[type='submit']");
       const registroProducto = document.getElementById("registro-producto");
       const registroProveedor = document.getElementById("registro-proveedor");
@@ -2442,6 +2446,9 @@ const auth = getAuth(app);
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
+      const MODELOS_COLLECTION = "modelos";
+      const MODELOS_INDEX_COLLECTION = "modelos_index";
+      const MODELOS_COUNTER_DOC = "modelos";
       const PRENDAS_COLLECTION_CANDIDATES = [
         PRENDAS_PUBLIC_COLLECTION,
         "prendas",
@@ -4686,6 +4693,7 @@ return `<!doctype html>
 
       const HISTORICOS_URL = "../Data/codigos_historicos.json";
       let historicosCache = null;
+      let registroPreview = null;
 
       const loadHistoricosMap = async () => {
         if (historicosCache) {
@@ -4720,132 +4728,107 @@ return `<!doctype html>
         return historicosCache;
       };
 
-      const getNextCounter = async (providerCode, typeCode) => {
-        const key = `prov${providerCode}_tipo${typeCode}`;
-        const counterRef = doc(db, "counters", key);
+      const buildModelKey = ({ providerCode, typeCode, detallesValue }) => {
+        const detallesNorm = safeString(detallesValue).trim().toUpperCase().replace(/\s+/g, " ");
+        return [providerCode, typeCode, detallesNorm || "SINDETALLE"].join("_");
+      };
 
-        return runTransaction(db, async (transaction) => {
-          const snapshot = await transaction.get(counterRef);
-          const data = snapshot.data() || {};
-          let counterValue = Number(data.value);
+      const buildModelCode = ({ providerCode, typeCode, seqNumber, colorClave, tallaClave }) => {
+        const consecutivo = String(seqNumber).padStart(3, "0");
+        const baseCode = `HA${providerCode}${typeCode}${consecutivo}`;
+        const variantKey = `${colorClave}_${tallaClave}`;
+        const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
+        return { baseCode, variantKey, codigo };
+      };
 
-          if (!Number.isFinite(counterValue)) {
+      const readModelCounter = async () => {
+        const counterRef = doc(db, "counters", MODELOS_COUNTER_DOC);
+        const snapshot = await getDoc(counterRef);
+        const data = snapshot.data() || {};
+        let counterValue = Number(data.value);
+        if (!Number.isFinite(counterValue)) {
           counterValue = Number(data.lastNumber);
-          }
-
-          if (!Number.isFinite(counterValue)) {
+        }
+        if (!Number.isFinite(counterValue)) {
           const maxPorKey = await loadHistoricosMap();
-          counterValue = Number(maxPorKey[key] ?? 0);
-          }
-          if (!Number.isFinite(counterValue)) {
-            throw new Error(`Contador inválido para ${key}. Revisa counters/${key}.`);
-          }
-          console.log("COUNTER READ", { key, data, counterValue });
-          const nextValue = counterValue + 1;
-          transaction.set(counterRef, { value: nextValue, lastNumber: nextValue }, { merge: true });
-          return { nextValue, key };
+          counterValue = Object.values(maxPorKey).reduce((max, value) => {
+            const num = Number(value);
+            return Number.isFinite(num) && num > max ? num : max;
+          }, 0);
+        }
+        if (!Number.isFinite(counterValue)) {
+          throw new Error("Contador inválido para modelos. Revisa counters/modelos.");
+        }
+        return counterValue;
+      };
+
+      const buildRegistroPreview = async () => {
+        if (!ensureRequired()) {
+          return null;
+        }
+        const providerCode = registroProveedor.value;
+        const typeCode = registroProducto.value;
+        const colorClave = registroColor.value;
+        const tallaClave = registroTalla.value;
+        const createdByValue = document.getElementById("registro-created-by").value.trim();
+        const detallesValue = registroDetalles.value.trim();
+        const tipoNombre = getSelectedName(registroProducto).trim();
+        const proveedorNombre = getSelectedName(registroProveedor).trim();
+        const colorNombre = getSelectedName(registroColor).trim();
+        const tallaNombre = getSelectedName(registroTalla).trim();
+        const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
+          .filter(Boolean)
+          .join(" ");
+
+        const modelKey = buildModelKey({ providerCode, typeCode, detallesValue });
+        const modelIndexRef = doc(db, MODELOS_INDEX_COLLECTION, safeDocId(modelKey));
+        const modelIndexSnap = await getDoc(modelIndexRef);
+        let seqNumber;
+        if (modelIndexSnap.exists()) {
+          const baseCodeFromIndex = safeString(modelIndexSnap.data()?.baseCode).trim().toUpperCase();
+          const match = /^HA\d+[A-Z](\d{3,})$/i.exec(baseCodeFromIndex);
+          seqNumber = match ? Number(match[1]) : NaN;
+        }
+        if (!Number.isFinite(seqNumber)) {
+          const counterValue = await readModelCounter();
+          seqNumber = counterValue + 1;
+        }
+
+        const { baseCode, variantKey, codigo } = buildModelCode({
+          providerCode,
+          typeCode,
+          seqNumber,
+          colorClave,
+          tallaClave
         });
+
+        return {
+          providerCode,
+          typeCode,
+          colorClave,
+          tallaClave,
+          createdByValue,
+          detallesValue,
+          descripcion,
+          modelKey,
+          baseCode,
+          variantKey,
+          codigo,
+          seqNumber
+        };
       };
 
       const handleRegistroSubmit = async (event) => {
         event.preventDefault();
         setRegistroStatus("");
 
-        if (!ensureAdminMode()) {
-          return;
-        }
-
-        if (!ensureRequired()) {
-          return;
-        }
-
-        const providerCode = registroProveedor.value;
-        const typeCode = registroProducto.value;
-        const colorClave = registroColor.value;
-        const tallaClave = registroTalla.value;
         try {
           registroSubmit.disabled = true;
-          const { nextValue, key } = await getNextCounter(providerCode, typeCode);
-          const consecutivo = String(nextValue).padStart(3, "0");
-          const codigo = `HA${providerCode}${typeCode}${consecutivo}/${colorClave}-${tallaClave}`;
-          console.info(`Generando código ${codigo} para counter ${key}.`);
-
-          const createdByValue = document.getElementById("registro-created-by").value.trim();
-          const detallesValue = registroDetalles.value.trim();
-          const tipoNombre = getSelectedName(registroProducto).trim();
-          const proveedorNombre = getSelectedName(registroProveedor).trim();
-          const colorNombre = getSelectedName(registroColor).trim();
-          const tallaNombre = getSelectedName(registroTalla).trim();
-          const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
-            .filter(Boolean)
-            .join(" ");
-          const docId = safeDocId(codigo);
-
-          const payloadPublic = {
-            docId,
-            codigo,
-            proveedor: providerCode,
-            tipo: typeCode,
-            color: colorClave,
-            talla: tallaClave,
-            descripcion: descripcion || null,
-            detalles: detallesValue || null,
-            code: codigo,
-            providerCode,
-            typeCode,
-            seqNumber: nextValue,
-            orden: nextValue,
-            colorCode: colorClave,
-            sizeCode: tallaClave,
-            status: "Disponible",
-            statusCanon: "Disponible",
-            disponibilidad: "Disponible",
-            disponibilidadCanon: "Disponible",
-            fecha: new Date().toISOString(),
-            fechaAlta: serverTimestamp(),
-            creadoPor: createdByValue || null,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          };
-
-          const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, docId);
-          const duplicateFound = (await getDoc(publicRef)).exists();
-          await setDoc(publicRef, payloadPublic, { merge: true });
-
-          if (isAdminViewEnabled()) {
-            const costo = toNumber(adminCreateCostoInput?.value);
-            const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
-            const pVentaVisible = Number.isFinite(pVentaOverride)
-              ? pVentaOverride
-              : toNumber(payloadPublic.pVenta);
-            const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
-            const payloadAdmin = {
-              docId,
-              updatedAt: serverTimestamp(),
-              updatedBy: safeString(auth.currentUser?.email).trim().toLowerCase()
-            };
-            if (Number.isFinite(costo)) payloadAdmin.costo = costo;
-            if (Number.isFinite(pVentaOverride)) payloadAdmin.pVentaOverride = pVentaOverride;
-            if (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) {
-              payloadAdmin.utilidad = utilidad;
-              payloadAdmin.margen = margenPct;
-            }
-            await setDoc(doc(db, PRENDAS_ADMIN_COLLECTION, docId), payloadAdmin, { merge: true });
-          }
-
-          if (adminCreateCostoInput) adminCreateCostoInput.value = "";
-          if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
-          await loadPrendasPage({ reset: true, reason: "create-code" });
-
-          registroCodigo.textContent = codigo;
+          registroPreview = await buildRegistroPreview();
+          if (!registroPreview) return;
+          registroCodigo.textContent = registroPreview.codigo;
           registroResult.classList.remove("hidden");
-          if (duplicateFound) {
-            setRegistroStatus("Código actualizado en public/admin.", "warning");
-          } else if (isAdminViewEnabled()) {
-            setRegistroStatus("Prenda guardada correctamente en colecciones public/admin.", "success");
-          } else {
-            setRegistroStatus("Prenda guardada correctamente en colección public.", "success");
-          }
+          setRegistroStatus("Preview generado. Ahora puedes guardar la prenda en Modo admin.", "success");
         } catch (error) {
           const message =
             error?.message?.includes("contador") || error?.message?.includes("Contador")
@@ -4854,6 +4837,175 @@ return `<!doctype html>
           setRegistroStatus(message, "error");
           console.error(error);
         } finally {
+          registroSubmit.disabled = false;
+        }
+      };
+
+      const handleRegistroSave = async () => {
+        try {
+          if (!isAdminMode) {
+            setRegistroStatus("Guardar requiere Modo admin. Usa 'Modo admin' para activarlo.", "warning");
+            const wantsAdmin = window.confirm("Guardar requiere Modo admin. ¿Deseas activarlo ahora?");
+            if (wantsAdmin) {
+              await handleAdminToggle();
+            }
+            if (!isAdminMode) return;
+          }
+          const preview = registroPreview || await buildRegistroPreview();
+          if (!preview) return;
+
+          registroSave.disabled = true;
+          registroSubmit.disabled = true;
+
+          const user = await ensureAdminSession();
+          const counterRef = doc(db, "counters", MODELOS_COUNTER_DOC);
+          const modelIndexRef = doc(db, MODELOS_INDEX_COLLECTION, safeDocId(preview.modelKey));
+
+          const transactionResult = await runTransaction(db, async (transaction) => {
+            const indexSnap = await transaction.get(modelIndexRef);
+            let baseCode = safeString(indexSnap.data()?.baseCode).trim().toUpperCase();
+            let seqNumber = Number(indexSnap.data()?.seqNumber);
+            let createdModel = false;
+
+            if (baseCode && !Number.isFinite(seqNumber)) {
+              const match = /^HA\d+[A-Z](\d{3,})$/i.exec(baseCode);
+              seqNumber = match ? Number(match[1]) : NaN;
+            }
+
+            if (!baseCode) {
+              const counterSnap = await transaction.get(counterRef);
+              const counterData = counterSnap.data() || {};
+              let counterValue = Number(counterData.value);
+              if (!Number.isFinite(counterValue)) counterValue = Number(counterData.lastNumber);
+              if (!Number.isFinite(counterValue)) {
+                throw new Error("Contador inválido para modelos. Revisa counters/modelos.");
+              }
+              seqNumber = counterValue + 1;
+              baseCode = buildModelCode({
+                providerCode: preview.providerCode,
+                typeCode: preview.typeCode,
+                seqNumber,
+                colorClave: preview.colorClave,
+                tallaClave: preview.tallaClave
+              }).baseCode;
+              transaction.set(counterRef, { value: seqNumber, lastNumber: seqNumber }, { merge: true });
+              transaction.set(modelIndexRef, {
+                modelKey: preview.modelKey,
+                baseCode,
+                seqNumber,
+                updatedAt: serverTimestamp(),
+                updatedBy: safeString(user?.email).trim().toLowerCase()
+              }, { merge: true });
+              createdModel = true;
+            }
+
+            const modelRef = doc(db, MODELOS_COLLECTION, baseCode);
+            const modelSnap = await transaction.get(modelRef);
+            if (!modelSnap.exists()) {
+              createdModel = true;
+              transaction.set(modelRef, {
+                baseCode,
+                seqNumber,
+                modelKey: preview.modelKey,
+                proveedor: preview.providerCode,
+                tipo: preview.typeCode,
+                descripcion: preview.descripcion || null,
+                detalles: preview.detallesValue || null,
+                createdBy: preview.createdByValue || null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                updatedBy: safeString(user?.email).trim().toLowerCase()
+              }, { merge: true });
+            } else {
+              transaction.set(modelRef, {
+                descripcion: preview.descripcion || null,
+                detalles: preview.detallesValue || null,
+                updatedAt: serverTimestamp(),
+                updatedBy: safeString(user?.email).trim().toLowerCase()
+              }, { merge: true });
+            }
+
+            const variantRef = doc(db, MODELOS_COLLECTION, baseCode, "variantes", preview.variantKey);
+            const codigo = `${baseCode}/${preview.colorClave}-${preview.tallaClave}`;
+            const docId = safeDocId(codigo);
+            transaction.set(variantRef, {
+              variantKey: preview.variantKey,
+              codigo,
+              color: preview.colorClave,
+              talla: preview.tallaClave,
+              createdBy: preview.createdByValue || null,
+              updatedBy: safeString(user?.email).trim().toLowerCase(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, docId);
+            transaction.set(publicRef, {
+              docId,
+              codigo,
+              baseCode,
+              variantKey: preview.variantKey,
+              proveedor: preview.providerCode,
+              tipo: preview.typeCode,
+              color: preview.colorClave,
+              talla: preview.tallaClave,
+              descripcion: preview.descripcion || null,
+              detalles: preview.detallesValue || null,
+              code: codigo,
+              providerCode: preview.providerCode,
+              typeCode: preview.typeCode,
+              seqNumber,
+              orden: seqNumber,
+              colorCode: preview.colorClave,
+              sizeCode: preview.tallaClave,
+              status: "Disponible",
+              statusCanon: "Disponible",
+              disponibilidad: "Disponible",
+              disponibilidadCanon: "Disponible",
+              fecha: new Date().toISOString(),
+              fechaAlta: serverTimestamp(),
+              creadoPor: preview.createdByValue || null,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            return { codigo, baseCode, createdModel };
+          });
+
+          const costo = toNumber(adminCreateCostoInput?.value);
+          const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
+          const pVentaVisible = Number.isFinite(pVentaOverride) ? pVentaOverride : NaN;
+          const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
+          const payloadAdmin = {
+            docId: safeDocId(transactionResult.codigo),
+            updatedAt: serverTimestamp(),
+            updatedBy: safeString(user?.email).trim().toLowerCase()
+          };
+          if (Number.isFinite(costo)) payloadAdmin.costo = costo;
+          if (Number.isFinite(pVentaOverride)) payloadAdmin.pVentaOverride = pVentaOverride;
+          if (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) {
+            payloadAdmin.utilidad = utilidad;
+            payloadAdmin.margen = margenPct;
+          }
+          await setDoc(doc(db, PRENDAS_ADMIN_COLLECTION, payloadAdmin.docId), payloadAdmin, { merge: true });
+
+          if (adminCreateCostoInput) adminCreateCostoInput.value = "";
+          if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
+          registroPreview = { ...preview, codigo: transactionResult.codigo, baseCode: transactionResult.baseCode };
+          registroCodigo.textContent = transactionResult.codigo;
+          registroResult.classList.remove("hidden");
+          await loadPrendasPage({ reset: true, reason: "save-garment" });
+          setRegistroStatus(
+            transactionResult.createdModel
+              ? "Prenda guardada. Se creó nuevo modelo y variante."
+              : "Prenda guardada. Se agregó/actualizó variante del modelo existente.",
+            "success"
+          );
+        } catch (error) {
+          console.error(error);
+          setRegistroStatus(error?.message || "No se pudo guardar la prenda.", "error");
+        } finally {
+          registroSave.disabled = false;
           registroSubmit.disabled = false;
         }
       };
@@ -4870,6 +5022,7 @@ return `<!doctype html>
 
       const handleRegistroReset = () => {
         registroForm.reset();
+        registroPreview = null;
         registroResult.classList.add("hidden");
         setRegistroStatus("");
       };
@@ -4878,6 +5031,7 @@ return `<!doctype html>
         if (registroInited) return;
         registroInited = true;
         if (registroForm) registroForm.addEventListener("submit", handleRegistroSubmit);
+        if (registroSave) registroSave.addEventListener("click", handleRegistroSave);
         if (registroCopy) registroCopy.addEventListener("click", handleRegistroCopy);
         if (registroReset) registroReset.addEventListener("click", handleRegistroReset);
       }
