@@ -51,7 +51,7 @@ service cloud.firestore {
 
     match /HarujaPrendas_2025_public/{doc} {
       allow read: if true;
-      allow write: if isAdminEmail();
+      allow write: if false;
     }
 
     // Datos sensibles de admin
@@ -60,8 +60,7 @@ service cloud.firestore {
     }
 
     match /counters/{doc} {
-      allow read: if true;
-      allow write: if isAdminEmail();
+      allow read, write: if isAdminEmail();
     }
 
     match /modelos/{doc} {

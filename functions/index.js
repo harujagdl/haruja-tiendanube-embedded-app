@@ -1,4 +1,5 @@
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 const {randomUUID} = require("crypto");
@@ -1716,3 +1717,58 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
     res.status(status).json({ok: false, error: message});
   }
 });
+
+
+const pickPublicFieldsFromAdmin = (data = {}) => ({
+  docId: data.docId ?? null,
+  codigo: data.codigo ?? null,
+  code: data.code ?? data.codigo ?? null,
+  baseCode: data.baseCode ?? null,
+  variantKey: data.variantKey ?? null,
+  descripcion: data.descripcion ?? null,
+  tipo: data.tipo ?? null,
+  color: data.color ?? null,
+  talla: data.talla ?? null,
+  proveedor: data.proveedor ?? null,
+  status: data.status ?? null,
+  disponibilidad: data.disponibilidad ?? null,
+  fecha: data.fecha ?? null,
+  fechaTexto: data.fechaTexto ?? null,
+  fechaAlta: data.fechaAlta ?? null,
+  fechaAltaTexto: data.fechaAltaTexto ?? null,
+  orden: resolveOrden(data),
+  pVenta: toNumberOrNull(data.pVenta ?? data.precioConIva),
+  precioConIva: toNumberOrNull(data.precioConIva ?? data.pVenta),
+  pVentaVisible: toNumberOrNull(data.pVenta ?? data.precioConIva)
+});
+
+exports.replicateAdminToPublic = onDocumentWritten(
+  `${PRENDAS_ADMIN_COLLECTION}/{docId}`,
+  async (event) => {
+    const docId = safeDocId(event.params.docId);
+    const beforeExists = event.data?.before?.exists;
+    const afterExists = event.data?.after?.exists;
+
+    if (!afterExists) {
+      if (beforeExists) {
+        await db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId).delete().catch(() => {});
+      }
+      return;
+    }
+
+    const adminData = event.data.after.data() || {};
+    const payload = pickPublicFieldsFromAdmin(adminData);
+    payload.docId = docId;
+    if (!payload.codigo) {
+      payload.codigo = normalizeCodigo(adminData.codigo || docId.replaceAll("__", "/"));
+    }
+    if (!payload.code) payload.code = payload.codigo;
+    payload.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) delete payload[key];
+    });
+
+    await db.collection(PRENDAS_PUBLIC_COLLECTION).doc(docId).set(payload, {merge: true});
+  }
+);
