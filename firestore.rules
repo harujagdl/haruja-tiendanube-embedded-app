@@ -1,6 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -15,59 +16,61 @@ service cloud.firestore {
         );
     }
 
-    match /prendas/{doc} {
-      allow read: if isSignedIn();
-      allow write: if isAdminEmail();
-    }
-
+    // Diccionario (colección fallback)
     match /diccionario/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
+    // Diccionario por categoría (colecciones actuales)
     match /diccionario_tipos/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
     match /diccionario_proveedores/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
     match /diccionario_colores/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
     match /diccionario_tallas/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    // Prendas públicas
+    match /prendas/{doc} {
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
     match /HarujaPrendas_2025_public/{doc} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
+    // Datos sensibles de admin
     match /HarujaPrendas_2025_admin/{doc} {
-      allow read: if isAdminEmail();
-      allow write: if isAdminEmail();
-    }
-
-    match /HarujaPrendas_2025/{doc} {
-      allow read: if isSignedIn();
-      allow write: if isAdminEmail();
-    }
-
-    match /metadata/{doc} {
-      allow read: if isSignedIn();
-      allow write: if isAdminEmail();
+      allow read, write: if isAdminEmail();
     }
 
     match /counters/{doc} {
-      allow read: if isSignedIn();
+      allow read, write: if isAdminEmail();
+    }
+
+    match /metadata/{doc} {
+      allow read: if true;
       allow write: if isAdminEmail();
+    }
+
+    // Cualquier otra colección cerrada por default
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -2563,8 +2563,7 @@ const auth = getAuth(app);
       };
       prendasState.editing = null;
       let isBooting = true;
-      let loginPromptInProgress = false;
-      let loginPromptAttempted = false;
+      let isAdminMode = false;
 
       const setPrendasCollections = ({ publicCollection }) => {
         activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
@@ -2631,26 +2630,6 @@ const auth = getAuth(app);
           console.warn("[Prendas] colección alternativa detectada:", best.collectionName);
         }
         return best.collectionName;
-      };
-
-      const ensureSignedIn = async ({ required = false } = {}) => {
-        if (auth.currentUser) return auth.currentUser;
-        if (loginPromptInProgress) return null;
-
-        loginPromptInProgress = true;
-        loginPromptAttempted = true;
-        try {
-          const response = await signInWithPopup(auth, googleProvider);
-          return response?.user || auth.currentUser || null;
-        } catch (error) {
-          console.warn("[Auth] Login automático cancelado/no disponible", error?.code || error?.message || error);
-          if (required) {
-            throw new Error("Necesitas iniciar sesión con Google para cargar diccionario y prendas.");
-          }
-          return null;
-        } finally {
-          loginPromptInProgress = false;
-        }
       };
 
       const loadDictionary = async () => {
@@ -4558,6 +4537,7 @@ return `<!doctype html>
 
       const saveEdit = async () => {
         try {
+          if (!ensureAdminMode()) return;
           if (!prendasState.editing?.docId) return;
           const docId = prendasState.editing.docId;
           const pVentaOverride = toNumber(editPVentaInput?.value);
@@ -4770,6 +4750,10 @@ return `<!doctype html>
       const handleRegistroSubmit = async (event) => {
         event.preventDefault();
         setRegistroStatus("");
+
+        if (!ensureAdminMode()) {
+          return;
+        }
 
         if (!ensureRequired()) {
           return;
@@ -5069,6 +5053,12 @@ return `<!doctype html>
       const isAdminAuthenticated = () => prendasState.adminByAuth === true;
       const isAdminViewEnabled = () => getAdminViewEnabled() === true && isAdminAuthenticated();
 
+      const ensureAdminMode = () => {
+        if (isAdminMode) return true;
+        alert("Activa Modo admin para esta acción.");
+        return false;
+      };
+
       const setAdminViewEnabled = (enabled) => {
         // Solo permitir modo admin si el usuario está autenticado y en allowlist
         const adminByAuth = Boolean(prendasState.adminByAuth);
@@ -5098,6 +5088,7 @@ return `<!doctype html>
       const applyAdminUI = ({ refresh = true } = {}) => {
         const byAuth = Boolean(prendasState.adminByAuth);
         const enabled = byAuth && getAdminViewEnabled();
+        isAdminMode = enabled;
         prendasState.isAdmin = enabled;
         document.body.classList.toggle("is-admin", enabled);
         if (dbCodigosSection) {
@@ -5192,6 +5183,7 @@ return `<!doctype html>
 
       const handleAdminLogout = async () => {
         try {
+          isAdminMode = false;
           await signOut(auth);
         } catch (error) {
           console.error(error);
@@ -5202,6 +5194,7 @@ return `<!doctype html>
 
 
       const handleAdminSplitCollections = async () => {
+        if (!ensureAdminMode()) return;
         if (adminSplitButton) {
           adminSplitButton.disabled = true;
         }
@@ -5276,10 +5269,6 @@ return `<!doctype html>
       };
 
       onAuthStateChanged(auth, async (user) => {
-        if (!user && !loginPromptAttempted) {
-          await ensureSignedIn();
-          return;
-        }
         const email = safeString(user?.email).trim().toLowerCase();
         prendasState.adminUser = user || null;
         prendasState.adminEmail = email;
@@ -5586,15 +5575,6 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
 
       const init = async () => {
         isBooting = true;
-        try {
-          await ensureSignedIn({ required: true });
-        } catch (error) {
-          console.error(error);
-          setRegistroStatus(error?.message || "No se pudo autenticar la sesión.", "error");
-          setPrendasAlert("Inicia sesión con Google para cargar la base de datos.");
-          isBooting = false;
-          return;
-        }
         resetPrendasState();
         updateOrdenSortToggleUi();
         resetCounters();
