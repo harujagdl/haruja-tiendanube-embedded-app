@@ -1,8 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminEmail() {
+      return isSignedIn() &&
+        request.auth.token.email != null &&
+        (
+          request.auth.token.email == "yair.tenorio.silva@gmail.com" ||
+          request.auth.token.email == "harujagdl@gmail.com" ||
+          request.auth.token.email == "harujagdl.ventas@gmail.com"
+        );
+    }
+
+    match /prendas/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_tipos/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_proveedores/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_colores/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /diccionario_tallas/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /HarujaPrendas_2025_public/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /HarujaPrendas_2025_admin/{doc} {
+      allow read: if isAdminEmail();
+      allow write: if isAdminEmail();
+    }
+
+    match /HarujaPrendas_2025/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /metadata/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
+    match /counters/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
     }
   }
 }

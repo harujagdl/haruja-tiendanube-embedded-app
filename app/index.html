@@ -2436,11 +2436,17 @@ const auth = getAuth(app);
         colores: "diccionario_colores",
         tallas: "diccionario_tallas"
       };
+      const DICTIONARY_FALLBACK_COLLECTION = "diccionario";
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
+      const PRENDAS_COLLECTION_CANDIDATES = [
+        PRENDAS_PUBLIC_COLLECTION,
+        "prendas",
+        PRENDAS_MASTER_COLLECTION
+      ];
       const API_BASE = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net`;
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
       const SPLIT_FUNCTION_URL = `${API_BASE}/${SPLIT_FUNCTION_NAME}`;
@@ -2557,6 +2563,8 @@ const auth = getAuth(app);
       };
       prendasState.editing = null;
       let isBooting = true;
+      let loginPromptInProgress = false;
+      let loginPromptAttempted = false;
 
       const setPrendasCollections = ({ publicCollection }) => {
         activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
@@ -2583,13 +2591,74 @@ const auth = getAuth(app);
         return { category, entries, empty: entries.length === 0 };
       };
 
+      const loadCategoryEntriesFromFallback = async (category) => {
+        const snapshot = await getDocs(collection(db, DICTIONARY_FALLBACK_COLLECTION));
+        if (snapshot.empty) return { category, entries: [], empty: true };
+
+        const entries = snapshot.docs
+          .map((docSnap) => {
+            const data = docSnap.data() || {};
+            const categoria = safeString(data.categoria || data.category || data.tipo).trim().toLowerCase();
+            if (categoria && categoria !== category) return null;
+            const clave = safeString(data.clave || data.codigo || docSnap.id).trim();
+            const valor = safeString(data.valor || data.nombre || data.label || clave).trim();
+            if (!clave || !valor) return null;
+            return { clave, valor };
+          })
+          .filter(Boolean);
+
+        return { category, entries, empty: entries.length === 0 };
+      };
+
+      const resolvePrendasCollection = async () => {
+        const probe = await Promise.all(
+          PRENDAS_COLLECTION_CANDIDATES.map(async (collectionName) => {
+            try {
+              const sample = await getDocs(query(collection(db, collectionName), limit(1)));
+              return { collectionName, ok: true, hasDocs: !sample.empty };
+            } catch (error) {
+              return { collectionName, ok: false, hasDocs: false, error };
+            }
+          })
+        );
+
+        const best = probe.find((item) => item.ok && item.hasDocs) || probe.find((item) => item.ok);
+        if (!best) {
+          const firstError = probe.find((item) => item.error)?.error;
+          throw firstError || new Error("No se pudo resolver colección de prendas.");
+        }
+        if (best.collectionName !== PRENDAS_PUBLIC_COLLECTION) {
+          console.warn("[Prendas] colección alternativa detectada:", best.collectionName);
+        }
+        return best.collectionName;
+      };
+
+      const ensureSignedIn = async () => {
+        if (auth.currentUser || loginPromptInProgress || loginPromptAttempted) return;
+        loginPromptInProgress = true;
+        loginPromptAttempted = true;
+        try {
+          await signInWithPopup(auth, googleProvider);
+        } catch (error) {
+          console.warn("[Auth] Login automático cancelado/no disponible", error?.code || error?.message || error);
+        } finally {
+          loginPromptInProgress = false;
+        }
+      };
+
       const loadDictionary = async () => {
         const categories = Object.keys(COLLECTIONS);
-        const results = await Promise.all(
+        let results = await Promise.all(
           categories.map((category) =>
             loadCategoryEntries(category, COLLECTIONS[category])
           )
         );
+        const totalEntries = results.reduce((acc, result) => acc + result.entries.length, 0);
+        if (!totalEntries) {
+          results = await Promise.all(
+            categories.map((category) => loadCategoryEntriesFromFallback(category))
+          );
+        }
         const missing = results.filter((result) => result.empty).map((result) => result.category);
 
         return {
@@ -2626,7 +2695,7 @@ const auth = getAuth(app);
           }
         }
         const categories = Object.keys(COLLECTIONS);
-        const results = await Promise.all(
+        let results = await Promise.all(
           categories.map(async (category) => {
             const snapshot = await getDocs(collection(db, COLLECTIONS[category]));
             const values = snapshot.docs
@@ -2647,6 +2716,30 @@ const auth = getAuth(app);
             return { category, values };
           })
         );
+        const totalValues = results.reduce((acc, result) => acc + result.values.length, 0);
+        if (!totalValues) {
+          const fallbackSnapshot = await getDocs(collection(db, DICTIONARY_FALLBACK_COLLECTION));
+          results = categories.map((category) => {
+            const values = fallbackSnapshot.docs
+              .map((docSnap) => {
+                const data = docSnap.data() || {};
+                const categoria = safeString(data.categoria || data.category || data.tipo).trim().toLowerCase();
+                if (categoria && categoria !== category) return "";
+                return (
+                  data.valor ??
+                  data.Valor ??
+                  data.nombre ??
+                  data.Nombre ??
+                  data.clave ??
+                  data.Clave ??
+                  docSnap.id
+                );
+              })
+              .map((value) => safeString(value).trim())
+              .filter((value) => value);
+            return { category, values };
+          });
+        }
 
         prendasState.dicts.proveedores =
           results.find((result) => result.category === "proveedores")?.values ?? [];
@@ -5176,6 +5269,10 @@ return `<!doctype html>
       };
 
       onAuthStateChanged(auth, async (user) => {
+        if (!user && !loginPromptAttempted) {
+          await ensureSignedIn();
+          return;
+        }
         const email = safeString(user?.email).trim().toLowerCase();
         if (user && !isAllowlistedAdmin(email)) {
           setAdminLoginStatus("No autorizado", "error");
@@ -5484,6 +5581,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
 
       const init = async () => {
         isBooting = true;
+        await ensureSignedIn();
         resetPrendasState();
         updateOrdenSortToggleUi();
         resetCounters();
@@ -5552,6 +5650,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
           registroSubmit.disabled = true;
           console.error(error);
+          alert(`Error cargando diccionario: ${error?.message || error}`);
         } finally {
           // ADMIN DB MODE START
           setAdminPanelVisible(false);
@@ -5560,8 +5659,14 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           // ADMIN DB MODE END
           setSkuSearchMode(false);
 
+          let prendasCollection = PRENDAS_PUBLIC_COLLECTION;
+          try {
+            prendasCollection = await resolvePrendasCollection();
+          } catch (error) {
+            console.error("[Prendas] No se pudo resolver colección, usando default", error);
+          }
           setPrendasCollections({
-            publicCollection: PRENDAS_PUBLIC_COLLECTION
+            publicCollection: prendasCollection
           });
 
           try {
