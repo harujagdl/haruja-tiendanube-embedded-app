@@ -67,7 +67,22 @@ jobs:
             --only hosting \
             --non-interactive
 
-      # (opcional) Deploy Firestore rules/indexes + functions después
+      # ✅ FIX: borrar función vieja/rota que quedó con "activador desconocido"
+      # (Firebase no permite cambiar el tipo de HTTPS -> background trigger, hay que borrar y recrear)
+      - name: Delete old replicateAdminToPublic (if exists)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
+        run: |
+          set +e
+          firebase functions:delete replicateAdminToPublic \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --region us-central1 \
+            --force \
+            --non-interactive
+          echo "Delete step finished (may be 'not found' and that's OK)."
+          set -e
+
+      # Deploy Firestore rules/indexes + functions después
       - name: Deploy Firestore + Functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
