@@ -1784,6 +1784,18 @@ body.admin-on .admin-only{ display:table-cell; }
               <label for="registro-detalles">Detalles (opcional)</label>
               <input id="registro-detalles" name="detalles" type="text" placeholder="Ej: Pelly estampada" />
             </div>
+            <div>
+              <label for="registro-existing-code">Buscar código existente</label>
+              <input id="registro-existing-code" name="existingCode" type="text" placeholder="Ej: HA12A138/NE-M" />
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button type="button" id="registro-search-existing" class="secondary">Buscar código</button>
+            </div>
+            <div>
+              <label for="registro-base-code">Código base (reutilizable)</label>
+              <input id="registro-base-code" name="baseCode" type="text" placeholder="Se llena al buscar" />
+            </div>
             <div id="adminCreateFields" class="admin-create-card hidden" aria-hidden="true">
               <div class="admin-create-title">Admin (opcional)</div>
               <div class="admin-create-grid">
@@ -2059,6 +2071,9 @@ const auth = getAuth(app);
       const registroColor = document.getElementById("registro-color");
       const registroTalla = document.getElementById("registro-talla");
       const registroDetalles = document.getElementById("registro-detalles");
+      const registroExistingCode = document.getElementById("registro-existing-code");
+      const registroSearchExistingButton = document.getElementById("registro-search-existing");
+      const registroBaseCodeInput = document.getElementById("registro-base-code");
       const adminCreateFields = document.getElementById("adminCreateFields");
       const adminCreateCostoInput = document.getElementById("adminCreateCosto");
       const adminCreatePVentaInput = document.getElementById("adminCreatePVenta");
@@ -2446,13 +2461,10 @@ const auth = getAuth(app);
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
-      const MODELOS_COLLECTION = "modelos";
-      const MODELOS_INDEX_COLLECTION = "modelos_index";
-      const MODELOS_COUNTER_DOC = "modelos";
+      const PRENDAS_COUNTER_COLLECTION = "counters";
+      const PRENDAS_COUNTER_DOC = "prendas";
       const PRENDAS_COLLECTION_CANDIDATES = [
-        PRENDAS_PUBLIC_COLLECTION,
-        "prendas",
-        PRENDAS_MASTER_COLLECTION
+        PRENDAS_PUBLIC_COLLECTION
       ];
       const API_BASE = `https://us-central1-${firebaseConfig.projectId}.cloudfunctions.net`;
       const SPLIT_FUNCTION_NAME = "migrateSplitCollections";
@@ -4691,75 +4703,47 @@ return `<!doctype html>
         return option?.dataset?.nombre || option?.textContent?.split(" - ")[1] || option?.textContent || "";
       };
 
-      const HISTORICOS_URL = "../Data/codigos_historicos.json";
-      let historicosCache = null;
       let registroPreview = null;
+      let registroBaseCode = "";
 
-      const loadHistoricosMap = async () => {
-        if (historicosCache) {
-          return historicosCache;
+      const parseBaseCode = (codigoValue) => {
+        const raw = safeString(codigoValue).trim().toUpperCase();
+        if (!raw) return "";
+        if (raw.includes("/")) {
+          return raw.split("/")[0].trim();
         }
-        historicosCache = fetch(HISTORICOS_URL)
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error("No se pudo cargar el histórico de códigos.");
-            }
-            return response.json();
-          })
-          .then((codes) => {
-            const maxPorKey = {};
-            const pattern = /^HA(\d+)([A-Z])(\d{3})\//i;
-            codes.forEach((code) => {
-              const match = pattern.exec(String(code).trim().toUpperCase());
-              if (!match) return;
-              const key = `prov${match[1]}_tipo${match[2]}`;
-              const seq = Number(match[3]);
-              if (!Number.isFinite(seq)) return;
-              if (!maxPorKey[key] || seq > maxPorKey[key]) {
-                maxPorKey[key] = seq;
-              }
-            });
-            return maxPorKey;
-          })
-          .catch((error) => {
-            console.warn("No se pudo cargar el histórico de códigos.", error);
-            return {};
-          });
-        return historicosCache;
+        return raw;
       };
 
-      const buildModelKey = ({ providerCode, typeCode, detallesValue }) => {
-        const detallesNorm = safeString(detallesValue).trim().toUpperCase().replace(/\s+/g, " ");
-        return [providerCode, typeCode, detallesNorm || "SINDETALLE"].join("_");
+      const parseOrdenFromBaseCode = (baseCode) => {
+        const match = /^HA\d+[A-Z](\d{3,})$/i.exec(safeString(baseCode).trim());
+        if (!match) return null;
+        const orden = Number(match[1]);
+        return Number.isFinite(orden) ? orden : null;
       };
 
-      const buildModelCode = ({ providerCode, typeCode, seqNumber, colorClave, tallaClave }) => {
-        const consecutivo = String(seqNumber).padStart(3, "0");
-        const baseCode = `HA${providerCode}${typeCode}${consecutivo}`;
-        const variantKey = `${colorClave}_${tallaClave}`;
+      const buildModelCode = ({ providerCode, typeCode, seqNumber, colorClave, tallaClave, baseCodeOverride = "" }) => {
+        const baseCode = safeString(baseCodeOverride).trim().toUpperCase() || `HA${providerCode}${typeCode}${String(seqNumber).padStart(3, "0")}`;
         const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
-        return { baseCode, variantKey, codigo };
+        return { baseCode, variantKey: `${colorClave}_${tallaClave}`, codigo };
       };
 
-      const readModelCounter = async () => {
-        const counterRef = doc(db, "counters", MODELOS_COUNTER_DOC);
-        const snapshot = await getDoc(counterRef);
-        const data = snapshot.data() || {};
-        let counterValue = Number(data.value);
-        if (!Number.isFinite(counterValue)) {
-          counterValue = Number(data.lastNumber);
+      const findCodigoExistente = async (codigoValue) => {
+        const raw = safeString(codigoValue).trim().toUpperCase();
+        if (!raw) return null;
+        const docId = safeDocId(raw);
+        const candidates = isAdminMode
+          ? [PRENDAS_ADMIN_COLLECTION, activePrendasPublicCollection]
+          : [activePrendasPublicCollection];
+        for (const collectionName of candidates) {
+          const snap = await getDoc(doc(db, collectionName, docId));
+          if (snap.exists()) {
+            const data = snap.data() || {};
+            const codigo = safeString(data.codigo || raw).trim().toUpperCase();
+            return { codigo, baseCode: parseBaseCode(codigo), data, collectionName };
+          }
         }
-        if (!Number.isFinite(counterValue)) {
-          const maxPorKey = await loadHistoricosMap();
-          counterValue = Object.values(maxPorKey).reduce((max, value) => {
-            const num = Number(value);
-            return Number.isFinite(num) && num > max ? num : max;
-          }, 0);
-        }
-        if (!Number.isFinite(counterValue)) {
-          throw new Error("Contador inválido para modelos. Revisa counters/modelos.");
-        }
-        return counterValue;
+        return null;
       };
 
       const buildRegistroPreview = async () => {
@@ -4780,27 +4764,15 @@ return `<!doctype html>
           .filter(Boolean)
           .join(" ");
 
-        const modelKey = buildModelKey({ providerCode, typeCode, detallesValue });
-        const modelIndexRef = doc(db, MODELOS_INDEX_COLLECTION, safeDocId(modelKey));
-        const modelIndexSnap = await getDoc(modelIndexRef);
-        let seqNumber;
-        if (modelIndexSnap.exists()) {
-          const baseCodeFromIndex = safeString(modelIndexSnap.data()?.baseCode).trim().toUpperCase();
-          const match = /^HA\d+[A-Z](\d{3,})$/i.exec(baseCodeFromIndex);
-          seqNumber = match ? Number(match[1]) : NaN;
-        }
-        if (!Number.isFinite(seqNumber)) {
-          const counterValue = await readModelCounter();
-          seqNumber = counterValue + 1;
-        }
-
-        const { baseCode, variantKey, codigo } = buildModelCode({
-          providerCode,
-          typeCode,
-          seqNumber,
-          colorClave,
-          tallaClave
-        });
+        const baseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
+        const usingExistingBase = Boolean(baseCode);
+        const { variantKey, codigo } = usingExistingBase
+          ? buildModelCode({ providerCode, typeCode, seqNumber: 1, colorClave, tallaClave, baseCodeOverride: baseCode })
+          : {
+              baseCode: "",
+              variantKey: `${colorClave}_${tallaClave}`,
+              codigo: `HA${providerCode}${typeCode}XXX/${colorClave}-${tallaClave}`
+            };
 
         return {
           providerCode,
@@ -4810,12 +4782,37 @@ return `<!doctype html>
           createdByValue,
           detallesValue,
           descripcion,
-          modelKey,
           baseCode,
           variantKey,
           codigo,
-          seqNumber
+          usingExistingBase
         };
+      };
+
+      const handleBuscarCodigoExistente = async () => {
+        const raw = safeString(registroExistingCode?.value).trim().toUpperCase();
+        if (!raw) {
+          setRegistroStatus("Escribe un código para buscar.", "warning");
+          return;
+        }
+        try {
+          registroSearchExistingButton.disabled = true;
+          const found = await findCodigoExistente(raw);
+          if (!found) {
+            registroBaseCode = "";
+            if (registroBaseCodeInput) registroBaseCodeInput.value = "";
+            setRegistroStatus("No se encontró el código en la fuente disponible.", "warning");
+            return;
+          }
+          registroBaseCode = found.baseCode;
+          if (registroBaseCodeInput) registroBaseCodeInput.value = found.baseCode;
+          setRegistroStatus(`Código encontrado en ${found.collectionName}. Base reutilizable: ${found.baseCode}`, "success");
+        } catch (error) {
+          console.error(error);
+          setRegistroStatus("No se pudo buscar el código existente.", "error");
+        } finally {
+          registroSearchExistingButton.disabled = false;
+        }
       };
 
       const handleRegistroSubmit = async (event) => {
@@ -4845,11 +4842,7 @@ return `<!doctype html>
         try {
           if (!isAdminMode) {
             setRegistroStatus("Guardar requiere Modo admin. Usa 'Modo admin' para activarlo.", "warning");
-            const wantsAdmin = window.confirm("Guardar requiere Modo admin. ¿Deseas activarlo ahora?");
-            if (wantsAdmin) {
-              await handleAdminToggle();
-            }
-            if (!isAdminMode) return;
+            return;
           }
           const preview = registroPreview || await buildRegistroPreview();
           if (!preview) return;
@@ -4858,92 +4851,23 @@ return `<!doctype html>
           registroSubmit.disabled = true;
 
           const user = await ensureAdminSession();
-          const counterRef = doc(db, "counters", MODELOS_COUNTER_DOC);
-          const modelIndexRef = doc(db, MODELOS_INDEX_COLLECTION, safeDocId(preview.modelKey));
+          const userEmail = safeString(user?.email).trim().toLowerCase();
+          const costo = toNumber(adminCreateCostoInput?.value);
+          const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
+          const docId = safeDocId(preview.codigo);
+          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, docId);
 
-          const transactionResult = await runTransaction(db, async (transaction) => {
-            const indexSnap = await transaction.get(modelIndexRef);
-            let baseCode = safeString(indexSnap.data()?.baseCode).trim().toUpperCase();
-            let seqNumber = Number(indexSnap.data()?.seqNumber);
-            let createdModel = false;
-
-            if (baseCode && !Number.isFinite(seqNumber)) {
-              const match = /^HA\d+[A-Z](\d{3,})$/i.exec(baseCode);
-              seqNumber = match ? Number(match[1]) : NaN;
+          if (preview.usingExistingBase) {
+            const existingSnap = await getDoc(adminRef);
+            if (existingSnap.exists()) {
+              throw new Error("Ese código ya existe en admin.");
             }
 
-            if (!baseCode) {
-              const counterSnap = await transaction.get(counterRef);
-              const counterData = counterSnap.data() || {};
-              let counterValue = Number(counterData.value);
-              if (!Number.isFinite(counterValue)) counterValue = Number(counterData.lastNumber);
-              if (!Number.isFinite(counterValue)) {
-                throw new Error("Contador inválido para modelos. Revisa counters/modelos.");
-              }
-              seqNumber = counterValue + 1;
-              baseCode = buildModelCode({
-                providerCode: preview.providerCode,
-                typeCode: preview.typeCode,
-                seqNumber,
-                colorClave: preview.colorClave,
-                tallaClave: preview.tallaClave
-              }).baseCode;
-              transaction.set(counterRef, { value: seqNumber, lastNumber: seqNumber }, { merge: true });
-              transaction.set(modelIndexRef, {
-                modelKey: preview.modelKey,
-                baseCode,
-                seqNumber,
-                updatedAt: serverTimestamp(),
-                updatedBy: safeString(user?.email).trim().toLowerCase()
-              }, { merge: true });
-              createdModel = true;
-            }
-
-            const modelRef = doc(db, MODELOS_COLLECTION, baseCode);
-            const modelSnap = await transaction.get(modelRef);
-            if (!modelSnap.exists()) {
-              createdModel = true;
-              transaction.set(modelRef, {
-                baseCode,
-                seqNumber,
-                modelKey: preview.modelKey,
-                proveedor: preview.providerCode,
-                tipo: preview.typeCode,
-                descripcion: preview.descripcion || null,
-                detalles: preview.detallesValue || null,
-                createdBy: preview.createdByValue || null,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                updatedBy: safeString(user?.email).trim().toLowerCase()
-              }, { merge: true });
-            } else {
-              transaction.set(modelRef, {
-                descripcion: preview.descripcion || null,
-                detalles: preview.detallesValue || null,
-                updatedAt: serverTimestamp(),
-                updatedBy: safeString(user?.email).trim().toLowerCase()
-              }, { merge: true });
-            }
-
-            const variantRef = doc(db, MODELOS_COLLECTION, baseCode, "variantes", preview.variantKey);
-            const codigo = `${baseCode}/${preview.colorClave}-${preview.tallaClave}`;
-            const docId = safeDocId(codigo);
-            transaction.set(variantRef, {
-              variantKey: preview.variantKey,
-              codigo,
-              color: preview.colorClave,
-              talla: preview.tallaClave,
-              createdBy: preview.createdByValue || null,
-              updatedBy: safeString(user?.email).trim().toLowerCase(),
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            }, { merge: true });
-
-            const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, docId);
-            transaction.set(publicRef, {
+            const orden = parseOrdenFromBaseCode(preview.baseCode);
+            const adminPayload = {
               docId,
-              codigo,
-              baseCode,
+              codigo: preview.codigo,
+              baseCode: preview.baseCode,
               variantKey: preview.variantKey,
               proveedor: preview.providerCode,
               tipo: preview.typeCode,
@@ -4951,54 +4875,82 @@ return `<!doctype html>
               talla: preview.tallaClave,
               descripcion: preview.descripcion || null,
               detalles: preview.detallesValue || null,
-              code: codigo,
-              providerCode: preview.providerCode,
-              typeCode: preview.typeCode,
-              seqNumber,
-              orden: seqNumber,
-              colorCode: preview.colorClave,
-              sizeCode: preview.tallaClave,
+              orden: Number.isFinite(orden) ? orden : null,
               status: "Disponible",
-              statusCanon: "Disponible",
               disponibilidad: "Disponible",
-              disponibilidadCanon: "Disponible",
-              fecha: new Date().toISOString(),
-              fechaAlta: serverTimestamp(),
               creadoPor: preview.createdByValue || null,
               createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            }, { merge: true });
+              updatedAt: serverTimestamp(),
+              updatedBy: userEmail
+            };
+            if (Number.isFinite(costo)) adminPayload.costo = costo;
+            if (Number.isFinite(pVentaOverride)) adminPayload.pVentaOverride = pVentaOverride;
+            await setDoc(adminRef, adminPayload, { merge: true });
+          } else {
+            const counterRef = doc(db, PRENDAS_COUNTER_COLLECTION, PRENDAS_COUNTER_DOC);
+            const txResult = await runTransaction(db, async (transaction) => {
+              const counterSnap = await transaction.get(counterRef);
+              const counterData = counterSnap.data() || {};
+              let lastOrden = Number(counterData.lastOrden);
+              if (!Number.isFinite(lastOrden)) {
+                throw new Error("Contador inválido. Configura counters/prendas.lastOrden.");
+              }
+              const newOrden = lastOrden + 1;
+              const { baseCode, codigo, variantKey } = buildModelCode({
+                providerCode: preview.providerCode,
+                typeCode: preview.typeCode,
+                seqNumber: newOrden,
+                colorClave: preview.colorClave,
+                tallaClave: preview.tallaClave
+              });
+              const nextDocId = safeDocId(codigo);
+              const nextAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, nextDocId);
+              const existsSnap = await transaction.get(nextAdminRef);
+              if (existsSnap.exists()) {
+                throw new Error("Conflicto de código. Intenta guardar de nuevo.");
+              }
+              const adminPayload = {
+                docId: nextDocId,
+                codigo,
+                baseCode,
+                variantKey,
+                proveedor: preview.providerCode,
+                tipo: preview.typeCode,
+                color: preview.colorClave,
+                talla: preview.tallaClave,
+                descripcion: preview.descripcion || null,
+                detalles: preview.detallesValue || null,
+                orden: newOrden,
+                seqNumber: newOrden,
+                status: "Disponible",
+                disponibilidad: "Disponible",
+                creadoPor: preview.createdByValue || null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+                updatedBy: userEmail
+              };
+              if (Number.isFinite(costo)) adminPayload.costo = costo;
+              if (Number.isFinite(pVentaOverride)) adminPayload.pVentaOverride = pVentaOverride;
 
-            return { codigo, baseCode, createdModel };
-          });
-
-          const costo = toNumber(adminCreateCostoInput?.value);
-          const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
-          const pVentaVisible = Number.isFinite(pVentaOverride) ? pVentaOverride : NaN;
-          const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
-          const payloadAdmin = {
-            docId: safeDocId(transactionResult.codigo),
-            updatedAt: serverTimestamp(),
-            updatedBy: safeString(user?.email).trim().toLowerCase()
-          };
-          if (Number.isFinite(costo)) payloadAdmin.costo = costo;
-          if (Number.isFinite(pVentaOverride)) payloadAdmin.pVentaOverride = pVentaOverride;
-          if (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) {
-            payloadAdmin.utilidad = utilidad;
-            payloadAdmin.margen = margenPct;
+              transaction.set(counterRef, { lastOrden: newOrden }, { merge: true });
+              transaction.set(nextAdminRef, adminPayload, { merge: true });
+              return { codigo, baseCode };
+            });
+            preview.codigo = txResult.codigo;
+            preview.baseCode = txResult.baseCode;
           }
-          await setDoc(doc(db, PRENDAS_ADMIN_COLLECTION, payloadAdmin.docId), payloadAdmin, { merge: true });
 
           if (adminCreateCostoInput) adminCreateCostoInput.value = "";
           if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
-          registroPreview = { ...preview, codigo: transactionResult.codigo, baseCode: transactionResult.baseCode };
-          registroCodigo.textContent = transactionResult.codigo;
+          registroPreview = { ...preview };
+          if (registroBaseCodeInput && preview.baseCode) registroBaseCodeInput.value = preview.baseCode;
+          registroCodigo.textContent = preview.codigo;
           registroResult.classList.remove("hidden");
           await loadPrendasPage({ reset: true, reason: "save-garment" });
           setRegistroStatus(
-            transactionResult.createdModel
-              ? "Prenda guardada. Se creó nuevo modelo y variante."
-              : "Prenda guardada. Se agregó/actualizó variante del modelo existente.",
+            preview.usingExistingBase
+              ? "Prenda guardada como variante del código base existente."
+              : "Prenda guardada como modelo nuevo con consecutivo desde counters/prendas.",
             "success"
           );
         } catch (error) {
@@ -5023,6 +4975,8 @@ return `<!doctype html>
       const handleRegistroReset = () => {
         registroForm.reset();
         registroPreview = null;
+        registroBaseCode = "";
+        if (registroBaseCodeInput) registroBaseCodeInput.value = "";
         registroResult.classList.add("hidden");
         setRegistroStatus("");
       };
@@ -5034,6 +4988,12 @@ return `<!doctype html>
         if (registroSave) registroSave.addEventListener("click", handleRegistroSave);
         if (registroCopy) registroCopy.addEventListener("click", handleRegistroCopy);
         if (registroReset) registroReset.addEventListener("click", handleRegistroReset);
+        if (registroSearchExistingButton) registroSearchExistingButton.addEventListener("click", handleBuscarCodigoExistente);
+        if (registroBaseCodeInput) {
+          registroBaseCodeInput.addEventListener("input", () => {
+            registroBaseCode = parseBaseCode(registroBaseCodeInput.value);
+          });
+        }
       }
 
       const formatPrice = (value) => {
