@@ -2633,14 +2633,21 @@ const auth = getAuth(app);
         return best.collectionName;
       };
 
-      const ensureSignedIn = async () => {
-        if (auth.currentUser || loginPromptInProgress || loginPromptAttempted) return;
+      const ensureSignedIn = async ({ required = false } = {}) => {
+        if (auth.currentUser) return auth.currentUser;
+        if (loginPromptInProgress) return null;
+
         loginPromptInProgress = true;
         loginPromptAttempted = true;
         try {
-          await signInWithPopup(auth, googleProvider);
+          const response = await signInWithPopup(auth, googleProvider);
+          return response?.user || auth.currentUser || null;
         } catch (error) {
           console.warn("[Auth] Login automático cancelado/no disponible", error?.code || error?.message || error);
+          if (required) {
+            throw new Error("Necesitas iniciar sesión con Google para cargar diccionario y prendas.");
+          }
+          return null;
         } finally {
           loginPromptInProgress = false;
         }
@@ -5274,16 +5281,14 @@ return `<!doctype html>
           return;
         }
         const email = safeString(user?.email).trim().toLowerCase();
-        if (user && !isAllowlistedAdmin(email)) {
-          setAdminLoginStatus("No autorizado", "error");
-          await signOut(auth);
-          return;
-        }
         prendasState.adminUser = user || null;
         prendasState.adminEmail = email;
         prendasState.adminByAuth = Boolean(user) && isAllowlistedAdmin(email);
         if (!prendasState.adminByAuth) {
           setAdminViewEnabled(false);
+          if (user) {
+            setAdminLoginStatus("Sesión activa sin permisos de admin.", "warning");
+          }
         }
         applyAdminUI();
       });
@@ -5581,7 +5586,15 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
 
       const init = async () => {
         isBooting = true;
-        await ensureSignedIn();
+        try {
+          await ensureSignedIn({ required: true });
+        } catch (error) {
+          console.error(error);
+          setRegistroStatus(error?.message || "No se pudo autenticar la sesión.", "error");
+          setPrendasAlert("Inicia sesión con Google para cargar la base de datos.");
+          isBooting = false;
+          return;
+        }
         resetPrendasState();
         updateOrdenSortToggleUi();
         resetCounters();
