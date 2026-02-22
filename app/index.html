@@ -2013,7 +2013,6 @@ body.admin-on .admin-only{ display:table-cell; }
         query,
         orderBy,
         documentId,
-        runTransaction,
         serverTimestamp,
         setDoc,
         deleteField,
@@ -2468,8 +2467,6 @@ const auth = getAuth(app);
       const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
-      const PRENDAS_COUNTER_COLLECTION = "counters";
-      const PRENDAS_COUNTER_DOC = "prendas";
       const PRENDAS_COLLECTION_CANDIDATES = [
         PRENDAS_PUBLIC_COLLECTION
       ];
@@ -4927,7 +4924,7 @@ return `<!doctype html>
           if (!registroPreview) return;
           registroCodigo.textContent = registroPreview.codigo;
           registroResult.classList.remove("hidden");
-          setRegistroStatus("Preview generado. Ahora puedes guardar la prenda en Modo admin.", "success");
+          setRegistroStatus("Preview generado. Ahora puedes guardar la prenda.", "success");
         } catch (error) {
           const message =
             error?.message?.includes("contador") || error?.message?.includes("Contador")
@@ -4942,35 +4939,20 @@ return `<!doctype html>
 
       const handleRegistroSave = async () => {
         try {
-          if (!isAdminMode) {
-            setRegistroStatus("Guardar requiere Modo admin. Usa 'Modo admin' para activarlo.", "warning");
-            return;
-          }
           const preview = registroPreview || await buildRegistroPreview();
           if (!preview) return;
 
           registroSave.disabled = true;
           registroSubmit.disabled = true;
 
-          const user = await ensureAdminSession();
-          const userEmail = safeString(user?.email).trim().toLowerCase();
-          const costo = toNumber(adminCreateCostoInput?.value);
-          const pVentaOverride = toNumber(adminCreatePVentaInput?.value);
-          const docId = safeDocId(preview.codigo);
-          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, docId);
-
-          if (preview.usingExistingBase) {
-            const existingSnap = await getDoc(adminRef);
-            if (existingSnap.exists()) {
-              throw new Error("Ese código ya existe en admin.");
-            }
-
-            const orden = parseOrdenFromBaseCode(preview.baseCode);
-            const adminPayload = {
-              docId,
-              codigo: preview.codigo,
-              baseCode: preview.baseCode,
-              variantKey: preview.variantKey,
+          const pVenta = toNumber(adminCreatePVentaInput?.value);
+          const buildPublicPayload = ({ codigo, baseCode, variantKey, orden = null, seqNumber = null }) => {
+            const payload = {
+              docId: safeDocId(codigo),
+              codigo,
+              code: codigo,
+              baseCode,
+              variantKey,
               proveedor: preview.providerCode,
               tipo: preview.typeCode,
               color: preview.colorClave,
@@ -4978,66 +4960,73 @@ return `<!doctype html>
               descripcion: preview.descripcion || null,
               detalles: preview.detallesValue || null,
               orden: Number.isFinite(orden) ? orden : null,
+              seqNumber: Number.isFinite(seqNumber) ? seqNumber : null,
               status: "Disponible",
               disponibilidad: "Disponible",
               creadoPor: preview.createdByValue || null,
               createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-              updatedBy: userEmail
+              updatedAt: serverTimestamp()
             };
-            if (Number.isFinite(costo)) adminPayload.costo = costo;
-            if (Number.isFinite(pVentaOverride)) adminPayload.pVentaOverride = pVentaOverride;
-            await setDoc(adminRef, adminPayload, { merge: true });
-          } else {
-            const counterRef = doc(db, PRENDAS_COUNTER_COLLECTION, PRENDAS_COUNTER_DOC);
-            const txResult = await runTransaction(db, async (transaction) => {
-              const counterSnap = await transaction.get(counterRef);
-              const counterData = counterSnap.data() || {};
-              let lastOrden = Number(counterData.lastOrden);
-              if (!Number.isFinite(lastOrden)) {
-                throw new Error("Contador inválido. Configura counters/prendas.lastOrden.");
-              }
-              const newOrden = lastOrden + 1;
-              const { baseCode, codigo, variantKey } = buildModelCode({
+            if (Number.isFinite(pVenta)) {
+              payload.pVenta = pVenta;
+              payload.precioConIva = pVenta;
+            }
+            return payload;
+          };
+
+          const reserveNextPublicCode = async (attempts = 5) => {
+            for (let attempt = 0; attempt < attempts; attempt += 1) {
+              const highestSnap = await getDocs(
+                query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1))
+              );
+              const highestOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
+              const nextOrden = Number.isFinite(highestOrden) ? highestOrden + 1 : 1;
+              const nextCodeData = buildModelCode({
                 providerCode: preview.providerCode,
                 typeCode: preview.typeCode,
-                seqNumber: newOrden,
+                seqNumber: nextOrden,
                 colorClave: preview.colorClave,
                 tallaClave: preview.tallaClave
               });
-              const nextDocId = safeDocId(codigo);
-              const nextAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, nextDocId);
-              const existsSnap = await transaction.get(nextAdminRef);
-              if (existsSnap.exists()) {
-                throw new Error("Conflicto de código. Intenta guardar de nuevo.");
-              }
-              const adminPayload = {
-                docId: nextDocId,
-                codigo,
-                baseCode,
-                variantKey,
-                proveedor: preview.providerCode,
-                tipo: preview.typeCode,
-                color: preview.colorClave,
-                talla: preview.tallaClave,
-                descripcion: preview.descripcion || null,
-                detalles: preview.detallesValue || null,
-                orden: newOrden,
-                seqNumber: newOrden,
-                status: "Disponible",
-                disponibilidad: "Disponible",
-                creadoPor: preview.createdByValue || null,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-                updatedBy: userEmail
+              const nextDocRef = doc(db, activePrendasPublicCollection, safeDocId(nextCodeData.codigo));
+              const exists = await getDoc(nextDocRef);
+              if (exists.exists()) continue;
+              return {
+                orden: nextOrden,
+                docRef: nextDocRef,
+                ...nextCodeData
               };
-              if (Number.isFinite(costo)) adminPayload.costo = costo;
-              if (Number.isFinite(pVentaOverride)) adminPayload.pVentaOverride = pVentaOverride;
+            }
+            throw new Error("No se pudo reservar un código único. Intenta nuevamente.");
+          };
 
-              transaction.set(counterRef, { lastOrden: newOrden }, { merge: true });
-              transaction.set(nextAdminRef, adminPayload, { merge: true });
-              return { codigo, baseCode };
+          if (preview.usingExistingBase) {
+            const docId = safeDocId(preview.codigo);
+            const publicRef = doc(db, activePrendasPublicCollection, docId);
+            const existingSnap = await getDoc(publicRef);
+            if (existingSnap.exists()) {
+              throw new Error("Ese código ya existe en la base pública.");
+            }
+
+            const orden = parseOrdenFromBaseCode(preview.baseCode);
+            const publicPayload = buildPublicPayload({
+              codigo: preview.codigo,
+              baseCode: preview.baseCode,
+              variantKey: preview.variantKey,
+              orden,
+              seqNumber: orden
             });
+            await setDoc(publicRef, publicPayload);
+          } else {
+            const txResult = await reserveNextPublicCode();
+            const publicPayload = buildPublicPayload({
+              codigo: txResult.codigo,
+              baseCode: txResult.baseCode,
+              variantKey: txResult.variantKey,
+              orden: txResult.orden,
+              seqNumber: txResult.orden
+            });
+            await setDoc(txResult.docRef, publicPayload);
             preview.codigo = txResult.codigo;
             preview.baseCode = txResult.baseCode;
           }
@@ -5052,7 +5041,7 @@ return `<!doctype html>
           setRegistroStatus(
             preview.usingExistingBase
               ? "Prenda guardada como variante del código base existente."
-              : "Prenda guardada como modelo nuevo con consecutivo desde counters/prendas.",
+              : "Prenda guardada como modelo nuevo en la base pública.",
             "success"
           );
         } catch (error) {
