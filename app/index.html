@@ -2070,7 +2070,8 @@ const auth = getAuth(app);
           localCache: memoryLocalCache()
         });
       }
-      let prendasRef = collection(db, "prendas");
+      const COL_PRENDAS_PUBLIC = "HarujaPrendas_2025_public";
+      let prendasRef = collection(db, COL_PRENDAS_PUBLIC);
       const registroForm = document.getElementById("registro-form");
       const registroStatus = document.getElementById("registro-status");
       const registroResult = document.getElementById("registro-result");
@@ -2478,7 +2479,7 @@ const auth = getAuth(app);
       const DICTIONARY_FALLBACK_COLLECTION = "diccionario";
 
       const CODE_PATTERN = /^HA(\d+)([A-Z])(\d{3})\/([A-Z0-9]+)-([A-Z0-9]+)$/;
-      const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
+      const PRENDAS_PUBLIC_COLLECTION = COL_PRENDAS_PUBLIC;
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
       const PRENDAS_COLLECTION_CANDIDATES = [
@@ -2606,6 +2607,8 @@ const auth = getAuth(app);
         activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
         prendasRef = collection(db, activePrendasPublicCollection);
         prendasPublicRef = collection(db, activePrendasPublicCollection);
+        console.log("[Firebase][Registro] projectId:", firebaseConfig?.projectId, "collection:", activePrendasPublicCollection);
+        console.log("[Firebase][Listado] projectId:", firebaseConfig?.projectId, "collection:", activePrendasPublicCollection);
         console.log("[Prendas] ✅ Usando colección:", activePrendasPublicCollection);
       };
 
@@ -4964,6 +4967,7 @@ return `<!doctype html>
               docId: safeDocId(codigo),
               codigo,
               code: codigo,
+              codigoBase: baseCode,
               baseCode,
               variantKey,
               proveedor: preview.providerCode,
@@ -4974,8 +4978,8 @@ return `<!doctype html>
               detalles: preview.detallesValue || null,
               orden: Number.isFinite(orden) ? orden : null,
               seqNumber: Number.isFinite(seqNumber) ? seqNumber : null,
-              status: "Disponible",
-              disponibilidad: "Disponible",
+              status: "ACTIVO",
+              disponibilidad: "DISPONIBLE",
               creadoPor: preview.createdByValue || null,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
@@ -5030,6 +5034,11 @@ return `<!doctype html>
               seqNumber: orden
             });
             await setDoc(publicRef, publicPayload);
+            const savedSnap = await getDoc(publicRef);
+            if (!savedSnap.exists()) {
+              throw new Error("No se confirmó el guardado del documento en Firestore.");
+            }
+            console.log("[Registro] Documento guardado:", publicRef.id);
           } else {
             const txResult = await reserveNextPublicCode();
             const publicPayload = buildPublicPayload({
@@ -5040,6 +5049,11 @@ return `<!doctype html>
               seqNumber: txResult.orden
             });
             await setDoc(txResult.docRef, publicPayload);
+            const savedSnap = await getDoc(txResult.docRef);
+            if (!savedSnap.exists()) {
+              throw new Error("No se confirmó el guardado del documento en Firestore.");
+            }
+            console.log("[Registro] Documento guardado:", txResult.docRef.id);
             preview.codigo = txResult.codigo;
             preview.baseCode = txResult.baseCode;
           }
@@ -5053,8 +5067,8 @@ return `<!doctype html>
           await loadPrendasPage({ reset: true, reason: "save-garment" });
           setRegistroStatus(
             preview.usingExistingBase
-              ? "Prenda guardada como variante del código base existente."
-              : "Prenda guardada como modelo nuevo en la base pública.",
+              ? `Prenda guardada correctamente: ${safeDocId(preview.codigo)}`
+              : `Prenda guardada correctamente: ${safeDocId(preview.codigo)}`,
             "success"
           );
         } catch (error) {
