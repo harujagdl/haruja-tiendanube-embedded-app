@@ -2956,6 +2956,11 @@ const auth = getAuth(app);
         return cell;
       };
 
+      const formatLabel = (str) => {
+        if (!str) return "";
+        return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+      };
+
       const renderStatusCell = (status) =>
         renderBadgeCell(normalizeStatus(status) || "--");
 
@@ -3425,6 +3430,7 @@ return `<!doctype html>
         const proveedor = safeString(data.proveedor || data.Proveedor || "").trim();
         const tipo = safeString(data.tipo || data.Tipo || "").trim();
         const color = safeString(data.color || data.Color || "").trim();
+        const colorName = safeString(data.colorName || data.ColorName || "").trim();
         const talla = safeString(data.talla || data.Talla || "").trim();
         const statusRaw = safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim();
         const statusCanon = normalizeStatus(statusRaw);
@@ -3480,6 +3486,7 @@ return `<!doctype html>
           codigo,
           descripcion,
           color,
+          colorName,
           talla,
           proveedor,
           tipo,
@@ -4453,10 +4460,10 @@ return `<!doctype html>
         const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "";
         const codigo = safeString(item.codigo || item.code) || "--";
         const descripcion = safeString(item.descripcion) || "--";
-        const tipo = safeString(item.tipo) || "--";
-        const color = safeString(item.color) || "--";
-        const talla = safeString(item.talla) || "--";
-        const proveedor = safeString(item.proveedor) || "--";
+        const tipo = formatLabel(safeString(item.tipo)) || "--";
+        const color = safeString(item.colorName) || formatLabel(safeString(item.color)) || "--";
+        const talla = formatLabel(safeString(item.talla)) || "--";
+        const proveedor = formatLabel(safeString(item.proveedor)) || "--";
         const statusCell = renderStatusCell(item.statusCanon || item.status);
         const disponibilidadCell = renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status);
         const fecha = formatDateCell(item);
@@ -4934,7 +4941,7 @@ return `<!doctype html>
         const proveedorNombre = getSelectedName(registroProveedor).trim();
         const colorNombre = getSelectedName(registroColor).trim();
         const tallaNombre = getSelectedName(registroTalla).trim();
-        const descripcion = [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
+        const descripcion = detallesValue || [tipoNombre, proveedorNombre, colorNombre, tallaNombre]
           .filter(Boolean)
           .join(" ");
 
