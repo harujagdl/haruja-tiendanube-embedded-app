@@ -1896,6 +1896,7 @@ body.admin-on .admin-only{ display:table-cell; }
     <div class="db-table-toolbar">
       <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
       <button id="labels-btn" class="btn btn-ghost" type="button">Etiquetas</button>
+      <button id="export-csv-btn" class="btn btn-ghost" type="button">Exportar CSV</button>
       <button id="admin-logout-quick" class="btn btn-muted hidden" type="button">Salir de admin</button>
     </div>
     <div id="labels-panel" class="labels-panel hidden" aria-hidden="true">
@@ -2158,6 +2159,7 @@ const auth = getAuth(app);
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel?.querySelector("#adminToggleDb");
       const labelsButton = document.getElementById("labels-btn");
+      const exportCsvButton = document.getElementById("export-csv-btn");
       const labelsPanel = document.getElementById("labels-panel");
       const labelsPrintButton = document.getElementById("labels-print-btn");
       const labelsScopeInputs = document.querySelectorAll("input[name='labels-scope']");
@@ -3115,6 +3117,110 @@ const auth = getAuth(app);
           });
         }
         return prendasState.filtered || [];
+      };
+
+      const getTodayIso = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
+
+      const escapeCsvValue = (value) => {
+        if (value === null || value === undefined) return "";
+        const normalized = String(value).replace(/"/g, '""');
+        if (/[",\n\r]/.test(normalized)) return `"${normalized}"`;
+        return normalized;
+      };
+
+      const buildCsv = (rows = []) => {
+        const headers = ["Código", "Descripción", "Tipo", "Color", "Talla", "Proveedor", "Status", "Disponibilidad", "Fecha", "Precio", "Costo"];
+        const lines = [headers.map(escapeCsvValue).join(",")];
+
+        rows.forEach((row) => {
+          const fecha = formatDateCell(row);
+          const precio = getLabelPriceNumber(row);
+          const costo = toNumberOrNull(row?.costo);
+          const values = [
+            safeString(row?.codigo).trim().toUpperCase(),
+            safeString(row?.descripcion).trim(),
+            safeString(row?.tipo).trim(),
+            safeString(row?.colorName || row?.color).trim(),
+            safeString(row?.tallaName || row?.talla).trim(),
+            safeString(row?.proveedor).trim(),
+            safeString(row?.status).trim(),
+            safeString(row?.disponibilidad).trim(),
+            fecha === "--" ? "" : fecha,
+            Number.isFinite(precio) ? precio : "",
+            Number.isFinite(costo) ? costo : ""
+          ];
+          lines.push(values.map(escapeCsvValue).join(","));
+        });
+
+        return lines.join("\r\n");
+      };
+
+      const downloadFile = (content, filename, mime) => {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+      };
+
+      const exportRowsToCsv = (rows, { filtered = false } = {}) => {
+        if (!Array.isArray(rows) || !rows.length) {
+          setPrendasAlert("No hay filas para exportar.");
+          return;
+        }
+        const csv = buildCsv(rows);
+        const suffix = filtered ? "_filtrados" : "";
+        const filename = `haruja_codigos${suffix}_${getTodayIso()}.csv`;
+        downloadFile(csv, filename, "text/csv;charset=utf-8;");
+        setPrendasAlert(`Exportación completada: ${rows.length} registros.`);
+      };
+
+      const handleExportCsv = async () => {
+        const mode = window.prompt(
+          `Exportar CSV:
+1 = solo resultados filtrados
+2 = toda la base (sin filtros)`,
+          "1"
+        );
+        if (mode === null) return;
+        const normalizedMode = safeString(mode).trim();
+
+        if (normalizedMode === "2") {
+          try {
+            setLoading(true, "Exportando toda la base...");
+            setPrendasAlert("Exportando toda la base, espera un momento...");
+            const allRows = await loadBaseRows();
+            const rowsToExport = allRows.map((row) => ({ ...row }));
+            if (isAdminViewEnabled() && rowsToExport.length) {
+              await mergeAdminFields(rowsToExport);
+            }
+            exportRowsToCsv(rowsToExport, { filtered: false });
+          } catch (error) {
+            console.error(error);
+            setPrendasAlert("No se pudo exportar toda la base de datos.");
+          } finally {
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (normalizedMode !== "1") {
+          setPrendasAlert("Opción inválida. Escribe 1 o 2 para exportar.");
+          return;
+        }
+
+        const rows = getRowsForScope("filtered");
+        exportRowsToCsv(rows, { filtered: true });
       };
 
       const getLabelLogoSrc = () => {
@@ -5864,6 +5970,12 @@ return `<!doctype html>
       if (labelsPrintButton) {
         labelsPrintButton.addEventListener("click", () => {
           openPrintLabels(prendasState.labelsScope || "page");
+        });
+      }
+
+      if (exportCsvButton) {
+        exportCsvButton.addEventListener("click", () => {
+          handleExportCsv();
         });
       }
 
