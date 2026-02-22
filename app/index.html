@@ -877,6 +877,12 @@
         color: #475467;
       }
 
+      .edit-modal-code-preview {
+        margin: 12px 0 0;
+        font-size: 13px;
+        color: #334155;
+      }
+
       .edit-modal-actions {
         margin-top: 14px;
         display: flex;
@@ -1995,11 +2001,20 @@ body.admin-on .admin-only{ display:table-cell; }
         <label for="editCosto">Costo</label>
         <input id="editCosto" type="number" min="0" step="0.01" />
       </div>
+      <div>
+        <label for="editColor">Color</label>
+        <select id="editColor" aria-label="Editar color"></select>
+      </div>
+      <div>
+        <label for="editTalla">Talla</label>
+        <select id="editTalla" aria-label="Editar talla"></select>
+      </div>
     </div>
     <div class="edit-modal-meta">
       <div>Utilidad: <strong id="editUtilidadPreview">$0.00</strong></div>
       <div>Margen: <strong id="editMargenPreview">0.0%</strong></div>
     </div>
+    <p class="edit-modal-code-preview">Código resultante: <strong id="editCodigoPreview">--</strong></p>
     <p id="editModalError" class="status error hidden" style="margin:10px 0 0;"></p>
     <div class="edit-modal-actions">
       <button id="editModalCancel" type="button" class="secondary">Cancelar</button>
@@ -2028,6 +2043,7 @@ body.admin-on .admin-only{ display:table-cell; }
         serverTimestamp,
         setDoc,
         updateDoc,
+        deleteDoc,
         deleteField,
         startAfter,
         where,
@@ -2161,6 +2177,9 @@ const auth = getAuth(app);
       const editDescripcionInput = document.getElementById("editDescripcion");
       const editPVentaInput = document.getElementById("editPVenta");
       const editCostoInput = document.getElementById("editCosto");
+      const editColorInput = document.getElementById("editColor");
+      const editTallaInput = document.getElementById("editTalla");
+      const editCodigoPreview = document.getElementById("editCodigoPreview");
       const editUtilidadPreview = document.getElementById("editUtilidadPreview");
       const editMargenPreview = document.getElementById("editMargenPreview");
       const editModalError = document.getElementById("editModalError");
@@ -2476,6 +2495,32 @@ const auth = getAuth(app);
         }
       };
 
+      const resolveColorName = (colorCode) => {
+        const code = safeString(colorCode).trim().toUpperCase();
+        if (!code) return "";
+        const dictMatch = (prendasState.dictEntries.colores || []).find((entry) => safeString(entry.clave).trim().toUpperCase() === code);
+        return safeString(dictMatch?.valor || code).trim();
+      };
+
+      const resolveTallaName = (tallaCode) => {
+        const code = safeString(tallaCode).trim().toUpperCase();
+        if (!code) return "";
+        const dictMatch = (prendasState.dictEntries.tallas || []).find((entry) => safeString(entry.clave).trim().toUpperCase() === code);
+        return safeString(dictMatch?.valor || code).trim();
+      };
+
+      const fillEditSelect = (selectEl, entries = []) => {
+        if (!selectEl) return;
+        selectEl.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Seleccionar";
+        selectEl.appendChild(placeholder);
+        entries.forEach((entry) => {
+          selectEl.appendChild(buildOption(entry));
+        });
+      };
+
       const COLLECTIONS = {
         tipos: "diccionario_tipos",
         proveedores: "diccionario_proveedores",
@@ -2582,6 +2627,10 @@ const auth = getAuth(app);
           tallas: []
         },
         dictsLoaded: false,
+        dictEntries: {
+          colores: [],
+          tallas: []
+        },
         isDone: false,
         isLoadingInitial: false,
         filters: {
@@ -3424,8 +3473,10 @@ return `<!doctype html>
         ).trim();
         const proveedor = safeString(data.proveedor || data.Proveedor || "").trim();
         const tipo = safeString(data.tipo || data.Tipo || "").trim();
-        const color = safeString(data.color || data.Color || "").trim();
-        const talla = safeString(data.talla || data.Talla || "").trim();
+        const colorCode = safeString(data.colorCode ?? data.color ?? data.Color ?? "").trim().toUpperCase();
+        const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
+        const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || resolveColorName(colorCode);
+        const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || resolveTallaName(tallaCode);
         const statusRaw = safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim();
         const statusCanon = normalizeStatus(statusRaw);
         const precioRaw = pickFirstValue(
@@ -3479,8 +3530,13 @@ return `<!doctype html>
           seqNumber,
           codigo,
           descripcion,
-          color,
-          talla,
+          color: colorName || colorCode,
+          talla: tallaName || tallaCode,
+          colorCode,
+          colorName: colorName || colorCode,
+          tallaCode,
+          tallaName: tallaName || tallaCode,
+          codigoBase: safeString(data.codigoBase ?? data.baseCode ?? parseBaseCode(codigo)).trim() || parseBaseCode(codigo),
           proveedor,
           tipo,
           status: statusCanon,
@@ -4544,6 +4600,15 @@ return `<!doctype html>
         const { utilidad, margenPct } = computeMarginUtility(p, c);
         if (editUtilidadPreview) editUtilidadPreview.textContent = moneyFmt(utilidad);
         if (editMargenPreview) editMargenPreview.textContent = pctFmt(margenPct);
+
+        const baseCode = parseBaseCode(prendasState.editing?.codigoBase || prendasState.editing?.codigo || "");
+        const colorCode = safeString(editColorInput?.value || prendasState.editing?.colorCode).trim().toUpperCase();
+        const tallaCode = safeString(editTallaInput?.value || prendasState.editing?.tallaCode).trim().toUpperCase();
+        if (editCodigoPreview) {
+          editCodigoPreview.textContent = (baseCode && colorCode && tallaCode)
+            ? `${baseCode}/${colorCode}-${tallaCode}`
+            : "--";
+        }
       };
 
       const closeEditModal = () => {
@@ -4562,14 +4627,22 @@ return `<!doctype html>
         if (!editModal || !rowData) return;
         const publicPVenta = toNumber(rowData.pVenta);
         const pVentaOverride = toNumber(rowData.pVentaOverride);
+        const colorCode = safeString(rowData.colorCode || rowData.color).trim().toUpperCase();
+        const tallaCode = safeString(rowData.tallaCode || rowData.talla).trim().toUpperCase();
         prendasState.editing = {
           docId: safeString(rowData.docId || rowData.id).trim(),
+          codigo: safeString(rowData.codigo).trim(),
+          codigoBase: parseBaseCode(rowData.codigoBase || rowData.codigo),
+          colorCode,
+          tallaCode,
           publicPVenta,
           rowDataSnapshot: { ...rowData }
         };
         if (editPVentaInput) editPVentaInput.value = Number.isFinite(pVentaOverride) ? pVentaOverride : "";
         if (editCostoInput) editCostoInput.value = toNumber(rowData.costo) ?? "";
         if (editDescripcionInput) editDescripcionInput.value = safeString(rowData.descripcion).trim();
+        if (editColorInput) editColorInput.value = colorCode;
+        if (editTallaInput) editTallaInput.value = tallaCode;
         if (editModalError) {
           editModalError.textContent = "";
           editModalError.classList.add("hidden");
@@ -4613,10 +4686,20 @@ return `<!doctype html>
         try {
           if (!ensureAdminMode()) return;
           if (!prendasState.editing?.docId) return;
-          const docId = prendasState.editing.docId;
+          const oldDocId = prendasState.editing.docId;
           const pVentaOverride = toNumber(editPVentaInput?.value);
           const costo = toNumber(editCostoInput?.value);
           const descripcion = safeString(editDescripcionInput?.value).trim();
+          const colorCode = safeString(editColorInput?.value).trim().toUpperCase();
+          const tallaCode = safeString(editTallaInput?.value).trim().toUpperCase();
+          const colorName = resolveColorName(colorCode) || colorCode;
+          const tallaName = resolveTallaName(tallaCode) || tallaCode;
+          const codigoBase = parseBaseCode(prendasState.editing?.codigoBase || prendasState.editing?.codigo || "");
+          if (!codigoBase || !colorCode || !tallaCode) {
+            throw new Error("Color y talla son requeridos para calcular el código.");
+          }
+          const newCodigo = `${codigoBase}/${colorCode}-${tallaCode}`;
+          const newDocId = safeDocId(newCodigo);
           if (Number.isFinite(pVentaOverride) && pVentaOverride < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
@@ -4628,27 +4711,67 @@ return `<!doctype html>
           }
           editModalSaveButton.disabled = true;
           const user = await ensureAdminSession();
-          await updateDoc(doc(db, activePrendasPublicCollection, docId), {
+          const userEmail = safeString(user?.email).trim().toLowerCase();
+          const oldPublicRef = doc(db, activePrendasPublicCollection, oldDocId);
+          const nextPublicPayload = {
+            docId: newDocId,
+            codigo: newCodigo,
+            code: newCodigo,
+            codigoBase,
+            baseCode: codigoBase,
+            color: colorCode,
+            colorCode,
+            colorName,
+            talla: tallaCode,
+            tallaCode,
+            tallaName,
             descripcion,
             updatedAt: serverTimestamp(),
-            updatedBy: safeString(user?.email).trim().toLowerCase()
-          });
+            updatedBy: userEmail
+          };
+
+          if (newDocId === oldDocId) {
+            await updateDoc(oldPublicRef, nextPublicPayload);
+          } else {
+            const nextPublicRef = doc(db, activePrendasPublicCollection, newDocId);
+            const nextPublicSnap = await getDoc(nextPublicRef);
+            if (nextPublicSnap.exists()) {
+              throw new Error("Ya existe ese código.");
+            }
+            const oldSnap = await getDoc(oldPublicRef);
+            if (!oldSnap.exists()) {
+              throw new Error("La prenda original ya no existe.");
+            }
+            await setDoc(nextPublicRef, {
+              ...oldSnap.data(),
+              ...nextPublicPayload,
+              migratedFrom: safeString(prendasState.editing?.codigo || oldDocId).trim()
+            });
+            await deleteDoc(oldPublicRef);
+          }
+
           const pVentaVisible = Number.isFinite(pVentaOverride)
             ? pVentaOverride
             : toNumber(prendasState.editing?.publicPVenta);
           const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
-          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, docId);
-          await setDoc(adminRef, {
-            docId,
+          const oldAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, oldDocId);
+          const nextAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, newDocId);
+          await setDoc(nextAdminRef, {
+            docId: newDocId,
+            codigo: newCodigo,
             costo: Number.isFinite(costo) ? costo : deleteField(),
             pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : deleteField(),
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : deleteField(),
             margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : deleteField(),
             updatedAt: serverTimestamp(),
-            updatedBy: safeString(user?.email).trim().toLowerCase()
+            updatedBy: userEmail
           }, { merge: true });
+          if (newDocId !== oldDocId) {
+            await deleteDoc(oldAdminRef);
+            prendasState.adminMap.delete(oldDocId);
+          }
 
-          prendasState.adminMap.set(docId, {
+          prendasState.adminMap.set(newDocId, {
             costo: Number.isFinite(costo) ? costo : null,
             pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : null,
@@ -4659,7 +4782,27 @@ return `<!doctype html>
             ? pVentaOverride
             : toNumber(prendasState.editing?.publicPVenta);
           const hasMarginData = Number.isFinite(nextPVenta) && Number.isFinite(costo);
-          updateRowInMemory(docId, {
+          if (newDocId !== oldDocId) {
+            const removeFrom = (rows = []) => {
+              const idx = rows.findIndex((row) => safeString(row.docId || row.id).trim() === oldDocId);
+              if (idx >= 0) rows.splice(idx, 1);
+            };
+            removeFrom(prendasState.baseRows);
+            removeFrom(prendasState.rowsAfterAll);
+            removeFrom(prendasState.rowsAfterGlobal);
+            removeFrom(prendasState.filtered);
+          }
+          updateRowInMemory(newDocId, {
+            docId: newDocId,
+            id: newDocId,
+            codigo: newCodigo,
+            codigoBase,
+            color: colorName,
+            colorCode,
+            colorName,
+            talla: tallaName,
+            tallaCode,
+            tallaName,
             descripcion,
             costo: Number.isFinite(costo) ? costo : null,
             pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
@@ -4689,7 +4832,7 @@ return `<!doctype html>
         const docId = safeString(rowData.docId || rowData.id).trim();
         if (!docId) return;
         const codigo = safeString(rowData.codigo).trim() || docId;
-        const confirmed = window.confirm(`¿Borrar la prenda ${codigo}? Esta acción no se puede deshacer.`);
+        const confirmed = window.confirm(`¿Eliminar ${codigo}? Esta acción no se puede deshacer.`);
         if (!confirmed) return;
         const user = await ensureAdminSession();
         const userEmail = safeString(user?.email).trim().toLowerCase() || "public";
@@ -5041,7 +5184,11 @@ return `<!doctype html>
               proveedor: preview.providerCode,
               tipo: preview.typeCode,
               color: preview.colorClave,
+              colorCode: preview.colorClave,
+              colorName: getSelectedName(registroColor).trim() || preview.colorClave,
               talla: preview.tallaClave,
+              tallaCode: preview.tallaClave,
+              tallaName: getSelectedName(registroTalla).trim() || preview.tallaClave,
               descripcion: preview.descripcion || null,
               detalles: preview.detallesValue || null,
               orden: Number.isFinite(orden) ? orden : null,
@@ -5727,6 +5874,12 @@ return `<!doctype html>
       if (editCostoInput) {
         editCostoInput.addEventListener("input", updateEditPreview);
       }
+      if (editColorInput) {
+        editColorInput.addEventListener("change", updateEditPreview);
+      }
+      if (editTallaInput) {
+        editTallaInput.addEventListener("change", updateEditPreview);
+      }
       if (editModalCancelButton) {
         editModalCancelButton.addEventListener("click", closeEditModal);
       }
@@ -5947,19 +6100,25 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           }
 
           if (dictionary.colores.length) {
+            const sortedColores = dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave));
+            prendasState.dictEntries.colores = sortedColores;
             fillDictionarySelect(
               registroColor,
-              dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave))
+              sortedColores
             );
+            fillEditSelect(editColorInput, sortedColores);
           } else {
             setSelectLoading(registroColor, "Sin opciones disponibles");
           }
 
           if (dictionary.tallas.length) {
+            const sortedTallas = dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave));
+            prendasState.dictEntries.tallas = sortedTallas;
             fillDictionarySelect(
               registroTalla,
-              dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave))
+              sortedTallas
             );
+            fillEditSelect(editTallaInput, sortedTallas);
           } else {
             setSelectLoading(registroTalla, "Sin opciones disponibles");
           }
