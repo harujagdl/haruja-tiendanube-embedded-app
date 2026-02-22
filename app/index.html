@@ -1820,6 +1820,7 @@ body.admin-on .admin-only{ display:table-cell; }
               <button type="button" id="registro-save" class="secondary">Guardar prenda</button>
             </div>
           </form>
+          <p id="registro-base-mode-hint" class="muted hidden"></p>
           <p id="registro-status" class="status"></p>
           <div id="registro-result" class="result-card hidden">
             <span class="muted">Código generado</span>
@@ -2079,6 +2080,7 @@ const auth = getAuth(app);
       const registroExistingCode = document.getElementById("registro-existing-code");
       const registroSearchExistingButton = document.getElementById("registro-search-existing");
       const registroBaseCodeInput = document.getElementById("registro-base-code");
+      const registroBaseModeHint = document.getElementById("registro-base-mode-hint");
       const adminCreateFields = document.getElementById("adminCreateFields");
       const adminCreateCostoInput = document.getElementById("adminCreateCosto");
       const adminCreatePVentaInput = document.getElementById("adminCreatePVenta");
@@ -4696,10 +4698,23 @@ return `<!doctype html>
       };
 
       const ensureRequired = () => {
-        if (!registroProveedor.value || !registroProducto.value || !registroColor.value || !registroTalla.value) {
-          setRegistroStatus("Completa Proveedor, Producto, Color y Talla.", "error");
-          return false;
+        const tipo = safeString(registroProducto.value).trim();
+        const proveedor = safeString(registroProveedor.value).trim();
+        const color = safeString(registroColor.value).trim();
+        const talla = safeString(registroTalla.value).trim();
+
+        if (baseMode) {
+          if (!color || !talla) {
+            setRegistroStatus("Completa Color y Talla", "error");
+            return false;
+          }
+        } else {
+          if (!tipo || !proveedor || !color || !talla) {
+            setRegistroStatus("Completa Proveedor, Producto, Color y Talla", "error");
+            return false;
+          }
         }
+
         return true;
       };
 
@@ -4787,6 +4802,16 @@ return `<!doctype html>
         setLocked(registroColor, false);
         setLocked(registroTalla, false);
         if (registroDetalles) setLocked(registroDetalles, false);
+
+        if (registroBaseModeHint) {
+          if (baseMode) {
+            registroBaseModeHint.textContent = "Modo código base activo: Tipo y Proveedor se derivan automáticamente";
+            registroBaseModeHint.classList.remove("hidden");
+          } else {
+            registroBaseModeHint.textContent = "";
+            registroBaseModeHint.classList.add("hidden");
+          }
+        }
       };
 
       const getFormPayload = () => {
