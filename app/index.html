@@ -190,6 +190,11 @@
         background: #fff;
       }
 
+      .is-locked {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+
       button {
         padding: 12px 16px;
         border-radius: 12px;
@@ -4705,6 +4710,9 @@ return `<!doctype html>
 
       let registroPreview = null;
       let registroBaseCode = "";
+      let baseMode = false;
+      let lockedBaseTipo = "";
+      let lockedBaseProveedor = "";
 
       const parseBaseCode = (codigoValue) => {
         const raw = safeString(codigoValue).trim().toUpperCase();
@@ -4746,16 +4754,76 @@ return `<!doctype html>
         return null;
       };
 
-      const buildRegistroPreview = async () => {
-        if (!ensureRequired()) {
-          return null;
+      const setLocked = (el, locked) => {
+        if (!el) return;
+        el.disabled = Boolean(locked);
+        el.classList.toggle("is-locked", Boolean(locked));
+        el.setAttribute("aria-disabled", locked ? "true" : "false");
+      };
+
+      const setBaseMode = ({ enabled, tipoValue, provValue, baseValue } = {}) => {
+        baseMode = Boolean(enabled);
+
+        if (baseMode) {
+          const normalizedTipo = safeString(tipoValue).trim().toUpperCase();
+          const normalizedProv = safeString(provValue).trim().toUpperCase();
+          if (baseValue != null && registroBaseCodeInput) registroBaseCodeInput.value = parseBaseCode(baseValue);
+          if (normalizedTipo) registroProducto.value = normalizedTipo;
+          if (normalizedProv) registroProveedor.value = normalizedProv;
+          lockedBaseTipo = normalizedTipo || registroProducto.value;
+          lockedBaseProveedor = normalizedProv || registroProveedor.value;
+          registroBaseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode || baseValue || "");
+        } else {
+          lockedBaseTipo = "";
+          lockedBaseProveedor = "";
+          if (baseValue != null && registroBaseCodeInput) {
+            registroBaseCodeInput.value = safeString(baseValue).trim().toUpperCase();
+          }
+          registroBaseCode = parseBaseCode(registroBaseCodeInput?.value || "");
         }
-        const providerCode = registroProveedor.value;
-        const typeCode = registroProducto.value;
-        const colorClave = registroColor.value;
-        const tallaClave = registroTalla.value;
+
+        setLocked(registroProducto, baseMode);
+        setLocked(registroProveedor, baseMode);
+        setLocked(registroColor, false);
+        setLocked(registroTalla, false);
+        if (registroDetalles) setLocked(registroDetalles, false);
+      };
+
+      const getFormPayload = () => {
+        if (!ensureRequired()) return null;
+
+        const providerCode = safeString(registroProveedor.value).trim().toUpperCase();
+        const typeCode = safeString(registroProducto.value).trim().toUpperCase();
+        const colorClave = safeString(registroColor.value).trim().toUpperCase();
+        const tallaClave = safeString(registroTalla.value).trim().toUpperCase();
         const createdByValue = document.getElementById("registro-created-by").value.trim();
         const detallesValue = registroDetalles.value.trim();
+
+        if (baseMode) {
+          if (!lockedBaseTipo || !lockedBaseProveedor) {
+            setRegistroStatus("El código base no contiene tipo/proveedor válidos.", "error");
+            return null;
+          }
+          if (typeCode !== lockedBaseTipo || providerCode !== lockedBaseProveedor) {
+            setRegistroStatus("Tipo y proveedor se fijan desde el código base reutilizable.", "error");
+            return null;
+          }
+        }
+
+        return {
+          providerCode,
+          typeCode,
+          colorClave,
+          tallaClave,
+          createdByValue,
+          detallesValue
+        };
+      };
+
+      const buildRegistroPreview = async () => {
+        const formPayload = getFormPayload();
+        if (!formPayload) return null;
+        const { providerCode, typeCode, colorClave, tallaClave, createdByValue, detallesValue } = formPayload;
         const tipoNombre = getSelectedName(registroProducto).trim();
         const proveedorNombre = getSelectedName(registroProveedor).trim();
         const colorNombre = getSelectedName(registroColor).trim();
@@ -4799,13 +4867,22 @@ return `<!doctype html>
           registroSearchExistingButton.disabled = true;
           const found = await findCodigoExistente(raw);
           if (!found) {
-            registroBaseCode = "";
-            if (registroBaseCodeInput) registroBaseCodeInput.value = "";
+            setBaseMode({ enabled: false, baseValue: "" });
             setRegistroStatus("No se encontró el código en la fuente disponible.", "warning");
             return;
           }
-          registroBaseCode = found.baseCode;
-          if (registroBaseCodeInput) registroBaseCodeInput.value = found.baseCode;
+          const tipoBase = safeString(found?.data?.tipo).trim().toUpperCase();
+          const proveedorBase = safeString(found?.data?.proveedor).trim().toUpperCase();
+          if (!tipoBase || !proveedorBase) {
+            setBaseMode({ enabled: false });
+            throw new Error("El código encontrado no tiene tipo/proveedor para bloquear el formulario.");
+          }
+          setBaseMode({
+            enabled: true,
+            baseValue: found.baseCode,
+            tipoValue: tipoBase,
+            provValue: proveedorBase
+          });
           setRegistroStatus(`Código encontrado en ${found.collectionName}. Base reutilizable: ${found.baseCode}`, "success");
         } catch (error) {
           console.error(error);
@@ -4975,8 +5052,7 @@ return `<!doctype html>
       const handleRegistroReset = () => {
         registroForm.reset();
         registroPreview = null;
-        registroBaseCode = "";
-        if (registroBaseCodeInput) registroBaseCodeInput.value = "";
+        setBaseMode({ enabled: false, baseValue: "" });
         registroResult.classList.add("hidden");
         setRegistroStatus("");
       };
@@ -4989,9 +5065,21 @@ return `<!doctype html>
         if (registroCopy) registroCopy.addEventListener("click", handleRegistroCopy);
         if (registroReset) registroReset.addEventListener("click", handleRegistroReset);
         if (registroSearchExistingButton) registroSearchExistingButton.addEventListener("click", handleBuscarCodigoExistente);
+        if (registroExistingCode) {
+          registroExistingCode.addEventListener("input", () => {
+            const raw = safeString(registroExistingCode.value).trim();
+            if (!raw) {
+              setBaseMode({ enabled: false, baseValue: "" });
+              if (registroBaseCodeInput) registroBaseCodeInput.value = "";
+            }
+          });
+        }
         if (registroBaseCodeInput) {
           registroBaseCodeInput.addEventListener("input", () => {
             registroBaseCode = parseBaseCode(registroBaseCodeInput.value);
+            if (!registroBaseCode) {
+              setBaseMode({ enabled: false, baseValue: "" });
+            }
           });
         }
       }
