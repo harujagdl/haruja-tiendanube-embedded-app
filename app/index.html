@@ -242,6 +242,14 @@
         color: #b45309;
       }
 
+      .msg-info {
+        color: #2563eb;
+      }
+
+      .msg-error {
+        color: #dc2626;
+      }
+
       .result-card {
         margin-top: 16px;
         padding: 16px;
@@ -2228,7 +2236,13 @@ const auth = getAuth(app);
         if (!registroStatus) return;
         registroStatus.textContent = message;
         registroStatus.className = `status ${type}`.trim();
+        registroStatus.classList.remove("msg-info", "msg-error");
+        if (type === "info") registroStatus.classList.add("msg-info");
+        if (type === "error") registroStatus.classList.add("msg-error");
       };
+
+      const mostrarErrorRegistro = (message) => setRegistroStatus(message, "error");
+      const mostrarInfoRegistro = (message) => setRegistroStatus(message, "info");
 
       const setZplStatus = (message, type = "") => {
         if (!zplStatus) return;
@@ -4702,12 +4716,12 @@ return `<!doctype html>
 
         if (baseMode) {
           if (!color || !talla) {
-            setRegistroStatus("Completa Color y Talla", "error");
+            mostrarErrorRegistro("Completa Color y Talla");
             return false;
           }
         } else {
           if (!tipo || !proveedor || !color || !talla) {
-            setRegistroStatus("Completa Proveedor, Producto, Color y Talla", "error");
+            mostrarErrorRegistro("Completa Proveedor, Producto, Color y Talla");
             return false;
           }
         }
@@ -4823,18 +4837,17 @@ return `<!doctype html>
 
         if (baseMode) {
           if (!lockedBaseTipo || !lockedBaseProveedor) {
-            setRegistroStatus("El código base no contiene tipo/proveedor válidos.", "error");
+            mostrarErrorRegistro("El código base no contiene tipo/proveedor válidos.");
             return null;
           }
           if (typeCode !== lockedBaseTipo || providerCode !== lockedBaseProveedor) {
-            setRegistroStatus("Tipo y proveedor se fijan desde el código base reutilizable.", "error");
-            return null;
+            mostrarInfoRegistro("Tipo y proveedor se fijan desde el código base reutilizable.");
           }
         }
 
         return {
-          providerCode,
-          typeCode,
+          providerCode: baseMode ? lockedBaseProveedor : providerCode,
+          typeCode: baseMode ? lockedBaseTipo : typeCode,
           colorClave,
           tallaClave,
           createdByValue,
