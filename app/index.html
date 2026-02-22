@@ -1984,6 +1984,10 @@ body.admin-on .admin-only{ display:table-cell; }
     <h3 id="editModalTitle" style="margin:0 0 12px;">Editar fila</h3>
     <div class="edit-modal-grid">
       <div>
+        <label for="editDescripcion">Descripción</label>
+        <input id="editDescripcion" type="text" placeholder="Ej. Coral M / Blusa Coral M / ..." />
+      </div>
+      <div>
         <label for="editPVenta">P.Venta override (vacío = usar público)</label>
         <input id="editPVenta" type="number" min="0" step="0.01" />
       </div>
@@ -2023,6 +2027,7 @@ body.admin-on .admin-only{ display:table-cell; }
         documentId,
         serverTimestamp,
         setDoc,
+        updateDoc,
         deleteField,
         startAfter,
         where,
@@ -2153,6 +2158,7 @@ const auth = getAuth(app);
       const adminLogoutQuickButton = document.getElementById("admin-logout-quick");
       const editModal = document.getElementById("editModal");
       const editModalOverlay = document.getElementById("editModalOverlay");
+      const editDescripcionInput = document.getElementById("editDescripcion");
       const editPVentaInput = document.getElementById("editPVenta");
       const editCostoInput = document.getElementById("editCosto");
       const editUtilidadPreview = document.getElementById("editUtilidadPreview");
@@ -3439,6 +3445,7 @@ return `<!doctype html>
         const precioConIvaFinal = Number.isFinite(precioConIva)
           ? precioConIva
           : (Number.isFinite(pVenta) ? pVenta : null);
+        const isActive = data.isActive !== false;
 
         const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
           computeMarginUtility(precioConIvaFinal, costo);
@@ -3486,6 +3493,7 @@ return `<!doctype html>
             safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
             statusCanon
           ),
+          isActive,
           precio,
           pVenta,
           precioConIva: precioConIvaFinal,
@@ -4179,11 +4187,26 @@ return `<!doctype html>
         }
         let cursor = null;
         let hasMore = true;
+        let queryWithoutIsActiveFilter = false;
         const rows = [];
         while (hasMore) {
-          const constraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          if (cursor) constraints.splice(1, 0, startAfter(cursor));
-          const snap = await getDocs(query(prendasPublicRef, ...constraints));
+          const constraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (queryWithoutIsActiveFilter) {
+            constraints.shift();
+          }
+          if (cursor) constraints.splice(constraints.length - 1, 0, startAfter(cursor));
+          let snap;
+          try {
+            snap = await getDocs(query(prendasPublicRef, ...constraints));
+          } catch (error) {
+            if (!queryWithoutIsActiveFilter) {
+              console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query", error);
+              queryWithoutIsActiveFilter = true;
+              cursor = null;
+              continue;
+            }
+            throw error;
+          }
           console.log("[Prendas] snapshot size:", snap.size);
           if (snap.empty) {
             hasMore = false;
@@ -4234,13 +4257,15 @@ return `<!doctype html>
           }
         }
 
-        rows.forEach((row) => {
+        const rowsToRender = rows.filter((row) => row.isActive !== false);
+
+        rowsToRender.forEach((row) => {
           row.costo = null;
           row.utilidad = null;
           row.margen = null;
         });
 
-        const orderedRows = rows.sort(compareItemsByOrdenAsc);
+        const orderedRows = rowsToRender.sort(compareItemsByOrdenAsc);
         orderedRows.forEach((row, index) => {
           const generatedOrder = index + 1;
           row.__order = generatedOrder;
@@ -4497,6 +4522,14 @@ return `<!doctype html>
           editButton.setAttribute("aria-label", "Editar fila");
           editButton.textContent = "✎";
           actionCell.appendChild(editButton);
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "rowDeleteBtn";
+          deleteButton.dataset.deleteDoc = safeString(item.docId || item.id).trim();
+          deleteButton.dataset.codigo = safeString(item.codigo).trim();
+          deleteButton.setAttribute("aria-label", "Borrar prenda");
+          deleteButton.textContent = "🗑";
+          actionCell.appendChild(deleteButton);
           row.appendChild(actionCell);
         }
         return row;
@@ -4536,6 +4569,7 @@ return `<!doctype html>
         };
         if (editPVentaInput) editPVentaInput.value = Number.isFinite(pVentaOverride) ? pVentaOverride : "";
         if (editCostoInput) editCostoInput.value = toNumber(rowData.costo) ?? "";
+        if (editDescripcionInput) editDescripcionInput.value = safeString(rowData.descripcion).trim();
         if (editModalError) {
           editModalError.textContent = "";
           editModalError.classList.add("hidden");
@@ -4582,14 +4616,23 @@ return `<!doctype html>
           const docId = prendasState.editing.docId;
           const pVentaOverride = toNumber(editPVentaInput?.value);
           const costo = toNumber(editCostoInput?.value);
+          const descripcion = safeString(editDescripcionInput?.value).trim();
           if (Number.isFinite(pVentaOverride) && pVentaOverride < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
           if (Number.isFinite(costo) && costo < 0) {
             throw new Error("Costo debe ser mayor o igual a 0.");
           }
+          if (!descripcion) {
+            throw new Error("Descripción requerida.");
+          }
           editModalSaveButton.disabled = true;
           const user = await ensureAdminSession();
+          await updateDoc(doc(db, activePrendasPublicCollection, docId), {
+            descripcion,
+            updatedAt: serverTimestamp(),
+            updatedBy: safeString(user?.email).trim().toLowerCase()
+          });
           const pVentaVisible = Number.isFinite(pVentaOverride)
             ? pVentaOverride
             : toNumber(prendasState.editing?.publicPVenta);
@@ -4617,6 +4660,7 @@ return `<!doctype html>
             : toNumber(prendasState.editing?.publicPVenta);
           const hasMarginData = Number.isFinite(nextPVenta) && Number.isFinite(costo);
           updateRowInMemory(docId, {
+            descripcion,
             costo: Number.isFinite(costo) ? costo : null,
             pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
             pVentaDisplay: Number.isFinite(nextPVenta) ? nextPVenta : null,
@@ -4624,6 +4668,7 @@ return `<!doctype html>
             margen: hasMarginData ? Number(margenPct.toFixed(1)) : null
           });
           await loadPrendasPage({ reset: false, reason: "edit-save" });
+          setPrendasAlert("Prenda guardada.", "success");
           closeEditModal();
         } catch (error) {
           if (editModalError) {
@@ -4636,6 +4681,29 @@ return `<!doctype html>
             editModalSaveButton.disabled = false;
           }
         }
+      };
+
+      const handleDeleteRow = async (rowData) => {
+        if (!rowData) return;
+        if (!ensureAdminMode()) return;
+        const docId = safeString(rowData.docId || rowData.id).trim();
+        if (!docId) return;
+        const codigo = safeString(rowData.codigo).trim() || docId;
+        const confirmed = window.confirm(`¿Borrar la prenda ${codigo}? Esta acción no se puede deshacer.`);
+        if (!confirmed) return;
+        const user = await ensureAdminSession();
+        const userEmail = safeString(user?.email).trim().toLowerCase() || "public";
+        await updateDoc(doc(db, activePrendasPublicCollection, docId), {
+          isActive: false,
+          status: "ELIMINADO",
+          deleted: true,
+          deletedAt: serverTimestamp(),
+          deletedBy: userEmail,
+          updatedAt: serverTimestamp(),
+          updatedBy: userEmail
+        });
+        await loadPrendasPage({ reset: false, reason: "delete-row" });
+        setPrendasAlert(`Prenda ${codigo} eliminada.`, "success");
       };
 
       const renderDocs = async (rows) => {
@@ -4980,6 +5048,7 @@ return `<!doctype html>
               seqNumber: Number.isFinite(seqNumber) ? seqNumber : null,
               status: "ACTIVO",
               disponibilidad: "DISPONIBLE",
+              isActive: true,
               creadoPor: preview.createdByValue || null,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
@@ -5588,15 +5657,29 @@ return `<!doctype html>
             return;
           }
 
-          const button = event.target.closest(".rowEditBtn");
-          if (!button) return;
+          const editButton = event.target.closest(".rowEditBtn");
+          if (editButton) {
+            if (!isAdminViewEnabled()) return;
+            const docId = safeString(editButton.dataset.editDoc).trim();
+            if (!docId) return;
+            const rowData = prendasState.filtered.find((row) => safeString(row.docId || row.id).trim() === docId)
+              || prendasState.baseRows.find((row) => safeString(row.docId || row.id).trim() === docId);
+            const adminData = prendasState.adminMap.get(docId) || {};
+            openEditModal(rowData ? { ...rowData, ...adminData } : rowData);
+            return;
+          }
+
+          const deleteButton = event.target.closest(".rowDeleteBtn");
+          if (!deleteButton) return;
           if (!isAdminViewEnabled()) return;
-          const docId = safeString(button.dataset.editDoc).trim();
+          const docId = safeString(deleteButton.dataset.deleteDoc).trim();
           if (!docId) return;
           const rowData = prendasState.filtered.find((row) => safeString(row.docId || row.id).trim() === docId)
             || prendasState.baseRows.find((row) => safeString(row.docId || row.id).trim() === docId);
-          const adminData = prendasState.adminMap.get(docId) || {};
-          openEditModal(rowData ? { ...rowData, ...adminData } : rowData);
+          handleDeleteRow(rowData).catch((error) => {
+            console.error(error);
+            setPrendasAlert(error?.message || "No se pudo eliminar la prenda.", "error");
+          });
         });
       }
 
