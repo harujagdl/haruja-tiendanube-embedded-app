@@ -1,4 +1,4 @@
-const admin = require("firebase-admin");
+const {admin} = require("./firebaseAdmin");
 const crypto = require("crypto");
 
 const LOYALTY_CLIENTS_COLLECTION = "loyalty_clients";
