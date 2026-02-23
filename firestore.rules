@@ -49,10 +49,13 @@ service cloud.firestore {
       allow write: if isAdminEmail();
     }
 
-    match /HarujaPrendas_2025_public/{doc} {
+    match /HarujaPrendas_2025_public/{doc=**} {
       allow read: if true;
-      allow create: if isAdminEmail();
-      allow update, delete: if isAdminEmail();
+      allow write: if false;
+    }
+
+    match /HarujaPrendas_2025/{docId} {
+      allow read, write: if isAdminEmail();
     }
 
     // Datos sensibles de admin

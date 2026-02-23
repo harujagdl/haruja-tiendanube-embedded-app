@@ -2664,6 +2664,7 @@ const auth = getAuth(app);
       const PRENDAS_PUBLIC_COLLECTION = COL_PRENDAS_PUBLIC;
       const PRENDAS_ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
       const PRENDAS_MASTER_COLLECTION = "HarujaPrendas_2025";
+      const EMBED_FORCED_PUBLIC_COLLECTION = PRENDAS_PUBLIC_COLLECTION;
       const PRENDAS_COLLECTION_CANDIDATES = [
         PRENDAS_PUBLIC_COLLECTION
       ];
@@ -2789,8 +2790,20 @@ const auth = getAuth(app);
       let isBooting = true;
       let isAdminMode = false;
 
+      const resolveActivePrendasCollection = ({ isAdmin = false } = {}) => {
+        const isEmbedded = isEmbeddedApp;
+        const collectionName = isEmbedded
+          ? EMBED_FORCED_PUBLIC_COLLECTION
+          : (isAdmin ? PRENDAS_MASTER_COLLECTION : PRENDAS_PUBLIC_COLLECTION);
+
+        console.log("[Panel] Embedded:", isEmbedded);
+        console.log("[Panel] Colección activa:", collectionName);
+        return collectionName;
+      };
+
       const setPrendasCollections = ({ publicCollection }) => {
-        activePrendasPublicCollection = publicCollection || PRENDAS_PUBLIC_COLLECTION;
+        const isAdmin = Boolean(prendasState?.isAdmin);
+        activePrendasPublicCollection = publicCollection || resolveActivePrendasCollection({ isAdmin });
         prendasRef = collection(db, activePrendasPublicCollection);
         prendasPublicRef = collection(db, activePrendasPublicCollection);
         console.log("[Firebase][Registro] projectId:", firebaseConfig?.projectId, "collection:", activePrendasPublicCollection);
@@ -4503,80 +4516,50 @@ return `<!doctype html>
         let hasMore = true;
         let queryWithoutIsActiveFilter = false;
         const rows = [];
-        while (hasMore) {
-          const primaryConstraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          if (cursor) {
-            primaryConstraints.splice(primaryConstraints.length - 1, 0, startAfter(cursor));
-            fallbackConstraints.splice(fallbackConstraints.length - 1, 0, startAfter(cursor));
-          }
 
-          const primaryQuery = queryWithoutIsActiveFilter
-            ? query(prendasPublicRef, ...fallbackConstraints)
-            : query(prendasPublicRef, ...primaryConstraints);
-          const fallbackQuery = query(prendasPublicRef, ...fallbackConstraints);
-          const { snapshot: snap, usedFallback } = await getDocsWithIndexFallback(
-            primaryQuery,
-            queryWithoutIsActiveFilter ? null : fallbackQuery,
-            "Prendas"
-          );
-
-          if (usedFallback && !queryWithoutIsActiveFilter) {
-            queryWithoutIsActiveFilter = true;
-            cursor = null;
-            rows.length = 0;
-            console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query");
-            continue;
-          }
-
-          console.log("[Prendas] snapshot size:", snap.size);
-          if (snap.empty) {
-            hasMore = false;
-            break;
-          }
-          snap.docs.forEach((docSnap) => rows.push(normalizeDoc(docSnap)));
-          cursor = snap.docs[snap.docs.length - 1];
-          if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
-            hasMore = false;
-          }
-        }
-
-        if (!rows.length) {
-          try {
-            const fallbackProbe = await getDocs(query(collection(db, PRENDAS_MASTER_COLLECTION), limit(1)));
-            if (!fallbackProbe.empty) {
-              setPrendasAlert("Colección public vacía: cargando respaldo temporal desde master.", "warning");
-              console.warn("[Prendas] fallback temporal activado desde master.");
-              cursor = null;
-              hasMore = true;
-
-              while (hasMore) {
-                const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-                if (cursor) fallbackConstraints.splice(1, 0, startAfter(cursor));
-                const fallbackSnap = await getDocs(
-                  query(collection(db, PRENDAS_MASTER_COLLECTION), ...fallbackConstraints)
-                );
-                if (fallbackSnap.empty) {
-                  hasMore = false;
-                  break;
-                }
-                fallbackSnap.docs.forEach((docSnap) => {
-                  const row = normalizeDoc(docSnap);
-                  row.costo = null;
-                  row.iva = null;
-                  row.margen = null;
-                  row.utilidad = null;
-                  rows.push(row);
-                });
-                cursor = fallbackSnap.docs[fallbackSnap.docs.length - 1];
-                if (fallbackSnap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
-                  hasMore = false;
-                }
-              }
+        try {
+          while (hasMore) {
+            const primaryConstraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+            const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+            if (cursor) {
+              primaryConstraints.splice(primaryConstraints.length - 1, 0, startAfter(cursor));
+              fallbackConstraints.splice(fallbackConstraints.length - 1, 0, startAfter(cursor));
             }
-          } catch (error) {
-            console.warn("[Prendas] fallback a master no disponible", error);
+
+            const baseQuery = queryWithoutIsActiveFilter
+              ? query(prendasPublicRef, ...fallbackConstraints)
+              : query(prendasPublicRef, ...primaryConstraints);
+            const fallbackQuery = query(prendasPublicRef, ...fallbackConstraints);
+            const { snapshot: snap, usedFallback } = await getDocsWithIndexFallback(
+              baseQuery,
+              queryWithoutIsActiveFilter ? null : fallbackQuery,
+              "Prendas"
+            );
+
+            if (usedFallback && !queryWithoutIsActiveFilter) {
+              queryWithoutIsActiveFilter = true;
+              cursor = null;
+              rows.length = 0;
+              console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query");
+              continue;
+            }
+
+            console.log("[Panel] snapshot size:", snap.size);
+            if (snap.empty) {
+              hasMore = false;
+              break;
+            }
+
+            snap.docs.forEach((docSnap) => rows.push(normalizeDoc(docSnap)));
+            cursor = snap.docs[snap.docs.length - 1];
+            if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
+              hasMore = false;
+            }
           }
+        } catch (error) {
+          console.error("[Panel] Error Firestore:", error);
+          setPrendasAlert("No se pudo cargar la base pública. Verifica permisos o conexión.", { isHtml: false });
+          return [];
         }
 
         const rowsToRender = rows.filter((row) => row.isActive !== false);
