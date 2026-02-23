@@ -26,6 +26,26 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "frame-ancestors 'self' https://*.tiendanube.com https://tiendanube.com https://admin.tiendanube.com https://www.tiendanube.com;"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(html|js|css|json|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf)",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          }
+        ]
+      }
+    ],
     "rewrites": [
       {
         "source": "/api/**",
