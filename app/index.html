@@ -2109,6 +2109,8 @@ body.admin-on .admin-only{ display:table-cell; }
         GoogleAuthProvider,
         onAuthStateChanged,
         signInWithPopup,
+        signInWithRedirect,
+        getRedirectResult,
         signOut
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
@@ -2127,6 +2129,27 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
       const googleProvider = new GoogleAuthProvider();
+      const isEmbeddedApp = (() => {
+        try {
+          return window.self !== window.top;
+        } catch (_error) {
+          return true;
+        }
+      })();
+      const authRedirectResultPromise = getRedirectResult(auth)
+        .then((result) => result?.user || null)
+        .catch((error) => {
+          console.error("[Auth] Error procesando redirect:", error);
+          return null;
+        });
+      const signInWithGoogleForContext = async () => {
+        if (isEmbeddedApp) {
+          await signInWithRedirect(auth, googleProvider);
+          return null;
+        }
+        const response = await signInWithPopup(auth, googleProvider);
+        return response?.user || null;
+      };
       let db;
       try {
         db = initializeFirestore(app, {
@@ -4912,8 +4935,10 @@ return `<!doctype html>
       const ensureAdminSession = async () => {
         let user = auth.currentUser;
         if (!user) {
-          const response = await signInWithPopup(auth, googleProvider);
-          user = response?.user || null;
+          user = await signInWithGoogleForContext();
+        }
+        if (!user) {
+          throw new Error("Iniciando autenticación por redirect...");
         }
         const email = safeString(user?.email).trim().toLowerCase();
         if (!isAllowlistedAdmin(email)) {
@@ -5863,8 +5888,14 @@ return `<!doctype html>
           adminLoginButton.disabled = true;
         }
         try {
-          const response = await signInWithPopup(auth, googleProvider);
-          const email = safeString(response?.user?.email).trim().toLowerCase();
+          if (isEmbeddedApp) {
+            setAdminLoginStatus("Conectando con Google...", "warning");
+          }
+          const user = await signInWithGoogleForContext();
+          if (!user) {
+            return;
+          }
+          const email = safeString(user?.email).trim().toLowerCase();
           if (!isAllowlistedAdmin(email)) {
             setAdminLoginStatus("Tu cuenta no está permitida como admin.", "error");
             await signOut(auth);
@@ -5902,8 +5933,13 @@ return `<!doctype html>
         try {
           let user = auth.currentUser;
           if (!user) {
-            const response = await signInWithPopup(auth, googleProvider);
-            user = response?.user || null;
+            if (isEmbeddedApp) {
+              setAdminLoginStatus("Conectando con Google...", "warning");
+            }
+            user = await signInWithGoogleForContext();
+          }
+          if (!user) {
+            return;
           }
           const email = safeString(user?.email).trim().toLowerCase();
           if (!isAllowlistedAdmin(email)) {
@@ -6309,6 +6345,21 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         populateMonthFilter();
         clearFiltersUi();
         try {
+          if (isEmbeddedApp) {
+            setAdminLoginStatus("Conectando...", "warning");
+          }
+          const redirectUser = await authRedirectResultPromise;
+          if (redirectUser) {
+            const email = safeString(redirectUser?.email).trim().toLowerCase();
+            if (isAllowlistedAdmin(email)) {
+              setAdminLoginStatus(`Admin autenticado: ${email}`, "success");
+              setAdminViewEnabled(true);
+            } else {
+              setAdminLoginStatus("Sesión iniciada, pero sin permisos de admin.", "warning");
+              await signOut(auth);
+            }
+          }
+
           setRegistroStatus("Cargando diccionario...");
           registroSubmit.disabled = true;
           setSelectLoading(registroProducto, "Cargando...");
@@ -6438,7 +6489,18 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         }
       };
 
+      const setupClarity = () => {
+        const clarityId = safeString(window.HARUJA_CLARITY_ID).trim();
+        if (!clarityId || isEmbeddedApp) return;
+        const script = document.createElement("script");
+        script.async = true;
+        script.src = `https://www.clarity.ms/tag/${encodeURIComponent(clarityId)}`;
+        script.referrerPolicy = "no-referrer-when-downgrade";
+        document.head.appendChild(script);
+      };
+
       document.addEventListener("DOMContentLoaded", () => {
+        setupClarity();
         init();
         navigateTo(getViewFromUrl(), { replace: true });
       });
