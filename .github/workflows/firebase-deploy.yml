@@ -83,17 +83,15 @@ jobs:
           set -e
 
       # ✅ NUEVO: subir secrets de Tiendanube a Firebase (Secret Manager) desde GitHub Secrets
-      - name: Set Tiendanube secrets in Firebase
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
-          TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
-        run: |
-          # Nota: GitHub enmascara secrets en logs, pero igual evitamos imprimir valores.
-          printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
-          printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
-          printf "%s" "$TIENDANUBE_APP_SECRET" | firebase functions:secrets:set TIENDANUBE_APP_SECRET --project "$FIREBASE_PROJECT_ID"
+- name: Set Tiendanube secrets in Firebase
+  env:
+    GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
+    FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+    TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
+    TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
+  run: |
+    printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
+    printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
 
       # Deploy Firestore rules/indexes + functions después
       - name: Deploy Firestore + Functions
