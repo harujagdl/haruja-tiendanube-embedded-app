@@ -1,7 +1,7 @@
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
-const admin = require("firebase-admin");
+const {admin, db} = require("./firebaseAdmin");
 const {randomUUID} = require("crypto");
 const {v4: uuidv4} = require("uuid");
 const Busboy = require("busboy");
@@ -10,8 +10,6 @@ const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 const loyalty = require("./loyalty");
 
-admin.initializeApp();
-const db = admin.firestore();
 
 const PRENDAS_COLLECTION = "HarujaPrendas_2025";
 const PRENDAS_PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
