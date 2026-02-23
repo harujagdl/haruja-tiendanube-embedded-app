@@ -2192,13 +2192,14 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
       const googleProvider = new GoogleAuthProvider();
       const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
-      const isEmbeddedApp = (() => {
+      function isEmbedded() {
         try {
           return window.self !== window.top;
         } catch (_error) {
           return true;
         }
-      })();
+      }
+      const isEmbeddedApp = isEmbedded();
       const safeStorageAccessEnabled = !isEmbeddedApp;
       const debugState = {
         snapshotSizes: {},
@@ -2981,19 +2982,35 @@ const auth = getAuth(app);
       let isAdminMode = false;
 
       const resolveActivePrendasCollection = ({ isAdmin = false } = {}) => {
-        const isEmbedded = isEmbeddedApp;
-        const collectionName = isEmbedded
-          ? EMBED_FORCED_PUBLIC_COLLECTION
-          : (isAdmin ? PRENDAS_MASTER_COLLECTION : PRENDAS_PUBLIC_COLLECTION);
+        const embedded = isEmbedded();
+        const authEmail = safeString(auth?.currentUser?.email).trim().toLowerCase();
+        const hasRuntimeAdminAuth = Boolean(prendasState?.adminByAuth) && isAllowlistedAdmin(authEmail);
+        const canUseMaster = !embedded && isAdmin && hasRuntimeAdminAuth;
+        const collectionName = canUseMaster
+          ? PRENDAS_MASTER_COLLECTION
+          : PRENDAS_PUBLIC_COLLECTION;
 
-        console.log("[Panel] Embedded:", isEmbedded);
+        if (embedded && isAdmin) {
+          console.warn("[Prendas] Modo embed detectado: se fuerza colección pública y no se intentará master/admin.");
+        } else if (!embedded && isAdmin && !hasRuntimeAdminAuth) {
+          console.warn("[Prendas] Sin auth admin válida: se fuerza colección pública y no se intentará master/admin.");
+        }
+
+        console.log("[Panel] Embedded:", embedded);
         console.log("[Panel] Colección activa:", collectionName);
         return collectionName;
       };
 
       const setPrendasCollections = ({ publicCollection }) => {
         const isAdmin = Boolean(prendasState?.isAdmin);
-        activePrendasPublicCollection = publicCollection || resolveActivePrendasCollection({ isAdmin });
+        const requestedCollection = publicCollection || resolveActivePrendasCollection({ isAdmin });
+        const embedded = isEmbedded();
+        activePrendasPublicCollection = embedded
+          ? PRENDAS_PUBLIC_COLLECTION
+          : requestedCollection;
+        if (embedded && requestedCollection !== PRENDAS_PUBLIC_COLLECTION) {
+          console.warn("[Prendas] Embed bloqueó colección no pública:", requestedCollection);
+        }
         prendasRef = collection(db, activePrendasPublicCollection);
         prendasPublicRef = collection(db, activePrendasPublicCollection);
         console.log("[Firebase][Registro] projectId:", firebaseConfig?.projectId, "collection:", activePrendasPublicCollection);
@@ -4753,7 +4770,12 @@ return `<!doctype html>
           }
         } catch (error) {
           console.error("[Panel] Error Firestore:", error);
-          setPrendasAlert("No se pudo cargar la base pública. Verifica permisos o conexión.", { isHtml: false });
+          if (isEmbedded()) {
+            console.warn("[Prendas] Public falló en embed, no se intentará master.", error);
+            setPrendasAlert("No se pudieron cargar prendas en modo embebido. Mostrando lista vacía.", { isHtml: false });
+          } else {
+            setPrendasAlert("No se pudo cargar la base pública. Verifica permisos o conexión.", { isHtml: false });
+          }
           return [];
         }
 
