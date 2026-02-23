@@ -99,6 +99,20 @@
           "mode": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "HarujaPrendas_2025_public",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isActive",
+          "mode": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "mode": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
