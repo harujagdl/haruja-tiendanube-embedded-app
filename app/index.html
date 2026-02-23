@@ -2143,6 +2143,15 @@ const auth = getAuth(app);
           localCache: memoryLocalCache()
         });
       }
+
+      window.addEventListener("unhandledrejection", (event) => {
+        console.error("Unhandled rejection:", event.reason);
+      });
+
+      window.addEventListener("error", (event) => {
+        console.error("Window error:", event.error || event.message);
+      });
+
       const COL_PRENDAS_PUBLIC = "HarujaPrendas_2025_public";
       let prendasRef = collection(db, COL_PRENDAS_PUBLIC);
       const registroForm = document.getElementById("registro-form");
@@ -4368,6 +4377,29 @@ return `<!doctype html>
         return chunks;
       };
 
+      const isMissingIndexError = (error) => {
+        const message = (error && (error.message || error.toString())) || "";
+        return message.includes("requires an index") || message.includes("FAILED_PRECONDITION");
+      };
+
+      const getDocsWithIndexFallback = async (primaryQuery, fallbackQuery, tag = "Query") => {
+        try {
+          return {
+            snapshot: await getDocs(primaryQuery),
+            usedFallback: false,
+          };
+        } catch (error) {
+          if (isMissingIndexError(error) && fallbackQuery) {
+            console.warn(`[${tag}] Missing index -> fallback`, error);
+            return {
+              snapshot: await getDocs(fallbackQuery),
+              usedFallback: true,
+            };
+          }
+          throw error;
+        }
+      };
+
       const loadAdminCostMap = async (rows = []) => {
         const map = new Map();
         const rowDocIds = rows
@@ -4449,23 +4481,31 @@ return `<!doctype html>
         let queryWithoutIsActiveFilter = false;
         const rows = [];
         while (hasMore) {
-          const constraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-          if (queryWithoutIsActiveFilter) {
-            constraints.shift();
+          const primaryConstraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (cursor) {
+            primaryConstraints.splice(primaryConstraints.length - 1, 0, startAfter(cursor));
+            fallbackConstraints.splice(fallbackConstraints.length - 1, 0, startAfter(cursor));
           }
-          if (cursor) constraints.splice(constraints.length - 1, 0, startAfter(cursor));
-          let snap;
-          try {
-            snap = await getDocs(query(prendasPublicRef, ...constraints));
-          } catch (error) {
-            if (!queryWithoutIsActiveFilter) {
-              console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query", error);
-              queryWithoutIsActiveFilter = true;
-              cursor = null;
-              continue;
-            }
-            throw error;
+
+          const primaryQuery = queryWithoutIsActiveFilter
+            ? query(prendasPublicRef, ...fallbackConstraints)
+            : query(prendasPublicRef, ...primaryConstraints);
+          const fallbackQuery = query(prendasPublicRef, ...fallbackConstraints);
+          const { snapshot: snap, usedFallback } = await getDocsWithIndexFallback(
+            primaryQuery,
+            queryWithoutIsActiveFilter ? null : fallbackQuery,
+            "Prendas"
+          );
+
+          if (usedFallback && !queryWithoutIsActiveFilter) {
+            queryWithoutIsActiveFilter = true;
+            cursor = null;
+            rows.length = 0;
+            console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query");
+            continue;
           }
+
           console.log("[Prendas] snapshot size:", snap.size);
           if (snap.empty) {
             hasMore = false;
