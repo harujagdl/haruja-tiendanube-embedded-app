@@ -1,8 +1,8 @@
-name: Deploy Firebase (Hosting + Firestore)
+name: Deploy Firebase (Hosting + Firestore + Functions)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   deploy:
@@ -29,7 +29,7 @@ jobs:
             npm install --omit=dev
           fi
 
-      # Escribe el service account
+      # Escribe el service account (GCP_SA_KEY debe ser el JSON completo)
       - name: Write service account
         run: |
           echo '${{ secrets.GCP_SA_KEY }}' > /tmp/serviceAccount.json
@@ -81,6 +81,20 @@ jobs:
             --non-interactive
           echo "Delete step finished (may be 'not found' and that's OK)."
           set -e
+
+      # ✅ NUEVO: subir secrets de Tiendanube a Firebase (Secret Manager) desde GitHub Secrets
+      - name: Set Tiendanube secrets in Firebase
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
+          TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
+          TIENDANUBE_APP_SECRET: ${{ secrets.TIENDANUBE_APP_SECRET }}
+        run: |
+          # Nota: GitHub enmascara secrets en logs, pero igual evitamos imprimir valores.
+          printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
+          printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
+          printf "%s" "$TIENDANUBE_APP_SECRET" | firebase functions:secrets:set TIENDANUBE_APP_SECRET --project "$FIREBASE_PROJECT_ID"
 
       # Deploy Firestore rules/indexes + functions después
       - name: Deploy Firestore + Functions
