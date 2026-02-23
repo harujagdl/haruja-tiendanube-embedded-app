@@ -128,7 +128,7 @@ exports.tnAuthStart = onRequest(
 );
 
 /**
- * GET /tnAuthCallback?code=...&store_id=...
+ * GET /tnAuthCallback?code=...
  * Intercambia code -> access_token y lo guarda en Firestore:
  * tn_stores/{storeId}
  */
@@ -143,16 +143,14 @@ exports.tnAuthCallback = onRequest(
       }
 
       const code = String(req.query.code || "").trim();
-      const storeId = String(req.query.store_id || "").trim();
-      if (!code || !storeId) {
-        return res.status(400).send("Missing code or store_id.");
-      }
+      if (!code) return res.status(400).send("Missing code.");
 
       const redirectUri = getTiendanubeRedirectUri_();
 
+      // Token exchange
       const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
           client_id: Number(clientId),
           client_secret: clientSecret,
@@ -162,11 +160,24 @@ exports.tnAuthCallback = onRequest(
         }),
       });
 
-      const payload = await tokenRes.json().catch(() => ({}));
+      const rawText = await tokenRes.text();
+      let payload = {};
+      try { payload = rawText ? JSON.parse(rawText) : {}; } catch {}
+
       if (!tokenRes.ok || !payload?.access_token) {
-        console.error("tnAuthCallback token exchange failed", {status: tokenRes.status, payload});
-        return res.status(400).json({ ok: false, error: payload || "Token exchange failed" });
+        console.error("Token exchange failed:", tokenRes.status, rawText);
+        return res.status(400).json({ ok: false, step: "token_exchange_failed", status: tokenRes.status, payload, rawText });
       }
+
+      // storeId puede venir como store_id en query, o como user_id en payload (documentación)
+      const storeId = String(req.query.store_id || payload.store_id || payload.user_id || "").trim();
+      if (!storeId) {
+        console.error("Missing storeId. Payload keys:", Object.keys(payload || {}));
+        return res.status(400).json({ ok: false, step: "missing_store_id", payload });
+      }
+
+      // 🔒 Blindado: usar SIEMPRE Admin SDK directo
+      const dbAdmin = admin.firestore();
 
       await dbAdmin.collection("tn_stores").doc(storeId).set(
         {
@@ -182,8 +193,8 @@ exports.tnAuthCallback = onRequest(
 
       return res.status(200).send("✅ Tiendanube conectado. Ya puedes cerrar esta ventana.");
     } catch (err) {
-      console.error("tnAuthCallback error", err);
-      return res.status(500).send("Error procesando OAuth callback.");
+      console.error("tnAuthCallback unexpected error:", err);
+      return res.status(500).json({ ok: false, step: "unexpected_catch", message: String(err?.message || err) });
     }
   }
 );
