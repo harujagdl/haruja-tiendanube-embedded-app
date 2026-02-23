@@ -30,6 +30,7 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   "https://haruja-tiendanube.web.app",
   "https://haruja-tiendanube.firebaseapp.com",
+  "https://paneltb.harujagdl.com",
   "https://haruja-panel.vercel.app",
   "http://localhost:5000",
   "http://localhost:5173",
@@ -38,6 +39,7 @@ const ALLOWED_ORIGINS = new Set([
 const LOYALTY_PUBLIC_UPDATE_ALLOWED_ORIGINS = new Set([
   "https://tiendanube.web.app",
   "https://haruja-tiendanube.web.app",
+  "https://paneltb.harujagdl.com",
   "https://haruja-panel.vercel.app"
 ]);
 const RUNTIME_OPTS = {
@@ -470,7 +472,7 @@ const parseMultipartFile = (req, fieldName = "file") =>
 
 function applyCors(req, res) {
   const origin = req.get("origin");
-  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "https://haruja-tiendanube.web.app";
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : "https://paneltb.harujagdl.com";
   res.set("Access-Control-Allow-Origin", allowOrigin);
   res.set("Vary", "Origin");
   res.set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");

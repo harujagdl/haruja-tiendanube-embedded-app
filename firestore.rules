@@ -51,7 +51,7 @@ service cloud.firestore {
 
     match /HarujaPrendas_2025_public/{doc} {
       allow read: if true;
-      allow create: if true;
+      allow create: if isAdminEmail();
       allow update, delete: if isAdminEmail();
     }
 
