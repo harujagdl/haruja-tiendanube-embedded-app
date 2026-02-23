@@ -141,9 +141,11 @@ exports.tnAuthCallback = onRequest(
       }
 
       const code = String(req.query.code || "").trim();
-      const storeId = String(req.query.store_id || "").trim();
-      if (!code || !storeId) {
-        return res.status(400).send("Missing code or store_id.");
+      // En apps privadas, Tiendanube a veces NO envía store_id en el callback.
+      // Si viene, lo usamos; si no, lo obtendremos del response del token exchange.
+      const storeIdFromQuery = String(req.query.store_id || "").trim();
+      if (!code) {
+        return res.status(400).send("Missing code.");
       }
 
       const redirectUri = getTiendanubeRedirectUri_();
@@ -166,12 +168,19 @@ exports.tnAuthCallback = onRequest(
         return res.status(400).json({ ok: false, error: payload || "Token exchange failed" });
       }
 
+      const storeId = String(payload.store_id || storeIdFromQuery || "").trim();
+      if (!storeId) {
+        console.error("tnAuthCallback: store_id missing", {payloadKeys: Object.keys(payload || {})});
+        return res.status(400).send("Missing store_id (no vino en callback ni en token response).");
+      }
+
       await db.collection("tn_stores").doc(storeId).set(
         {
           storeId,
           access_token: payload.access_token,
           scope: payload.scope || null,
           token_type: payload.token_type || "bearer",
+          user_id: payload.user_id ?? null,
           installedAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
@@ -207,21 +216,51 @@ const parseMonthRange = (monthInput = "") => {
   };
 };
 
-const resolveTiendanubeCredentials = (storeId) => {
+const _tnTokenCache = new Map();
+
+/**
+ * Obtiene access_token para Tiendanube.
+ * Prioridad:
+ *  1) Firestore: tn_stores/{storeId}.access_token (lo guarda tnAuthCallback)
+ *  2) Variables de entorno: TIENDANUBE_ACCESS_TOKEN_{storeId} o TIENDANUBE_ACCESS_TOKEN
+ */
+const resolveTiendanubeCredentials = async (storeId) => {
   const normalizedStoreId = String(storeId || "").trim();
   if (!normalizedStoreId) {
     throw buildBadRequestError("Falta query param storeId.");
   }
 
+  const now = Date.now();
+  const cached = _tnTokenCache.get(normalizedStoreId);
+  if (cached && cached.accessToken && cached.expiresAtMs > now) {
+    const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
+    return {storeId: normalizedStoreId, accessToken: cached.accessToken, apiVersion};
+  }
+
+  // 1) Firestore
+  try {
+    const snap = await db.collection("tn_stores").doc(normalizedStoreId).get();
+    const token = snap.exists ? String(snap.data()?.access_token || "").trim() : "";
+    if (token) {
+      _tnTokenCache.set(normalizedStoreId, {accessToken: token, expiresAtMs: now + 5 * 60 * 1000});
+      const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
+      return {storeId: normalizedStoreId, accessToken: token, apiVersion};
+    }
+  } catch (e) {
+    console.warn("resolveTiendanubeCredentials: no pude leer tn_stores", e);
+  }
+
+  // 2) Env vars (fallback)
   const envKey = `TIENDANUBE_ACCESS_TOKEN_${normalizedStoreId}`;
   const accessToken = String(process.env[envKey] || process.env.TIENDANUBE_ACCESS_TOKEN || "").trim();
   if (!accessToken) {
     throw buildBadRequestError(
-      `No encontré access token para Tiendanube. Configura ${envKey} o TIENDANUBE_ACCESS_TOKEN.`,
+      `No encontré access token para Tiendanube. Conecta la tienda (OAuth) o configura ${envKey} o TIENDANUBE_ACCESS_TOKEN.`,
       500
     );
   }
 
+  _tnTokenCache.set(normalizedStoreId, {accessToken, expiresAtMs: now + 5 * 60 * 1000});
   const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
   return {storeId: normalizedStoreId, accessToken, apiVersion};
 };
@@ -300,7 +339,7 @@ const mapSellerAssignments = async (orderIds = []) => {
 
 const buildSalesDataset = async ({storeId, month}) => {
   const {startIso, endIso} = parseMonthRange(month);
-  const credentials = resolveTiendanubeCredentials(storeId);
+  const credentials = await resolveTiendanubeCredentials(storeId);
   const paidOrders = await fetchPaidOrdersFromTiendanube({...credentials, startIso, endIso});
   const orderIds = paidOrders.map((order) => String(order.id || "").trim()).filter(Boolean);
   const assignmentMap = await mapSellerAssignments(orderIds);
