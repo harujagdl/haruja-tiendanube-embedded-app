@@ -250,6 +250,68 @@
         color: #dc2626;
       }
 
+      .fatal-ui-banner {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        z-index: 10000;
+        width: min(520px, calc(100vw - 24px));
+        background: #fff7ed;
+        color: #7c2d12;
+        border: 1px solid #fdba74;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 12px;
+      }
+
+      .fatal-ui-banner h3 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+
+      .fatal-ui-banner p {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+
+      .fatal-ui-banner .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .fatal-ui-banner button,
+      .fatal-ui-banner a {
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 8px 12px;
+      }
+
+      .fatal-ui-banner a {
+        background: #1f6feb;
+        color: white;
+        text-decoration: none;
+      }
+
+      .debug-panel {
+        position: fixed;
+        left: 12px;
+        bottom: 12px;
+        z-index: 9999;
+        width: min(360px, calc(100vw - 24px));
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+        line-height: 1.4;
+        border: 1px solid #334155;
+      }
+
+      .debug-panel strong {
+        color: #93c5fd;
+      }
+
       .result-card {
         margin-top: 16px;
         padding: 16px;
@@ -2129,6 +2191,7 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
       const googleProvider = new GoogleAuthProvider();
+      const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
       const isEmbeddedApp = (() => {
         try {
           return window.self !== window.top;
@@ -2136,6 +2199,102 @@ const auth = getAuth(app);
           return true;
         }
       })();
+      const safeStorageAccessEnabled = !isEmbeddedApp;
+      const debugState = {
+        snapshotSizes: {},
+        lastError: null
+      };
+      const debugLog = (...args) => {
+        if (debugMode) {
+          console.log("[DEBUG]", ...args);
+        }
+      };
+      const safeStorageGet = (storage, key, fallback = "") => {
+        if (!safeStorageAccessEnabled || !storage) return fallback;
+        try {
+          return storage.getItem(key) ?? fallback;
+        } catch (error) {
+          console.warn("[Storage] getItem falló", key, error);
+          return fallback;
+        }
+      };
+      const safeStorageSet = (storage, key, value) => {
+        if (!safeStorageAccessEnabled || !storage) return false;
+        try {
+          storage.setItem(key, value);
+          return true;
+        } catch (error) {
+          console.warn("[Storage] setItem falló", key, error);
+          return false;
+        }
+      };
+      const toSerializableError = (error) => ({
+        name: error?.name,
+        message: error?.message || String(error || ""),
+        stack: error?.stack
+      });
+      const updateDebugPanel = () => {
+        if (!debugMode) return;
+        const panel = document.getElementById("debug-panel");
+        if (!panel) return;
+        panel.innerHTML = `
+          <div><strong>Debug</strong></div>
+          <div>embedded: ${String(isEmbeddedApp)}</div>
+          <div>route: ${window.location.hash || "#/panel"}</div>
+          <div>snapshot sizes: ${JSON.stringify(debugState.snapshotSizes)}</div>
+          <div>último error: ${debugState.lastError ? JSON.stringify(debugState.lastError) : "none"}</div>
+        `;
+      };
+      const captureFatalError = (details) => {
+        window.__LAST_FATAL_ERROR__ = details;
+        debugState.lastError = details;
+        updateDebugPanel();
+      };
+      const copyFatalDetails = async (fallbackError) => {
+        const details = window.__LAST_FATAL_ERROR__ || toSerializableError(fallbackError);
+        const text = JSON.stringify(details, null, 2);
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("Detalles copiados al portapapeles.");
+        } catch (error) {
+          console.error("No se pudo copiar el error", error);
+          alert(text);
+        }
+      };
+      const handleFatalUiError = (error, info = {}) => {
+        console.error("FATAL UI ERROR", error, info);
+        renderFatalUiBanner(error, info);
+      };
+      const renderFatalUiBanner = (error, info = {}) => {
+        const normalized = toSerializableError(error);
+        const details = window.__LAST_FATAL_ERROR__ || { ...normalized, info };
+        const detailsText = `${details.message || normalized.message || "Error"}`;
+        const isPrendasError = /prendas|loadprendas|listado/i.test(
+          `${detailsText} ${details.stack || ""} ${info?.componentStack || ""}`
+        );
+        if (isPrendasError) {
+          setPrendasAlert("Se degradó el módulo de Prendas por un error. Puedes seguir usando el resto del panel.");
+          return;
+        }
+        let banner = document.getElementById("fatal-ui-banner");
+        if (!banner) {
+          banner = document.createElement("section");
+          banner.id = "fatal-ui-banner";
+          banner.className = "fatal-ui-banner";
+          document.body.appendChild(banner);
+        }
+        banner.innerHTML = `
+          <h3>Ocurrió un error en la UI</h3>
+          <p>${detailsText}</p>
+          <div class="actions">
+            <button type="button" id="fatal-copy-details">Copiar detalles</button>
+            <a href="https://paneltb.harujagdl.com/#/panel" target="_blank" rel="noopener noreferrer">Abrir en pestaña nueva</a>
+          </div>
+        `;
+        const copyBtn = document.getElementById("fatal-copy-details");
+        copyBtn?.addEventListener("click", () => copyFatalDetails(error));
+      };
+      window.__LAST_FATAL_ERROR__ = null;
       const authRedirectResultPromise = getRedirectResult(auth)
         .then((result) => result?.user || null)
         .catch((error) => {
@@ -2168,11 +2327,33 @@ const auth = getAuth(app);
       }
 
       window.addEventListener("unhandledrejection", (event) => {
-        console.error("Unhandled rejection:", event.reason);
+        const details = {
+          type: "unhandledrejection",
+          reason: event?.reason,
+          message: event?.reason?.message || String(event?.reason || "Unhandled rejection"),
+          stack: event?.reason?.stack
+        };
+        console.error("Unhandled rejection:", details);
+        captureFatalError(details);
+        handleFatalUiError(event?.reason, { source: "unhandledrejection" });
       });
 
       window.addEventListener("error", (event) => {
-        console.error("Window error:", event.error || event.message);
+        const details = {
+          type: "error",
+          message: event?.message,
+          filename: event?.filename,
+          lineno: event?.lineno,
+          colno: event?.colno,
+          stack: event?.error?.stack
+        };
+        console.error("Window error:", details);
+        captureFatalError(details);
+        handleFatalUiError(event?.error, {
+          filename: event?.filename,
+          lineno: event?.lineno,
+          colno: event?.colno
+        });
       });
 
       const COL_PRENDAS_PUBLIC = "HarujaPrendas_2025_public";
@@ -2310,10 +2491,12 @@ const auth = getAuth(app);
       window.addEventListener("popstate", (event) => {
         const view = event.state?.view || getViewFromUrl();
         setView(view);
+        updateDebugPanel();
       });
 
       window.addEventListener("hashchange", () => {
         setView(getViewFromUrl());
+        updateDebugPanel();
       });
 
       const btnOpenRegistro = document.getElementById("btnOpenRegistro");
@@ -2334,12 +2517,19 @@ const auth = getAuth(app);
       const resolveSalesContext = () => {
         const query = new URLSearchParams(window.location.search);
         const month = query.get("month") || new Date().toISOString().slice(0, 7);
-        const storeId = query.get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
+        const storeId = query.get("storeId") || safeStorageGet(window.localStorage, "haruja_tn_store_id", "") || "";
         return {month, storeId};
       };
 
       const loadSalesMiniDashboard = async () => {
         if (!salesMiniTotal || !salesMiniTopSeller || !salesMiniUnassigned) return;
+        if (isEmbeddedApp) {
+          salesMiniTotal.textContent = "Modo embed";
+          salesMiniTopSeller.textContent = "—";
+          salesMiniUnassigned.textContent = "—";
+          debugLog("sales mini omitido en embed");
+          return;
+        }
         const {month, storeId} = resolveSalesContext();
         if (!storeId) {
           salesMiniTotal.textContent = "Configura storeId";
@@ -2900,7 +3090,7 @@ const auth = getAuth(app);
         if (prendasState.dictsLoaded) {
           return prendasState.dicts;
         }
-        const cached = localStorage.getItem(DICTS_CACHE_KEY);
+        const cached = safeStorageGet(window.localStorage, DICTS_CACHE_KEY, "");
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
@@ -2975,7 +3165,8 @@ const auth = getAuth(app);
         prendasState.dicts.tallas =
           results.find((result) => result.category === "tallas")?.values ?? [];
         prendasState.dictsLoaded = true;
-        localStorage.setItem(
+        safeStorageSet(
+          window.localStorage,
           DICTS_CACHE_KEY,
           JSON.stringify({ version: "2", dicts: prendasState.dicts })
         );
@@ -3466,7 +3657,7 @@ const auth = getAuth(app);
 
           if (token === ":") {
             cursor += 1;
-            if (!rows.length) {
+            if (!safeRows.length) {
               throw new Error("Token ':' sin fila previa en GFA");
             }
             for (let i = 0; i < repeat; i += 1) {
@@ -3549,7 +3740,7 @@ const auth = getAuth(app);
         };
       })();
 
-      const LABEL_ZPL_DEBUG = window.localStorage.getItem("label-zpl-debug") === "1";
+      const LABEL_ZPL_DEBUG = safeStorageGet(window.localStorage, "label-zpl-debug", "0") === "1";
 
       
 const buildLabelZpl = ({ sku, price, qty = 1 }) => {
@@ -3650,7 +3841,7 @@ return `<!doctype html>
 
       const openPrintLabels = (scope = "page") => {
         const rows = getRowsForScope(scope);
-        if (!rows.length) {
+        if (!safeRows.length) {
           setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
           return;
         }
@@ -4007,15 +4198,15 @@ return `<!doctype html>
 
       const persistSort = (sort) => {
         try {
-          localStorage.setItem(PRENDAS_SORT_KEY_STORAGE, sort.key);
-          localStorage.setItem(PRENDAS_SORT_DIR_STORAGE, sort.dir);
+          safeStorageSet(window.localStorage, PRENDAS_SORT_KEY_STORAGE, sort.key);
+          safeStorageSet(window.localStorage, PRENDAS_SORT_DIR_STORAGE, sort.dir);
         } catch (_) {}
       };
 
       const restorePersistedSort = () => {
         try {
-          const key = localStorage.getItem(PRENDAS_SORT_KEY_STORAGE);
-          const dir = localStorage.getItem(PRENDAS_SORT_DIR_STORAGE);
+          const key = safeStorageGet(window.localStorage, PRENDAS_SORT_KEY_STORAGE, "");
+          const dir = safeStorageGet(window.localStorage, PRENDAS_SORT_DIR_STORAGE, "");
           return normalizeSortConfig({ key, dir });
         } catch (_) {
           return { ...DEFAULT_PRENDAS_SORT };
@@ -4073,6 +4264,7 @@ return `<!doctype html>
       };
 
       const applyAllFilters = (rows) => {
+        const safeRows = Array.isArray(rows) ? rows : [];
         const globalFilters = getCurrentGlobalFilters();
         prendasState.filters.global = globalFilters;
         const hasPrice = (row) => {
@@ -4081,9 +4273,9 @@ return `<!doctype html>
           const n = Number(p);
           return Number.isFinite(n) && n > 0;
         };
-        let rowsAfterNoPrice = rows;
+        let rowsAfterNoPrice = safeRows;
         if (!globalFilters.includeNoPrice) {
-          rowsAfterNoPrice = rows.filter(hasPrice);
+          rowsAfterNoPrice = safeRows.filter(hasPrice);
         }
         console.log(
           "[Prendas] incluirSinPrecio:",
@@ -4113,8 +4305,9 @@ return `<!doctype html>
       };
 
       const getUniqueOptions = (rows, key) => {
+        const safeRows = Array.isArray(rows) ? rows : [];
         const set = new Set();
-        rows.forEach((row) => {
+        safeRows.forEach((row) => {
           const value = safeString(row[key]).trim();
           if (value) set.add(value);
         });
@@ -4545,6 +4738,8 @@ return `<!doctype html>
             }
 
             console.log("[Panel] snapshot size:", snap.size);
+            debugState.snapshotSizes.baseQuery = snap.size;
+            updateDebugPanel();
             if (snap.empty) {
               hasMore = false;
               break;
@@ -4657,21 +4852,23 @@ return `<!doctype html>
             renderLoadingPlaceholder();
           }
           const baseRows = await loadBaseRows();
-          console.log("[Prendas] baseRows:", baseRows.length);
-          const rowsAfterAll = applyAllFilters(baseRows);
+          const rows = Array.isArray(baseRows) ? baseRows : [];
+          console.log("[Prendas] baseRows:", rows.length);
+          const rowsAfterAll = applyAllFilters(rows);
           HEADER_FILTER_KEYS.forEach((key) => {
             prendasState.uniqueOptions[key] = getUniqueOptions(prendasState.rowsAfterGlobal, key);
           });
           updateHeaderFilterButtonsState();
           const pageSize = getPageSize();
-          const totalRows = rowsAfterAll.length;
+          const totalRows = Array.isArray(rowsAfterAll) ? rowsAfterAll.length : 0;
           const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
           const requestedPageIndex = Number.isFinite(Number(pageIndex))
             ? Number(pageIndex)
             : prendasState.pageIndex;
           const safePageIndex = Math.min(Math.max(requestedPageIndex, 0), totalPages - 1);
           const start = safePageIndex * pageSize;
-          const items = rowsAfterAll.slice(start, start + pageSize);
+          const safeRowsAfterAll = Array.isArray(rowsAfterAll) ? rowsAfterAll : [];
+          const items = safeRowsAfterAll.slice(start, start + pageSize);
 
           prendasState.filtered = items;
 
@@ -4683,7 +4880,7 @@ return `<!doctype html>
           prendasState.showingTotal = totalRows;
 
           await renderDocs(items);
-          refreshExactCounts(rowsAfterAll);
+          refreshExactCounts(safeRowsAfterAll);
 
           if (prendasState.filtersActive && !items.length) {
             setPrendasAlert("No hay resultados con los filtros actuales.");
@@ -5101,16 +5298,17 @@ return `<!doctype html>
       };
 
       const renderDocs = async (rows) => {
+        const safeRows = Array.isArray(rows) ? rows : [];
         prendasState.renderToken += 1;
         const token = prendasState.renderToken;
         const showingTotal = Number.isFinite(prendasState.showingTotal)
           ? prendasState.showingTotal
           : null;
-        setCounter(rows.length, showingTotal);
+        setCounter(safeRows.length, showingTotal);
         updatePaginationUi();
 
         prendasTbody.textContent = "";
-        if (!rows.length) {
+        if (!safeRows.length) {
           let emptyNode = null;
           if (prendasEmptyRow) {
             emptyNode = prendasEmptyRow instanceof HTMLTemplateElement
@@ -5121,7 +5319,7 @@ return `<!doctype html>
             const emptyRow = document.createElement("tr");
             const cell = document.createElement("td");
             cell.colSpan = 17;
-            cell.textContent = "No hay resultados con los filtros actuales.";
+            cell.textContent = "Sin resultados";
             emptyRow.appendChild(cell);
             emptyNode = emptyRow;
           }
@@ -5130,7 +5328,7 @@ return `<!doctype html>
           updateSelectAllCheckbox();
           return;
         }
-        await renderRowsChunked(rows, prendasTbody, PRENDAS_RENDER_CHUNK, token);
+        await renderRowsChunked(safeRows, prendasTbody, PRENDAS_RENDER_CHUNK, token);
         updateSelectAllCheckbox();
       };
 
@@ -5757,7 +5955,7 @@ return `<!doctype html>
         ADMIN_ALLOWLIST.has(safeString(email).trim().toLowerCase());
 
       const getAdminViewEnabled = () =>
-        sessionStorage.getItem(ADMIN_VIEW_KEY) === "1";
+        safeStorageGet(window.sessionStorage, ADMIN_VIEW_KEY, "0") === "1";
 
       const isAdminAuthenticated = () => prendasState.adminByAuth === true;
       const isAdminViewEnabled = () => getAdminViewEnabled() === true && isAdminAuthenticated();
@@ -5772,7 +5970,7 @@ return `<!doctype html>
         // Solo permitir modo admin si el usuario está autenticado y en allowlist
         const adminByAuth = Boolean(prendasState.adminByAuth);
         const finalEnabled = adminByAuth ? Boolean(enabled) : false;
-        sessionStorage.setItem(ADMIN_VIEW_KEY, finalEnabled ? "1" : "0");
+        safeStorageSet(window.sessionStorage, ADMIN_VIEW_KEY, finalEnabled ? "1" : "0");
         document.body.classList.toggle("is-admin", finalEnabled);
       };
 
@@ -6321,6 +6519,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
 
       const init = async () => {
         isBooting = true;
+        debugLog("inicio app");
         resetPrendasState();
         updateOrdenSortToggleUi();
         resetCounters();
@@ -6331,6 +6530,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           if (isEmbeddedApp) {
             setAdminLoginStatus("Conectando...", "warning");
           }
+          debugLog("init firebase/auth");
           const redirectUser = await authRedirectResultPromise;
           if (redirectUser) {
             const email = safeString(redirectUser?.email).trim().toLowerCase();
@@ -6350,6 +6550,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           setSelectLoading(registroColor, "Cargando...");
           setSelectLoading(registroTalla, "Cargando...");
 
+          debugLog("cargando diccionario");
           const dictionary = await loadDictionary();
           const dictionaryReady = !dictionary.empty && dictionary.missing.length === 0;
           if (dictionary.empty) {
@@ -6432,12 +6633,15 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           });
 
           try {
+            debugLog("fetch prendas base");
             const baseSnapshot = await getDocs(query(prendasPublicRef, limit(10)));
             console.log("[Prendas] Base query (sin filtros) docs", {
               collection: activePrendasPublicCollection,
               docs: baseSnapshot.size
             });
             console.log("[Prendas] snapshot size:", baseSnapshot.size);
+            debugState.snapshotSizes.initProbe = baseSnapshot.size;
+            updateDebugPanel();
             if (baseSnapshot.empty) {
               setPrendasAlert("Aún no se ha migrado la colección public. Entra a Admin y corre ‘Migrar a public/admin’.");
             }
@@ -6462,6 +6666,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           try {
             console.log("query filters", getCurrentFilters());
             console.log("baseRows", prendasState.baseRows?.length ?? 0, "filtered", prendasState.filtered?.length ?? 0);
+            debugLog("render routes/prendas init");
             await loadPrendasPage({ reset: true, reason: "init" });
             console.log("baseRows", prendasState.baseRows?.length ?? 0, "filtered", prendasState.filtered?.length ?? 0);
           } finally {
@@ -6483,9 +6688,16 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
       };
 
       document.addEventListener("DOMContentLoaded", () => {
+        if (debugMode) {
+          const panel = document.createElement("aside");
+          panel.id = "debug-panel";
+          panel.className = "debug-panel";
+          document.body.appendChild(panel);
+        }
         setupClarity();
         init();
         navigateTo(getViewFromUrl(), { replace: true });
+        updateDebugPanel();
       });
     </script>
   </body>
