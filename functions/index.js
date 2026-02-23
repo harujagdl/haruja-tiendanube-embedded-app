@@ -1,6 +1,7 @@
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
+const {defineSecret} = require("firebase-functions/params");
 const {admin, db} = require("./firebaseAdmin");
 const {randomUUID} = require("crypto");
 const {v4: uuidv4} = require("uuid");
@@ -64,6 +65,126 @@ const STOPWORDS = new Set([
 ]);
 const adminSessions = new Map();
 const ORDER_SELLER_COLLECTION = "order_seller";
+
+/**
+ * =========================
+ *  TIENDANUBE OAUTH (APP PRIVADA - HARUJA)
+ * =========================
+ * Requiere secrets en Firebase Secret Manager:
+ * - TIENDANUBE_CLIENT_ID  (App ID)
+ * - TIENDANUBE_CLIENT_SECRET
+ *
+ * Configura en Partners (URLs):
+ * - URL para redirigir después de la instalación:
+ *   https://us-central1-haruja-tiendanube.cloudfunctions.net/tnAuthCallback
+ */
+const TIENDANUBE_CLIENT_ID = defineSecret("TIENDANUBE_CLIENT_ID");
+const TIENDANUBE_CLIENT_SECRET = defineSecret("TIENDANUBE_CLIENT_SECRET");
+
+function getProjectId_() {
+  try {
+    if (process.env.GCLOUD_PROJECT) return String(process.env.GCLOUD_PROJECT);
+    if (process.env.GCP_PROJECT) return String(process.env.GCP_PROJECT);
+    if (process.env.FIREBASE_CONFIG) {
+      const cfg = JSON.parse(String(process.env.FIREBASE_CONFIG));
+      if (cfg && cfg.projectId) return String(cfg.projectId);
+    }
+  } catch (_e) {}
+  return "haruja-tiendanube";
+}
+
+function getTiendanubeRedirectUri_() {
+  const projectId = getProjectId_();
+  return `https://us-central1-${projectId}.cloudfunctions.net/tnAuthCallback`;
+}
+
+/**
+ * GET /tnAuthStart
+ * Inicia autorización. Para app privada no pedimos store_id;
+ * Tiendanube manda store_id en el callback.
+ */
+exports.tnAuthStart = onRequest(
+  { ...RUNTIME_OPTS, secrets: [TIENDANUBE_CLIENT_ID] },
+  async (req, res) => {
+    try {
+      const clientId = String(TIENDANUBE_CLIENT_ID.value() || "").trim();
+      if (!clientId) {
+        return res.status(500).send("Missing TIENDANUBE_CLIENT_ID secret.");
+      }
+
+      const redirectUri = getTiendanubeRedirectUri_();
+      const authUrl =
+        `https://www.tiendanube.com/apps/${encodeURIComponent(clientId)}/authorize` +
+        `?redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+      return res.redirect(authUrl);
+    } catch (err) {
+      console.error("tnAuthStart error", err);
+      return res.status(500).send("Error iniciando OAuth.");
+    }
+  }
+);
+
+/**
+ * GET /tnAuthCallback?code=...&store_id=...
+ * Intercambia code -> access_token y lo guarda en Firestore:
+ * tn_stores/{storeId}
+ */
+exports.tnAuthCallback = onRequest(
+  { ...RUNTIME_OPTS, secrets: [TIENDANUBE_CLIENT_ID, TIENDANUBE_CLIENT_SECRET] },
+  async (req, res) => {
+    try {
+      const clientId = String(TIENDANUBE_CLIENT_ID.value() || "").trim();
+      const clientSecret = String(TIENDANUBE_CLIENT_SECRET.value() || "").trim();
+      if (!clientId || !clientSecret) {
+        return res.status(500).send("Missing TIENDANUBE_CLIENT_ID / TIENDANUBE_CLIENT_SECRET secrets.");
+      }
+
+      const code = String(req.query.code || "").trim();
+      const storeId = String(req.query.store_id || "").trim();
+      if (!code || !storeId) {
+        return res.status(400).send("Missing code or store_id.");
+      }
+
+      const redirectUri = getTiendanubeRedirectUri_();
+
+      const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: Number(clientId),
+          client_secret: clientSecret,
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+
+      const payload = await tokenRes.json().catch(() => ({}));
+      if (!tokenRes.ok || !payload?.access_token) {
+        console.error("tnAuthCallback token exchange failed", {status: tokenRes.status, payload});
+        return res.status(400).json({ ok: false, error: payload || "Token exchange failed" });
+      }
+
+      await db.collection("tn_stores").doc(storeId).set(
+        {
+          storeId,
+          access_token: payload.access_token,
+          scope: payload.scope || null,
+          token_type: payload.token_type || "bearer",
+          installedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return res.status(200).send("✅ Tiendanube conectado. Ya puedes cerrar esta ventana.");
+    } catch (err) {
+      console.error("tnAuthCallback error", err);
+      return res.status(500).send("Error procesando OAuth callback.");
+    }
+  }
+);
 
 const parseMonthRange = (monthInput = "") => {
   const raw = String(monthInput || "").trim();
