@@ -32,7 +32,7 @@
         "headers": [
           {
             "key": "Content-Security-Policy",
-            "value": "frame-ancestors 'self' https://*.tiendanube.com https://tiendanube.com https://admin.tiendanube.com https://www.tiendanube.com;"
+            "value": "frame-ancestors 'self' https://*.tiendanube.com https://tiendanube.com https://www.tiendanube.com https://admin.tiendanube.com https://*.mitiendanube.com https://mitiendanube.com https://admin.mitiendanube.com https://*.nuvemshop.com https://nuvemshop.com https://admin.nuvemshop.com;"
           }
         ]
       },
