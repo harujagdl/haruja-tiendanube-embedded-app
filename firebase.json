@@ -56,6 +56,10 @@
         "destination": "/lealtad/index.html"
       },
       {
+        "source": "/dashboard/**",
+        "function": "api"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

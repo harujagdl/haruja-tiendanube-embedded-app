@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ventas & Comisiones | Haruja</title>
+  <style>
+    body{font-family:Inter,Segoe UI,system-ui,sans-serif;margin:0;background:#f6f7fb;color:#111827}
+    .wrap{max-width:1100px;margin:0 auto;padding:20px}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:16px;margin-bottom:14px}
+    .top{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+    label{font-size:12px;color:#6b7280;display:block;margin-bottom:6px}
+    input,button,select{padding:10px 12px;border-radius:10px;border:1px solid #d1d5db;font-size:14px}
+    button{background:#2563eb;border:none;color:#fff;font-weight:700;cursor:pointer}
+    button.secondary{background:#e5e7eb;color:#111827}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:left;vertical-align:middle}
+    .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .kpi{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
+    .kpi small{display:block;color:#6b7280;font-size:11px}
+    .kpi strong{font-size:16px}
+    .status{font-size:13px;color:#6b7280;min-height:20px}
+    @media (max-width:900px){.summary{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <a href="/" style="text-decoration:none">← Volver al panel</a>
+      <h1 style="margin:8px 0">Ventas &amp; Comisiones</h1>
+      <div class="top">
+        <div>
+          <label for="storeId">Store ID Tiendanube</label>
+          <input id="storeId" placeholder="Ej. 123456" />
+        </div>
+        <div>
+          <label for="month">Mes</label>
+          <input id="month" type="month" />
+        </div>
+        <button id="btnLoad">Actualizar</button>
+        <button id="btnExport" class="secondary">Export CSV</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card summary">
+      <div class="kpi"><small>Total del mes</small><strong id="kpiTotal">—</strong></div>
+      <div class="kpi"><small>Total por vendedora</small><strong id="kpiSellers">—</strong></div>
+      <div class="kpi"><small>Sin asignar</small><strong id="kpiUnassigned">—</strong></div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Order ID</th>
+            <th>Cliente</th>
+            <th>Total pagado</th>
+            <th>Estado</th>
+            <th>Vendedora</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const moneyMx = new Intl.NumberFormat("es-MX", {style:"currency", currency:"MXN"});
+    const sellers = ["Yami", "Nora", "Andrea", "Karla", "Majo"];
+
+    const storeIdInput = document.getElementById("storeId");
+    const monthInput = document.getElementById("month");
+    const statusEl = document.getElementById("status");
+    const tbody = document.getElementById("tbody");
+    const kpiTotal = document.getElementById("kpiTotal");
+    const kpiSellers = document.getElementById("kpiSellers");
+    const kpiUnassigned = document.getElementById("kpiUnassigned");
+
+    const todayMonth = new Date().toISOString().slice(0,7);
+    monthInput.value = new URLSearchParams(location.search).get("month") || todayMonth;
+    storeIdInput.value = new URLSearchParams(location.search).get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
+
+    const setStatus = (msg) => statusEl.textContent = msg || "";
+
+    const sellerSelect = (selected="") => {
+      const options = ["", ...sellers].map((name) => `<option value="${name}" ${name===selected?"selected":""}>${name || "Sin asignar"}</option>`).join("");
+      return `<select data-seller>${options}</select>`;
+    };
+
+    const loadData = async () => {
+      const storeId = storeIdInput.value.trim();
+      const month = monthInput.value;
+      if (!storeId) return setStatus("Ingresa storeId para consultar ventas.");
+      localStorage.setItem("haruja_tn_store_id", storeId);
+      setStatus("Cargando ventas...");
+      tbody.innerHTML = "";
+
+      try {
+        const url = new URL("/dashboard/sales-details", location.origin);
+        url.searchParams.set("storeId", storeId);
+        url.searchParams.set("month", month);
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error(await response.text());
+        const payload = await response.json();
+
+        kpiTotal.textContent = moneyMx.format(payload.totalMes || 0);
+        kpiUnassigned.textContent = moneyMx.format(payload.totalSinAsignar || 0);
+        kpiSellers.textContent = (payload.totalPorVendedora || [])
+          .map((r) => `${r.seller}: ${moneyMx.format(r.total || 0)}`)
+          .join(" · ") || "Sin asignaciones";
+
+        const rows = payload.orders || [];
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="6">No hay ventas pagadas para este mes.</td></tr>';
+        } else {
+          tbody.innerHTML = rows.map((row) => `
+            <tr data-order-id="${row.orderId}">
+              <td>${new Date(row.fecha).toLocaleDateString("es-MX")}</td>
+              <td>${row.orderId}</td>
+              <td>${row.cliente || "—"}</td>
+              <td>${moneyMx.format(row.totalPagado || 0)}</td>
+              <td>${row.estado || "—"}</td>
+              <td>${sellerSelect(row.seller || "")}</td>
+            </tr>
+          `).join("");
+        }
+
+        setStatus(`Listo. ${rows.length} pedidos cargados.`);
+      } catch (error) {
+        console.error(error);
+        setStatus(`Error al cargar ventas: ${error.message}`);
+      }
+    };
+
+    tbody.addEventListener("change", async (event) => {
+      const select = event.target.closest("select[data-seller]");
+      if (!select) return;
+      const tr = event.target.closest("tr[data-order-id]");
+      if (!tr) return;
+      const orderId = tr.dataset.orderId;
+      const seller = select.value;
+
+      try {
+        const response = await fetch("/dashboard/order-seller", {
+          method: "PATCH",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({orderId, seller})
+        });
+        if (!response.ok) throw new Error(await response.text());
+        setStatus(`Asignación guardada para orden ${orderId}.`);
+      } catch (error) {
+        console.error(error);
+        setStatus(`No se pudo guardar orden ${orderId}: ${error.message}`);
+      }
+    });
+
+    document.getElementById("btnLoad").addEventListener("click", loadData);
+    document.getElementById("btnExport").addEventListener("click", () => {
+      const storeId = storeIdInput.value.trim();
+      const month = monthInput.value;
+      if (!storeId) return setStatus("Ingresa storeId para exportar CSV.");
+      const url = new URL("/dashboard/sales-export.csv", location.origin);
+      url.searchParams.set("storeId", storeId);
+      url.searchParams.set("month", month);
+      window.open(url.toString(), "_blank");
+    });
+
+    loadData();
+  </script>
+</body>
+</html>

@@ -65,6 +65,178 @@ const STOPWORDS = new Set([
   "una"
 ]);
 const adminSessions = new Map();
+const ORDER_SELLER_COLLECTION = "order_seller";
+
+const parseMonthRange = (monthInput = "") => {
+  const raw = String(monthInput || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(raw)) {
+    throw buildBadRequestError("Parámetro month inválido. Usa formato YYYY-MM.");
+  }
+  const [yearStr, monthStr] = raw.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw buildBadRequestError("Parámetro month inválido. Usa formato YYYY-MM.");
+  }
+
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0));
+  return {
+    month: raw,
+    startIso: start.toISOString(),
+    endIso: end.toISOString()
+  };
+};
+
+const resolveTiendanubeCredentials = (storeId) => {
+  const normalizedStoreId = String(storeId || "").trim();
+  if (!normalizedStoreId) {
+    throw buildBadRequestError("Falta query param storeId.");
+  }
+
+  const envKey = `TIENDANUBE_ACCESS_TOKEN_${normalizedStoreId}`;
+  const accessToken = String(process.env[envKey] || process.env.TIENDANUBE_ACCESS_TOKEN || "").trim();
+  if (!accessToken) {
+    throw buildBadRequestError(
+      `No encontré access token para Tiendanube. Configura ${envKey} o TIENDANUBE_ACCESS_TOKEN.`,
+      500
+    );
+  }
+
+  const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
+  return {storeId: normalizedStoreId, accessToken, apiVersion};
+};
+
+const normalizeMoneyAmount = (rawAmount, fallback = 0) => {
+  const parsed = Number(rawAmount);
+  if (Number.isFinite(parsed)) return parsed;
+  return Number(fallback) || 0;
+};
+
+const fetchPaidOrdersFromTiendanube = async ({storeId, accessToken, apiVersion, startIso, endIso}) => {
+  const orders = [];
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const url = new URL(`https://api.tiendanube.com/v1/${storeId}/orders`);
+    url.searchParams.set("per_page", String(perPage));
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("created_at_min", startIso);
+    url.searchParams.set("created_at_max", endIso);
+    url.searchParams.set("payment_status", "paid");
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authentication: `bearer ${accessToken}`,
+        "User-Agent": "Haruja (harujagdl@gmail.com)",
+        "Content-Type": "application/json",
+        "X-Api-Version": apiVersion
+      }
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw buildBadRequestError(`Error Tiendanube (${response.status}): ${body || "sin detalle"}`, 502);
+    }
+
+    const payload = await response.json();
+    if (!Array.isArray(payload) || !payload.length) break;
+
+    for (const order of payload) {
+      if (!order || order.payment_status !== "paid") continue;
+      orders.push(order);
+    }
+
+    if (payload.length < perPage) break;
+    page += 1;
+  }
+
+  return orders;
+};
+
+const mapSellerAssignments = async (orderIds = []) => {
+  const assignments = new Map();
+  if (!orderIds.length) return assignments;
+
+  const chunks = [];
+  for (let i = 0; i < orderIds.length; i += 30) {
+    chunks.push(orderIds.slice(i, i + 30));
+  }
+
+  for (const chunk of chunks) {
+    const snapshot = await db.collection(ORDER_SELLER_COLLECTION)
+      .where(admin.firestore.FieldPath.documentId(), "in", chunk)
+      .get();
+    snapshot.forEach((doc) => {
+      const data = doc.data() || {};
+      const seller = String(data.seller || "").trim();
+      if (seller) assignments.set(doc.id, seller);
+    });
+  }
+
+  return assignments;
+};
+
+const buildSalesDataset = async ({storeId, month}) => {
+  const {startIso, endIso} = parseMonthRange(month);
+  const credentials = resolveTiendanubeCredentials(storeId);
+  const paidOrders = await fetchPaidOrdersFromTiendanube({...credentials, startIso, endIso});
+  const orderIds = paidOrders.map((order) => String(order.id || "").trim()).filter(Boolean);
+  const assignmentMap = await mapSellerAssignments(orderIds);
+
+  const totalsBySeller = {};
+  let totalMes = 0;
+  let totalSinAsignar = 0;
+
+  const orders = paidOrders.map((order) => {
+    const orderId = String(order.id || "").trim();
+    const total = normalizeMoneyAmount(order.total, order.total_paid);
+    const seller = assignmentMap.get(orderId) || "";
+    const customerName = [order?.customer?.name, order?.customer?.last_name]
+      .filter((value) => !!String(value || "").trim())
+      .join(" ")
+      .trim() || String(order?.customer?.name || "Cliente");
+
+    totalMes += total;
+    if (seller) {
+      totalsBySeller[seller] = (totalsBySeller[seller] || 0) + total;
+    } else {
+      totalSinAsignar += total;
+    }
+
+    return {
+      orderId,
+      fecha: String(order.completed_at || order.created_at || ""),
+      cliente: customerName,
+      totalPagado: Number(total.toFixed(2)),
+      estado: String(order.payment_status || ""),
+      seller
+    };
+  });
+
+  const totalPorVendedora = Object.entries(totalsBySeller)
+    .sort((a, b) => b[1] - a[1])
+    .map(([seller, total]) => ({seller, total: Number(total.toFixed(2))}));
+
+  return {
+    month,
+    storeId: String(storeId),
+    totalMes: Number(totalMes.toFixed(2)),
+    totalSinAsignar: Number(totalSinAsignar.toFixed(2)),
+    totalPorVendedora,
+    orders
+  };
+};
+
+const toCsvEscaped = (value) => {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+  return text;
+};
 
 const safeDocId = (val) =>
   String(val ?? "")
@@ -1698,6 +1870,87 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       }
       const response = await loyalty.backfillQrLinks(req, db);
       res.status(200).json(response);
+      return;
+    }
+
+    if ((path === "/api/dashboard/sales-summary" || path === "/dashboard/sales-summary") && req.method === "GET") {
+      const storeId = String(req.query?.storeId || "").trim();
+      const month = String(req.query?.month || "").trim();
+      const summary = await buildSalesDataset({storeId, month});
+      res.status(200).json({
+        ok: true,
+        month: summary.month,
+        storeId: summary.storeId,
+        totalMes: summary.totalMes,
+        totalSinAsignar: summary.totalSinAsignar,
+        totalPorVendedora: summary.totalPorVendedora
+      });
+      return;
+    }
+
+    if ((path === "/api/dashboard/sales-details" || path === "/dashboard/sales-details") && req.method === "GET") {
+      const storeId = String(req.query?.storeId || "").trim();
+      const month = String(req.query?.month || "").trim();
+      const summary = await buildSalesDataset({storeId, month});
+      res.status(200).json({
+        ok: true,
+        month: summary.month,
+        storeId: summary.storeId,
+        orders: summary.orders,
+        totalMes: summary.totalMes,
+        totalSinAsignar: summary.totalSinAsignar,
+        totalPorVendedora: summary.totalPorVendedora
+      });
+      return;
+    }
+
+    if ((path === "/api/dashboard/sales-export.csv" || path === "/dashboard/sales-export.csv") && req.method === "GET") {
+      const storeId = String(req.query?.storeId || "").trim();
+      const month = String(req.query?.month || "").trim();
+      const summary = await buildSalesDataset({storeId, month});
+      const orderCounts = {};
+      for (const order of summary.orders) {
+        const sellerKey = String(order.seller || "").trim() || "Sin asignar";
+        orderCounts[sellerKey] = (orderCounts[sellerKey] || 0) + 1;
+      }
+
+      const rows = [];
+      rows.push(["seller", "total vendido", "numero pedidos", "ticket promedio"]);
+
+      const sellers = new Set(summary.totalPorVendedora.map((item) => item.seller));
+      if (summary.totalSinAsignar > 0) sellers.add("Sin asignar");
+
+      for (const seller of sellers) {
+        const total = seller === "Sin asignar"
+          ? summary.totalSinAsignar
+          : (summary.totalPorVendedora.find((item) => item.seller === seller)?.total || 0);
+        const count = orderCounts[seller] || 0;
+        const avg = count > 0 ? Number((total / count).toFixed(2)) : 0;
+        rows.push([seller, total.toFixed(2), String(count), avg.toFixed(2)]);
+      }
+
+      const csvContent = rows.map((row) => row.map(toCsvEscaped).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename=ventas-comisiones-${summary.month}.csv`);
+      res.status(200).send(csvContent);
+      return;
+    }
+
+    if ((path === "/api/dashboard/order-seller" || path === "/dashboard/order-seller") && req.method === "PATCH") {
+      const payload = parseJsonBody(req);
+      const orderId = String(payload?.orderId || "").trim();
+      const seller = String(payload?.seller || "").trim();
+      if (!orderId) {
+        res.status(400).json({ok: false, error: "orderId es obligatorio."});
+        return;
+      }
+
+      await db.collection(ORDER_SELLER_COLLECTION).doc(orderId).set({
+        seller,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, {merge: true});
+
+      res.status(200).json({ok: true, orderId, seller});
       return;
     }
 
