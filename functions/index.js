@@ -3,6 +3,8 @@ const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {defineSecret} = require("firebase-functions/params");
 const {admin, db} = require("./firebaseAdmin");
+
+const dbAdmin = admin.firestore();
 const {randomUUID} = require("crypto");
 const {v4: uuidv4} = require("uuid");
 const Busboy = require("busboy");
@@ -141,79 +143,32 @@ exports.tnAuthCallback = onRequest(
       }
 
       const code = String(req.query.code || "").trim();
-      if (!code) return res.status(400).send("Missing code.");
+      const storeId = String(req.query.store_id || "").trim();
+      if (!code || !storeId) {
+        return res.status(400).send("Missing code or store_id.");
+      }
 
       const redirectUri = getTiendanubeRedirectUri_();
 
-      // 1) Llamada a token endpoint con captura de errores + texto crudo
-      let tokenRes;
-      let rawText = "";
-      try {
-        tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-          },
-          body: JSON.stringify({
-            client_id: Number(clientId),
-            client_secret: clientSecret,
-            grant_type: "authorization_code",
-            code,
-            redirect_uri: redirectUri,
-          }),
-        });
+      const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: Number(clientId),
+          client_secret: clientSecret,
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
 
-        rawText = await tokenRes.text();
-      } catch (e) {
-        console.error("OAuth token fetch threw:", e);
-        return res.status(500).json({
-          ok: false,
-          step: "fetch_token",
-          message: String(e?.message || e),
-        });
-      }
-
-      // 2) Parse JSON (si falla, te lo mostramos)
-      let payload = {};
-      try {
-        payload = rawText ? JSON.parse(rawText) : {};
-      } catch (e) {
-        console.error("OAuth token response not JSON:", rawText);
-        return res.status(500).json({
-          ok: false,
-          step: "parse_json",
-          status: tokenRes.status,
-          rawText: rawText.slice(0, 800), // recortado
-        });
-      }
-
-      // 3) Si Tiendanube regresó error, lo mostramos
+      const payload = await tokenRes.json().catch(() => ({}));
       if (!tokenRes.ok || !payload?.access_token) {
-        console.error("Token exchange failed:", { status: tokenRes.status, payload });
-        return res.status(400).json({
-          ok: false,
-          step: "token_exchange_failed",
-          status: tokenRes.status,
-          payload,
-        });
+        console.error("tnAuthCallback token exchange failed", {status: tokenRes.status, payload});
+        return res.status(400).json({ ok: false, error: payload || "Token exchange failed" });
       }
 
-      // 4) storeId puede venir como user_id (docs), store_id, o en callback
-      const storeIdFromCallback = String(req.query.store_id || "").trim();
-      const storeId = storeIdFromCallback || String(payload.store_id || payload.user_id || "").trim();
-
-      if (!storeId) {
-        return res.status(400).json({
-          ok: false,
-          step: "missing_store_id",
-          payloadKeys: Object.keys(payload || {}),
-          payload,
-        });
-      }
-
-      // 5) Guardar token
-      await db.collection("tn_stores").doc(storeId).set(
+      await dbAdmin.collection("tn_stores").doc(storeId).set(
         {
           storeId,
           access_token: payload.access_token,
@@ -227,12 +182,8 @@ exports.tnAuthCallback = onRequest(
 
       return res.status(200).send("✅ Tiendanube conectado. Ya puedes cerrar esta ventana.");
     } catch (err) {
-      console.error("tnAuthCallback unexpected error:", err);
-      return res.status(500).json({
-        ok: false,
-        step: "unexpected_catch",
-        message: String(err?.message || err),
-      });
+      console.error("tnAuthCallback error", err);
+      return res.status(500).send("Error procesando OAuth callback.");
     }
   }
 );
