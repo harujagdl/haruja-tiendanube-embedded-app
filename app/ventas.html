@@ -5,54 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ventas & Comisiones | Haruja</title>
   <style>
-    body{font-family:Inter,Segoe UI,system-ui,sans-serif;margin:0;background:#f6f7fb;color:#111827}
-    .wrap{max-width:1100px;margin:0 auto;padding:20px}
-    .card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:16px;margin-bottom:14px}
-    .top{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
-    label{font-size:12px;color:#6b7280;display:block;margin-bottom:6px}
-    input,button,select{padding:10px 12px;border-radius:10px;border:1px solid #d1d5db;font-size:14px}
-    button{background:#2563eb;border:none;color:#fff;font-weight:700;cursor:pointer}
-    button.secondary{background:#e5e7eb;color:#111827}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:left;vertical-align:middle}
-    .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-    .kpi{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:10px}
-    .kpi small{display:block;color:#6b7280;font-size:11px}
-    .kpi strong{font-size:16px}
-    .status{font-size:13px;color:#6b7280;min-height:20px}
-    .readonly{background:#f6f7fb;opacity:.9}
-    @media (max-width:900px){.summary{grid-template-columns:1fr}}
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f6f7fb; color: #111827; }
+    .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    .toplink { display:inline-block; margin-bottom: 8px; color:#2563eb; text-decoration:none; font-size:14px; }
+    .card { background:#fff; border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); padding: 18px; }
+    h1 { margin: 0 0 12px; font-size: 34px; }
+    .controls { display:flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    .field { display:flex; flex-direction:column; gap: 6px; }
+    .field label { font-size: 12px; color:#6b7280; }
+    input, select { padding: 10px 12px; border-radius: 10px; border:1px solid #e5e7eb; font-size:14px; background:#fff; }
+    input.readonly { background:#f3f4f6; color:#111827; }
+    button { padding: 10px 14px; border-radius: 12px; border: none; font-weight: 600; cursor:pointer; }
+    .btn-primary { background:#2563eb; color:#fff; }
+    .btn-primary:hover { background:#1d4ed8; }
+    .btn-secondary { background:#e5e7eb; color:#111827; }
+    .btn-secondary:hover { background:#d1d5db; }
+    .status { margin-top: 8px; font-size: 13px; color:#6b7280; min-height: 18px; }
+    .stats { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+    .stat { background:#f8fafc; border: 1px solid #e5e7eb; border-radius: 14px; padding: 12px; }
+    .stat .label { font-size: 12px; color:#6b7280; }
+    .stat .value { font-size: 18px; font-weight: 800; margin-top: 2px; }
+    .tableWrap { margin-top: 14px; }
+    table { width:100%; border-collapse: collapse; font-size: 13px; background:#fff; border-radius: 16px; overflow:hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+    th, td { padding: 12px 12px; border-bottom: 1px solid #e5e7eb; text-align:left; vertical-align: middle; }
+    th { color:#6b7280; font-weight: 700; font-size: 12px; background:#ffffff; }
+    tr:last-child td { border-bottom:none; }
+    td select { width: 160px; }
+    @media (max-width: 820px) {
+      .stats { grid-template-columns: 1fr; }
+      td select { width: 140px; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <a href="/" style="text-decoration:none">← Volver al panel</a>
-      <h1 style="margin:8px 0">Ventas &amp; Comisiones</h1>
+    <a class="toplink" href="#/panel">← Volver al panel</a>
 
-      <div class="top">
-        <div>
+    <div class="card">
+      <h1>Ventas & Comisiones</h1>
+
+      <div class="controls">
+        <div class="field">
           <label for="storeId">Store ID Tiendanube</label>
-          <input id="storeId" placeholder="Ej. 123456" />
+          <input id="storeId" placeholder="Ej. 6432936" />
         </div>
-        <div>
+
+        <div class="field">
           <label for="month">Mes</label>
           <input id="month" type="month" />
         </div>
-        <button id="btnLoad">Actualizar</button>
-        <button id="btnExport" class="secondary">Export CSV</button>
+
+        <button id="btnLoad" class="btn-primary">Actualizar</button>
+        <button id="btnCsv" class="btn-secondary">Export CSV</button>
       </div>
 
-      <div class="status" id="status"></div>
+      <div id="status" class="status"></div>
     </div>
 
-    <div class="card summary">
-      <div class="kpi"><small>Total del mes</small><strong id="kpiTotal">—</strong></div>
-      <div class="kpi"><small>Total por vendedora</small><strong id="kpiSellers">—</strong></div>
-      <div class="kpi"><small>Sin asignar</small><strong id="kpiUnassigned">—</strong></div>
+    <div class="stats">
+      <div class="stat">
+        <div class="label">Total del mes</div>
+        <div id="totalMes" class="value">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Total por vendedora</div>
+        <div id="topSeller" class="value">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Sin asignar</div>
+        <div id="sinAsignar" class="value">—</div>
+      </div>
     </div>
 
-    <div class="card">
+    <div class="tableWrap">
       <table>
         <thead>
           <tr>
@@ -64,50 +89,57 @@
             <th>Vendedora</th>
           </tr>
         </thead>
-        <tbody id="tbody"></tbody>
+        <tbody id="tbody">
+          <tr><td colspan="6">Cargando...</td></tr>
+        </tbody>
       </table>
     </div>
   </div>
 
   <script>
-    const moneyMx = new Intl.NumberFormat("es-MX", {style:"currency", currency:"MXN"});
-    const sellers = ["Yami", "Nora", "Andrea", "Karla", "Majo"];
+    const moneyMx = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 });
 
-    // ✅ YA NO forzamos 26649 (App ID). El Store ID real viene de OAuth como user_id y se guarda en Firestore.
-    // Autollenado: ?storeId=XXXX  -> localStorage -> input
     const storeIdInput = document.getElementById("storeId");
     const monthInput = document.getElementById("month");
     const statusEl = document.getElementById("status");
     const tbody = document.getElementById("tbody");
-    const kpiTotal = document.getElementById("kpiTotal");
-    const kpiSellers = document.getElementById("kpiSellers");
-    const kpiUnassigned = document.getElementById("kpiUnassigned");
 
-    const todayMonth = new Date().toISOString().slice(0,7);
+    const totalMesEl = document.getElementById("totalMes");
+    const topSellerEl = document.getElementById("topSeller");
+    const sinAsignarEl = document.getElementById("sinAsignar");
 
-    // Mes
-    const params = new URLSearchParams(location.search);
-    monthInput.value = params.get("month") || todayMonth;
+    // ✅ FIX: Store ID fijo (Haruja = 1 tienda)
+    // OJO: 6432936 es el Store ID (user_id) de Tiendanube, NO el App ID.
+    const FIXED_STORE_ID = "6432936";
 
-    // StoreId: URL -> localStorage -> vacío
-    const storeIdFromUrl = params.get("storeId");
-    if (storeIdFromUrl) {
-      storeIdInput.value = storeIdFromUrl;
-      localStorage.setItem("haruja_tn_store_id", storeIdFromUrl);
-    } else {
-      storeIdInput.value = localStorage.getItem("haruja_tn_store_id") || "";
-    }
+    // ✅ Solo estas 2 opciones (como pediste)
+    const sellers = ["Vendedora", "Haru"];
 
-    const setStatus = (msg) => statusEl.textContent = msg || "";
+    const setStatus = (txt="") => statusEl.textContent = txt;
 
-    async function safeJson(res) {
-      const contentType = (res.headers.get("content-type") || "").toLowerCase();
-      if (!contentType.includes("application/json")) {
+    const safeJson = async (res) => {
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (!ct.includes("application/json")) {
         const txt = await res.text();
         throw new Error(`API no regresó JSON. HTTP ${res.status}. Recibí: ${txt.slice(0,60)}...`);
       }
       return res.json();
-    }
+    };
+
+    // ✅ FIX: evita "Invalid Date"
+    const formatFecha = (value) => {
+      if (!value) return "—";
+      const d = (value instanceof Date) ? value : new Date(value);
+      if (Number.isNaN(d.getTime())) {
+        // soporte simple para YYYY-MM-DD
+        if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+          const d2 = new Date(value.trim() + "T00:00:00");
+          if (!Number.isNaN(d2.getTime())) return d2.toLocaleDateString("es-MX");
+        }
+        return "—";
+      }
+      return d.toLocaleDateString("es-MX");
+    };
 
     const sellerSelect = (selected="") => {
       const options = ["", ...sellers]
@@ -120,10 +152,7 @@
       const storeId = storeIdInput.value.trim();
       const month = monthInput.value;
 
-      if (!storeId) return setStatus("Ingresa storeId para consultar ventas.");
-
-      // Persistir storeId
-      localStorage.setItem("haruja_tn_store_id", storeId);
+      if (!storeId) return setStatus("No hay storeId configurado.");
 
       setStatus("Cargando ventas...");
       tbody.innerHTML = "";
@@ -131,26 +160,29 @@
       try {
         const url = new URL("/dashboard/sales-details", location.origin);
         url.searchParams.set("storeId", storeId);
-        url.searchParams.set("month", month);
+        if (month) url.searchParams.set("month", month);
 
-        const response = await fetch(url.toString());
-        if (!response.ok) throw new Error(await response.text());
+        const res = await fetch(url.toString(), { method: "GET" });
+        const data = await safeJson(res);
 
-        const payload = await safeJson(response);
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || "Error al cargar ventas.");
+        }
 
-        kpiTotal.textContent = moneyMx.format(payload.totalMes || 0);
-        kpiUnassigned.textContent = moneyMx.format(payload.totalSinAsignar || 0);
-        kpiSellers.textContent = (payload.totalPorVendedora || [])
-          .map((r) => `${r.seller}: ${moneyMx.format(r.total || 0)}`)
-          .join(" · ") || "Sin asignaciones";
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        const summary = data.summary || {};
 
-        const rows = payload.orders || [];
+        totalMesEl.textContent = moneyMx.format(summary.totalMes || 0);
+        const top = (summary.totalPorVendedora || [])[0];
+        topSellerEl.textContent = top ? `${top.seller}: ${moneyMx.format(top.total || 0)}` : "Sin asignaciones";
+        sinAsignarEl.textContent = moneyMx.format(summary.totalSinAsignar || 0);
+
         if (!rows.length) {
           tbody.innerHTML = '<tr><td colspan="6">No hay ventas pagadas para este mes.</td></tr>';
         } else {
           tbody.innerHTML = rows.map((row) => `
             <tr data-order-id="${row.orderId}">
-              <td>${new Date(row.fecha).toLocaleDateString("es-MX")}</td>
+              <td>${formatFecha(row.fecha)}</td>
               <td>${row.orderId}</td>
               <td>${row.cliente || "—"}</td>
               <td>${moneyMx.format(row.totalPagado || 0)}</td>
@@ -163,50 +195,55 @@
         setStatus(`Listo. ${rows.length} pedidos cargados.`);
       } catch (error) {
         console.error(error);
-        setStatus(`Error al cargar ventas: ${error.message}`);
+        setStatus(`Error al cargar ventas: ${error.message || error}`);
+        tbody.innerHTML = '<tr><td colspan="6">Error cargando ventas.</td></tr>';
       }
     };
 
-    tbody.addEventListener("change", async (event) => {
-      const select = event.target.closest("select[data-seller]");
-      if (!select) return;
-
-      const tr = event.target.closest("tr[data-order-id]");
-      if (!tr) return;
-
-      const orderId = tr.dataset.orderId;
-      const seller = select.value;
-
-      try {
-        const response = await fetch("/dashboard/order-seller", {
-          method: "PATCH",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({orderId, seller})
-        });
-
-        if (!response.ok) throw new Error(await response.text());
-        setStatus(`Asignación guardada para orden ${orderId}.`);
-      } catch (error) {
-        console.error(error);
-        setStatus(`No se pudo guardar orden ${orderId}: ${error.message}`);
-      }
-    });
-
-    document.getElementById("btnLoad").addEventListener("click", loadData);
-
-    document.getElementById("btnExport").addEventListener("click", () => {
+    const exportCsv = async () => {
       const storeId = storeIdInput.value.trim();
       const month = monthInput.value;
+      if (!storeId) return setStatus("No hay storeId configurado.");
 
-      if (!storeId) return setStatus("Ingresa storeId para exportar CSV.");
+      try {
+        const url = new URL("/dashboard/sales-csv", location.origin);
+        url.searchParams.set("storeId", storeId);
+        if (month) url.searchParams.set("month", month);
 
-      const url = new URL("/dashboard/sales-export.csv", location.origin);
-      url.searchParams.set("storeId", storeId);
-      url.searchParams.set("month", month);
+        const res = await fetch(url.toString(), { method: "GET" });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `ventas-comisiones-${month || "mes"}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setStatus("CSV descargado.");
+      } catch (e) {
+        console.error(e);
+        setStatus(`No se pudo exportar CSV: ${e.message || e}`);
+      }
+    };
 
-      window.open(url.toString(), "_blank");
-    });
+    // ✅ Init: storeId fijo + readonly
+    storeIdInput.value = FIXED_STORE_ID;
+    storeIdInput.readOnly = true;
+    storeIdInput.classList.add("readonly");
+    // Persistimos por compat (por si otra parte lo lee)
+    localStorage.setItem("haruja_tn_store_id", FIXED_STORE_ID);
 
+    // Mes default: mes actual
+    const now = new Date();
+    monthInput.value = now.toISOString().slice(0,7);
+
+    document.getElementById("btnLoad").addEventListener("click", loadData);
+    document.getElementById("btnCsv").addEventListener("click", exportCsv);
+
+    // auto load
     loadData();
   </script>
 </body>
