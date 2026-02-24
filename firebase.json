@@ -63,6 +63,10 @@
         "destination": "/lealtad/index.html"
       },
       {
+        "source": "/auth/tiendanube/**",
+        "function": "tiendanubeAuth"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
