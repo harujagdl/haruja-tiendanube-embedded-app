@@ -5056,7 +5056,7 @@ return `<!doctype html>
         return badge;
       };
 
-      const createPrendaRow = (item) => {
+const createPrendaRow = (item) => {
         const adminEnabled = isAdminViewEnabled();
         const ordenValue = Number(item.orden);
         const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "";
@@ -5096,15 +5096,21 @@ return `<!doctype html>
         const baseClasses = [
           "col-orden","col-codigo","col-descripcion col-desc","col-tipo","col-color","col-talla","col-proveedor col-prov","col-status","col-disponibilidad col-disp","col-fecha","col-pventa col-precio"
         ];
+
         baseCells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
-            value.classList.add(baseClasses[index] || "");
+            const cls = (baseClasses[index] || "").split(/\s+/).filter(Boolean);
+            if (cls.length) value.classList.add(...cls);
             row.appendChild(value);
             return;
           }
+
           const cell = document.createElement("td");
           cell.textContent = value;
-          cell.classList.add(baseClasses[index] || "");
+
+          const cls = (baseClasses[index] || "").split(/\s+/).filter(Boolean);
+          if (cls.length) cell.classList.add(...cls);
+
           if (index === 2) {
             cell.classList.add("cell-desc");
             if (ENABLE_DESC_BETTER_UI) {
@@ -5119,6 +5125,7 @@ return `<!doctype html>
               cell.title = value;
             }
           }
+
           row.appendChild(cell);
         });
 
@@ -5128,32 +5135,26 @@ return `<!doctype html>
           adminValues.forEach((value, index) => {
             const cell = document.createElement("td");
             cell.textContent = value;
-            cell.classList.add("admin-only", adminClasses[index]);
+            cell.classList.add(adminClasses[index]);
             row.appendChild(cell);
           });
+        }
 
+        if (adminEnabled) {
           const actionCell = document.createElement("td");
-          actionCell.className = "admin-only col-actions";
-          const editButton = document.createElement("button");
-          editButton.type = "button";
-          editButton.className = "rowEditBtn";
-          editButton.dataset.editDoc = safeString(item.docId || item.id).trim();
-          editButton.setAttribute("aria-label", "Editar fila");
-          editButton.textContent = "✎";
-          actionCell.appendChild(editButton);
+          actionCell.className = "col-actions";
           const deleteButton = document.createElement("button");
           deleteButton.type = "button";
           deleteButton.className = "rowDeleteBtn";
-          deleteButton.dataset.deleteDoc = safeString(item.docId || item.id).trim();
-          deleteButton.dataset.codigo = safeString(item.codigo).trim();
           deleteButton.setAttribute("aria-label", "Borrar prenda");
           deleteButton.textContent = "🗑";
           actionCell.appendChild(deleteButton);
           row.appendChild(actionCell);
         }
+
         return row;
       };
-
+  
       const updateEditPreview = () => {
         if (!editPVentaInput || !editCostoInput) return;
         const pOverride = toNumber(editPVentaInput.value);
