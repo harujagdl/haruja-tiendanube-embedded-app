@@ -29,6 +29,7 @@
     <div class="card">
       <a href="/" style="text-decoration:none">← Volver al panel</a>
       <h1 style="margin:8px 0">Ventas &amp; Comisiones</h1>
+
       <div class="top">
         <div>
           <label for="storeId">Store ID Tiendanube</label>
@@ -41,6 +42,7 @@
         <button id="btnLoad">Actualizar</button>
         <button id="btnExport" class="secondary">Export CSV</button>
       </div>
+
       <div class="status" id="status"></div>
     </div>
 
@@ -70,9 +72,9 @@
   <script>
     const moneyMx = new Intl.NumberFormat("es-MX", {style:"currency", currency:"MXN"});
     const sellers = ["Yami", "Nora", "Andrea", "Karla", "Majo"];
-    const ENABLE_FIXED_STORE_ID = true;
-    const FIXED_STORE_ID = "26649";
 
+    // ✅ YA NO forzamos 26649 (App ID). El Store ID real viene de OAuth como user_id y se guarda en Firestore.
+    // Autollenado: ?storeId=XXXX  -> localStorage -> input
     const storeIdInput = document.getElementById("storeId");
     const monthInput = document.getElementById("month");
     const statusEl = document.getElementById("status");
@@ -82,14 +84,18 @@
     const kpiUnassigned = document.getElementById("kpiUnassigned");
 
     const todayMonth = new Date().toISOString().slice(0,7);
-    monthInput.value = new URLSearchParams(location.search).get("month") || todayMonth;
-    if (ENABLE_FIXED_STORE_ID) {
-      storeIdInput.value = FIXED_STORE_ID;
-      localStorage.setItem("haruja_tn_store_id", FIXED_STORE_ID);
-      storeIdInput.readOnly = true;
-      storeIdInput.classList.add("readonly");
+
+    // Mes
+    const params = new URLSearchParams(location.search);
+    monthInput.value = params.get("month") || todayMonth;
+
+    // StoreId: URL -> localStorage -> vacío
+    const storeIdFromUrl = params.get("storeId");
+    if (storeIdFromUrl) {
+      storeIdInput.value = storeIdFromUrl;
+      localStorage.setItem("haruja_tn_store_id", storeIdFromUrl);
     } else {
-      storeIdInput.value = new URLSearchParams(location.search).get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
+      storeIdInput.value = localStorage.getItem("haruja_tn_store_id") || "";
     }
 
     const setStatus = (msg) => statusEl.textContent = msg || "";
@@ -104,15 +110,21 @@
     }
 
     const sellerSelect = (selected="") => {
-      const options = ["", ...sellers].map((name) => `<option value="${name}" ${name===selected?"selected":""}>${name || "Sin asignar"}</option>`).join("");
+      const options = ["", ...sellers]
+        .map((name) => `<option value="${name}" ${name===selected?"selected":""}>${name || "Sin asignar"}</option>`)
+        .join("");
       return `<select data-seller>${options}</select>`;
     };
 
     const loadData = async () => {
       const storeId = storeIdInput.value.trim();
       const month = monthInput.value;
+
       if (!storeId) return setStatus("Ingresa storeId para consultar ventas.");
+
+      // Persistir storeId
       localStorage.setItem("haruja_tn_store_id", storeId);
+
       setStatus("Cargando ventas...");
       tbody.innerHTML = "";
 
@@ -120,8 +132,10 @@
         const url = new URL("/dashboard/sales-details", location.origin);
         url.searchParams.set("storeId", storeId);
         url.searchParams.set("month", month);
+
         const response = await fetch(url.toString());
         if (!response.ok) throw new Error(await response.text());
+
         const payload = await safeJson(response);
 
         kpiTotal.textContent = moneyMx.format(payload.totalMes || 0);
@@ -156,8 +170,10 @@
     tbody.addEventListener("change", async (event) => {
       const select = event.target.closest("select[data-seller]");
       if (!select) return;
+
       const tr = event.target.closest("tr[data-order-id]");
       if (!tr) return;
+
       const orderId = tr.dataset.orderId;
       const seller = select.value;
 
@@ -167,6 +183,7 @@
           headers: {"Content-Type":"application/json"},
           body: JSON.stringify({orderId, seller})
         });
+
         if (!response.ok) throw new Error(await response.text());
         setStatus(`Asignación guardada para orden ${orderId}.`);
       } catch (error) {
@@ -176,13 +193,17 @@
     });
 
     document.getElementById("btnLoad").addEventListener("click", loadData);
+
     document.getElementById("btnExport").addEventListener("click", () => {
       const storeId = storeIdInput.value.trim();
       const month = monthInput.value;
+
       if (!storeId) return setStatus("Ingresa storeId para exportar CSV.");
+
       const url = new URL("/dashboard/sales-export.csv", location.origin);
       url.searchParams.set("storeId", storeId);
       url.searchParams.set("month", month);
+
       window.open(url.toString(), "_blank");
     });
 
