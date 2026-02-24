@@ -96,6 +96,7 @@
     </div>
   </div>
 
+  
   <script>
     const moneyMx = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 });
 
@@ -108,30 +109,31 @@
     const topSellerEl = document.getElementById("topSeller");
     const sinAsignarEl = document.getElementById("sinAsignar");
 
-    // ✅ FIX: Store ID fijo (Haruja = 1 tienda)
-    // OJO: 6432936 es el Store ID (user_id) de Tiendanube, NO el App ID.
+    // ✅ Store fijo (Haruja = 1 tienda)
     const FIXED_STORE_ID = "6432936";
 
     // ✅ Solo estas 2 opciones (como pediste)
     const sellers = ["Vendedora", "Haru"];
 
-    const setStatus = (txt="") => statusEl.textContent = txt;
+    const setStatus = (txt = "") => { statusEl.textContent = txt; };
 
     const safeJson = async (res) => {
       const ct = (res.headers.get("content-type") || "").toLowerCase();
+      const text = await res.text();
       if (!ct.includes("application/json")) {
-        const txt = await res.text();
-        throw new Error(`API no regresó JSON. HTTP ${res.status}. Recibí: ${txt.slice(0,60)}...`);
+        throw new Error(`API no regresó JSON. HTTP ${res.status}. Recibí: ${text.slice(0, 120)}...`);
       }
-      return res.json();
+      try { return JSON.parse(text || "{}"); } catch (_e) {
+        throw new Error(`JSON inválido. HTTP ${res.status}.`);
+      }
     };
 
     // ✅ FIX: evita "Invalid Date"
     const formatFecha = (value) => {
       if (!value) return "—";
-      const d = (value instanceof Date) ? value : new Date(value);
+      const d = new Date(value);
       if (Number.isNaN(d.getTime())) {
-        // soporte simple para YYYY-MM-DD
+        // Soporte simple para YYYY-MM-DD
         if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
           const d2 = new Date(value.trim() + "T00:00:00");
           if (!Number.isNaN(d2.getTime())) return d2.toLocaleDateString("es-MX");
@@ -141,21 +143,31 @@
       return d.toLocaleDateString("es-MX");
     };
 
-    const sellerSelect = (selected="") => {
+    const sellerSelectHtml = (selected = "") => {
       const options = ["", ...sellers]
-        .map((name) => `<option value="${name}" ${name===selected?"selected":""}>${name || "Sin asignar"}</option>`)
+        .map((name) => `<option value="${name}" ${name === selected ? "selected" : ""}>${name || "Sin asignar"}</option>`)
         .join("");
       return `<select data-seller>${options}</select>`;
+    };
+
+    const setStats = (data) => {
+      const totalMes = Number(data?.totalMes) || 0;
+      const totalSinAsignar = Number(data?.totalSinAsignar) || 0;
+      const top = Array.isArray(data?.totalPorVendedora) ? data.totalPorVendedora[0] : null;
+
+      totalMesEl.textContent = moneyMx.format(totalMes);
+      sinAsignarEl.textContent = moneyMx.format(totalSinAsignar);
+      topSellerEl.textContent = top ? `${top.seller}: ${moneyMx.format(Number(top.total) || 0)}` : "Sin asignaciones";
     };
 
     const loadData = async () => {
       const storeId = storeIdInput.value.trim();
       const month = monthInput.value;
 
-      if (!storeId) return setStatus("No hay storeId configurado.");
+      if (!storeId) { setStatus("No hay storeId configurado."); return; }
 
       setStatus("Cargando ventas...");
-      tbody.innerHTML = "";
+      tbody.innerHTML = `<tr><td colspan="6">Cargando...</td></tr>`;
 
       try {
         const url = new URL("/dashboard/sales-details", location.origin);
@@ -166,37 +178,53 @@
         const data = await safeJson(res);
 
         if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || "Error al cargar ventas.");
+          throw new Error(data?.error || `Error al cargar ventas (HTTP ${res.status}).`);
         }
 
-        const rows = Array.isArray(data.rows) ? data.rows : [];
-        const summary = data.summary || {};
+        setStats(data);
 
-        totalMesEl.textContent = moneyMx.format(summary.totalMes || 0);
-        const top = (summary.totalPorVendedora || [])[0];
-        topSellerEl.textContent = top ? `${top.seller}: ${moneyMx.format(top.total || 0)}` : "Sin asignaciones";
-        sinAsignarEl.textContent = moneyMx.format(summary.totalSinAsignar || 0);
-
-        if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="6">No hay ventas pagadas para este mes.</td></tr>';
-        } else {
-          tbody.innerHTML = rows.map((row) => `
-            <tr data-order-id="${row.orderId}">
-              <td>${formatFecha(row.fecha)}</td>
-              <td>${row.orderId}</td>
-              <td>${row.cliente || "—"}</td>
-              <td>${moneyMx.format(row.totalPagado || 0)}</td>
-              <td>${row.estado || "—"}</td>
-              <td>${sellerSelect(row.seller || "")}</td>
-            </tr>
-          `).join("");
+        const orders = Array.isArray(data.orders) ? data.orders : [];
+        if (!orders.length) {
+          tbody.innerHTML = `<tr><td colspan="6">No hay ventas pagadas para este mes.</td></tr>`;
+          setStatus(`Listo. 0 pedidos.`);
+          return;
         }
 
-        setStatus(`Listo. ${rows.length} pedidos cargados.`);
+        tbody.innerHTML = orders.map((row) => `
+          <tr data-order-id="${row.orderId}">
+            <td>${formatFecha(row.fecha)}</td>
+            <td>${row.orderId}</td>
+            <td>${row.cliente || "—"}</td>
+            <td>${moneyMx.format(Number(row.totalPagado) || 0)}</td>
+            <td>${row.estado || "—"}</td>
+            <td>${sellerSelectHtml(row.seller || "")}</td>
+          </tr>
+        `).join("");
+
+        setStatus(`Listo. ${orders.length} pedidos cargados.`);
       } catch (error) {
         console.error(error);
         setStatus(`Error al cargar ventas: ${error.message || error}`);
-        tbody.innerHTML = '<tr><td colspan="6">Error cargando ventas.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="6">Error cargando ventas.</td></tr>`;
+      }
+    };
+
+    const saveSeller = async (orderId, seller) => {
+      try {
+        const res = await fetch("/dashboard/order-seller", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, seller: seller || "" })
+        });
+
+        const data = await safeJson(res);
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || `No se pudo guardar (HTTP ${res.status}).`);
+        }
+        setStatus(`Guardado: ${orderId} → ${seller || "Sin asignar"}`);
+      } catch (e) {
+        console.error(e);
+        setStatus(`No se pudo guardar vendedora: ${e.message || e}`);
       }
     };
 
@@ -206,7 +234,7 @@
       if (!storeId) return setStatus("No hay storeId configurado.");
 
       try {
-        const url = new URL("/dashboard/sales-csv", location.origin);
+        const url = new URL("/dashboard/sales-export.csv", location.origin);
         url.searchParams.set("storeId", storeId);
         if (month) url.searchParams.set("month", month);
 
@@ -233,18 +261,30 @@
     storeIdInput.value = FIXED_STORE_ID;
     storeIdInput.readOnly = true;
     storeIdInput.classList.add("readonly");
-    // Persistimos por compat (por si otra parte lo lee)
     localStorage.setItem("haruja_tn_store_id", FIXED_STORE_ID);
 
-    // Mes default: mes actual
+    // Mes default: mes actual (YYYY-MM)
     const now = new Date();
-    monthInput.value = now.toISOString().slice(0,7);
+    monthInput.value = now.toISOString().slice(0, 7);
 
     document.getElementById("btnLoad").addEventListener("click", loadData);
     document.getElementById("btnCsv").addEventListener("click", exportCsv);
 
+    // Guardar vendedora al cambiar select
+    tbody.addEventListener("change", (ev) => {
+      const sel = ev.target;
+      if (!(sel instanceof HTMLSelectElement)) return;
+      if (!sel.hasAttribute("data-seller")) return;
+
+      const tr = sel.closest("tr");
+      const orderId = tr?.getAttribute("data-order-id") || "";
+      if (!orderId) return;
+      saveSeller(orderId, sel.value);
+    });
+
     // auto load
     loadData();
   </script>
+
 </body>
 </html>
