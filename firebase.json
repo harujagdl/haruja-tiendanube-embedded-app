@@ -47,6 +47,10 @@
         "function": "api"
       },
       {
+        "source": "/dashboard/**",
+        "function": "api"
+      },
+      {
         "source": "/apartados-historial/**",
         "destination": "/apartados-historial/index.html"
       },
