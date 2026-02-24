@@ -546,7 +546,7 @@ const buildSalesDataset = async ({storeId, month}) => {
 
     return {
       orderId,
-      fecha: String(order.completed_at || order.created_at || ""),
+      fecha: String(order.created_at || order.createdAt || (order.created_at && order.created_at.date) || (order.created_at && order.created_at.iso) || order.paid_at || order.paidAt || order.completed_at || order.completedAt || order.updated_at || order.updatedAt || ""),
       cliente: customerName,
       totalPagado: Number(total.toFixed(2)),
       estado: String(order.payment_status || ""),
