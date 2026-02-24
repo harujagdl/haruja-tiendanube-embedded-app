@@ -86,13 +86,22 @@
     if (ENABLE_FIXED_STORE_ID) {
       storeIdInput.value = FIXED_STORE_ID;
       localStorage.setItem("haruja_tn_store_id", FIXED_STORE_ID);
-      storeIdInput.setAttribute("readonly", "readonly");
+      storeIdInput.readOnly = true;
       storeIdInput.classList.add("readonly");
     } else {
       storeIdInput.value = new URLSearchParams(location.search).get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
     }
 
     const setStatus = (msg) => statusEl.textContent = msg || "";
+
+    async function safeJson(res) {
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      if (!contentType.includes("application/json")) {
+        const txt = await res.text();
+        throw new Error(`API no regresó JSON. HTTP ${res.status}. Recibí: ${txt.slice(0,60)}...`);
+      }
+      return res.json();
+    }
 
     const sellerSelect = (selected="") => {
       const options = ["", ...sellers].map((name) => `<option value="${name}" ${name===selected?"selected":""}>${name || "Sin asignar"}</option>`).join("");
@@ -113,7 +122,7 @@
         url.searchParams.set("month", month);
         const response = await fetch(url.toString());
         if (!response.ok) throw new Error(await response.text());
-        const payload = await response.json();
+        const payload = await safeJson(response);
 
         kpiTotal.textContent = moneyMx.format(payload.totalMes || 0);
         kpiUnassigned.textContent = moneyMx.format(payload.totalSinAsignar || 0);

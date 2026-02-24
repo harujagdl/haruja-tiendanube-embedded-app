@@ -1497,29 +1497,63 @@ body.admin-on .admin-only{ display:table-cell; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* --- Haruja: mejora descripción tabla --- */
-:root {
-  --haruja-desc-width: 520px;
+/* ---- Haruja: tabla robusta y responsiva ---- */
+#dbCodigosSection .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-table .haruja-col-desc {
-  width: var(--haruja-desc-width) !important;
-  min-width: 380px !important;
-  max-width: 760px !important;
+#dbCodigosSection table.haruja-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
 }
 
-table td.haruja-col-desc {
-  white-space: normal !important;
-  word-break: break-word;
+#dbCodigosSection table.haruja-table th,
+#dbCodigosSection table.haruja-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dbCodigosSection table.haruja-table th.col-desc,
+#dbCodigosSection table.haruja-table td.col-desc {
+  width: 520px;
+}
+
+#dbCodigosSection table.haruja-table td.col-desc {
+  white-space: normal;
+}
+
+#dbCodigosSection table.haruja-table td.col-desc .clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   line-height: 1.25;
 }
 
-table td.haruja-col-desc .haruja-clamp {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
+#dbCodigosSection table.haruja-table th.col-codigo,
+#dbCodigosSection table.haruja-table td.col-codigo { width: 170px; }
+#dbCodigosSection table.haruja-table th.col-tipo,
+#dbCodigosSection table.haruja-table td.col-tipo { width: 120px; }
+#dbCodigosSection table.haruja-table th.col-color,
+#dbCodigosSection table.haruja-table td.col-color { width: 110px; }
+#dbCodigosSection table.haruja-table th.col-talla,
+#dbCodigosSection table.haruja-table td.col-talla { width: 90px; }
+#dbCodigosSection table.haruja-table th.col-prov,
+#dbCodigosSection table.haruja-table td.col-prov { width: 140px; }
+#dbCodigosSection table.haruja-table th.col-status,
+#dbCodigosSection table.haruja-table td.col-status { width: 110px; }
+#dbCodigosSection table.haruja-table th.col-disp,
+#dbCodigosSection table.haruja-table td.col-disp { width: 130px; }
+#dbCodigosSection table.haruja-table th.col-fecha,
+#dbCodigosSection table.haruja-table td.col-fecha { width: 110px; }
+#dbCodigosSection table.haruja-table th.col-precio,
+#dbCodigosSection table.haruja-table td.col-precio { width: 100px; text-align: right; }
 
 #dbCodigosSection .pager-right {
   display: flex;
@@ -2054,21 +2088,21 @@ table td.haruja-col-desc .haruja-clamp {
     <template id="prendas-empty-template"><tr><td colspan="99" style="padding:18px; text-align:center; color:#6b7280;">Sin resultados</td></tr></template>
 
     <div class="table-wrap tableWrap">
-      <table id="tablaPrendas" class="table">
+      <table id="tablaPrendas" class="table haruja-table">
         <thead>
                   <tr>
                     <th class="col-select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
                     <th class="col-orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
                     <th class="col-codigo">Código</th>
-                    <th class="col-descripcion haruja-col-desc">Descripción</th>
+                    <th class="col-descripcion col-desc haruja-col-desc">Descripción</th>
                     <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
                     <th class="col-color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
                     <th class="col-talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
-                    <th class="col-proveedor" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
+                    <th class="col-proveedor col-prov" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
                     <th class="col-status" data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
-                    <th class="col-disponibilidad" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
+                    <th class="col-disponibilidad col-disp" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
                     <th class="col-fecha" data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
-                    <th class="col-pventa" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
+                    <th class="col-pventa col-precio" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
                     <th class="admin-only">(Admin) Costo</th>
                     <th class="admin-only">(Admin) Margen</th>
                     <th class="admin-only">(Admin) Utilidad</th>
@@ -2538,6 +2572,15 @@ const auth = getAuth(app);
       }
 
       const moneyMx = new Intl.NumberFormat("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 2});
+
+      const safeJson = async (response) => {
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
+        if (!contentType.includes("application/json")) {
+          const txt = await response.text();
+          throw new Error(`API no regresó JSON. HTTP ${response.status}. Recibí: ${txt.slice(0,60)}...`);
+        }
+        return response.json();
+      };
       const salesMiniTotal = document.getElementById("salesMiniTotal");
       const salesMiniTopSeller = document.getElementById("salesMiniTopSeller");
       const salesMiniUnassigned = document.getElementById("salesMiniUnassigned");
@@ -2572,7 +2615,7 @@ const auth = getAuth(app);
           url.searchParams.set("month", month);
           const response = await fetch(url.toString());
           if (!response.ok) throw new Error("No fue posible cargar ventas");
-          const payload = await response.json();
+          const payload = await safeJson(response);
           const top = Array.isArray(payload.totalPorVendedora) && payload.totalPorVendedora.length
             ? payload.totalPorVendedora[0]
             : null;
@@ -5051,7 +5094,7 @@ return `<!doctype html>
 
         const baseCells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta];
         const baseClasses = [
-          "col-orden","col-codigo","col-descripcion","col-tipo","col-color","col-talla","col-proveedor","col-status","col-disponibilidad","col-fecha","col-pventa"
+          "col-orden","col-codigo","col-descripcion col-desc","col-tipo","col-color","col-talla","col-proveedor col-prov","col-status","col-disponibilidad col-disp","col-fecha","col-pventa col-precio"
         ];
         baseCells.forEach((value, index) => {
           if (value instanceof HTMLElement) {
@@ -5067,7 +5110,7 @@ return `<!doctype html>
             if (ENABLE_DESC_BETTER_UI) {
               cell.classList.add("haruja-col-desc");
               const descWrap = document.createElement("div");
-              descWrap.className = "haruja-clamp";
+              descWrap.className = "clamp haruja-clamp";
               descWrap.title = value;
               descWrap.textContent = value;
               cell.textContent = "";
