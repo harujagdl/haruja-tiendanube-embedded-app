@@ -2203,6 +2203,7 @@ const auth = getAuth(app);
       const safeStorageAccessEnabled = !isEmbeddedApp;
       const debugState = {
         snapshotSizes: {},
+        sampleLogged: false,
         lastError: null
       };
       const debugLog = (...args) => {
@@ -4755,9 +4756,20 @@ return `<!doctype html>
             }
 
             console.log("[Panel] snapshot size:", snap.size);
+            if (!snap.empty && !debugState.sampleLogged) {
+              console.log("[Prendas] sample doc data:", snap.docs[0].data());
+              debugState.sampleLogged = true;
+            }
             debugState.snapshotSizes.baseQuery = snap.size;
             updateDebugPanel();
             if (snap.empty) {
+              if (!cursor && !queryWithoutIsActiveFilter) {
+                queryWithoutIsActiveFilter = true;
+                cursor = null;
+                rows.length = 0;
+                console.warn("[Prendas] Query con isActive devolvió vacío. Reintentando sin filtro isActive.");
+                continue;
+              }
               hasMore = false;
               break;
             }
@@ -4779,7 +4791,11 @@ return `<!doctype html>
           return [];
         }
 
-        const rowsToRender = rows.filter((row) => row.isActive !== false);
+        let rowsToRender = rows.filter((row) => row.isActive !== false);
+        if (!rowsToRender.length && rows.length) {
+          console.warn("[Prendas] Todas las filas quedaron inactivas por isActive. Mostrando todo por tolerancia.");
+          rowsToRender = rows;
+        }
 
         rowsToRender.forEach((row) => {
           row.costo = null;
