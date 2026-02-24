@@ -201,6 +201,177 @@ exports.tnAuthCallback = onRequest(
   }
 );
 
+/**
+ * =========================
+ *  TIENDANUBE OAUTH (PRO - storeId -> Firestore)
+ * =========================
+ * Estas rutas se usan vía Firebase Hosting rewrite:
+ *   /auth/tiendanube/start
+ *   /auth/tiendanube/callback
+ *
+ * Guarda credenciales por tienda en:
+ *   tiendanubeStores/{storeId}
+ *
+ * Mantiene compatibilidad escribiendo también en:
+ *   tn_stores/{storeId}
+ *
+ * Requiere Secrets:
+ * - TIENDANUBE_CLIENT_ID
+ * - TIENDANUBE_CLIENT_SECRET
+ *
+ * (Opcional)
+ * - PANEL_URL (default: https://paneltb.harujagdl.com/#/panel)
+ * - TIENDANUBE_REDIRECT_URI (default: https://paneltb.harujagdl.com/auth/tiendanube/callback)
+ */
+const PANEL_URL = defineSecret("PANEL_URL");
+const TIENDANUBE_REDIRECT_URI = defineSecret("TIENDANUBE_REDIRECT_URI");
+
+function getPanelUrl_() {
+  const fromSecret = String(PANEL_URL.value?.() || "").trim();
+  return fromSecret || "https://paneltb.harujagdl.com/#/panel";
+}
+
+function getHostedRedirectUri_() {
+  const fromSecret = String(TIENDANUBE_REDIRECT_URI.value?.() || "").trim();
+  return fromSecret || "https://paneltb.harujagdl.com/auth/tiendanube/callback";
+}
+
+async function saveOauthState_(state) {
+  try {
+    await dbAdmin.collection("oauthStates").doc(state).set({
+      used: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000))
+    });
+  } catch (e) {
+    console.warn("saveOauthState_ failed (non-fatal)", e?.message || e);
+  }
+}
+
+async function consumeOauthState_(state) {
+  const ref = dbAdmin.collection("oauthStates").doc(state);
+  await dbAdmin.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new Error("STATE_NOT_FOUND");
+    const data = snap.data() || {};
+    if (data.used) throw new Error("STATE_ALREADY_USED");
+    const exp = data.expiresAt instanceof admin.firestore.Timestamp ? data.expiresAt.toMillis() : null;
+    if (exp && exp < Date.now()) throw new Error("STATE_EXPIRED");
+    tx.update(ref, {used: true, usedAt: admin.firestore.FieldValue.serverTimestamp()});
+  });
+}
+
+exports.tiendanubeAuth = onRequest(
+  {
+    ...RUNTIME_OPTS,
+    secrets: [
+      TIENDANUBE_CLIENT_ID,
+      TIENDANUBE_CLIENT_SECRET,
+      PANEL_URL,
+      TIENDANUBE_REDIRECT_URI
+    ]
+  },
+  async (req, res) => {
+    try {
+      const path = String(req.path || "").toLowerCase();
+      const clientId = String(TIENDANUBE_CLIENT_ID.value() || "").trim();
+      const clientSecret = String(TIENDANUBE_CLIENT_SECRET.value() || "").trim();
+
+      if (!clientId) return res.status(500).send("Missing TIENDANUBE_CLIENT_ID secret.");
+      if (!clientSecret) return res.status(500).send("Missing TIENDANUBE_CLIENT_SECRET secret.");
+
+      // /auth/tiendanube/start
+      if (path.endsWith("/start")) {
+        const redirectUri = getHostedRedirectUri_();
+        const state = (randomUUID ? randomUUID() : uuidv4()).replaceAll("-", "");
+        await saveOauthState_(state);
+
+        const authUrl =
+          `https://www.tiendanube.com/apps/${encodeURIComponent(clientId)}/authorize` +
+          `?redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&state=${encodeURIComponent(state)}`;
+
+        return res.redirect(authUrl);
+      }
+
+      // /auth/tiendanube/callback
+      if (path.endsWith("/callback")) {
+        const code = String(req.query.code || "").trim();
+        const state = String(req.query.state || "").trim();
+
+        if (!code) return res.status(400).send("Missing code.");
+        if (!state) return res.status(400).send("Missing state.");
+
+        await consumeOauthState_(state);
+
+        const redirectUri = getHostedRedirectUri_();
+
+        const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "Accept": "application/json"},
+          body: JSON.stringify({
+            client_id: Number(clientId),
+            client_secret: clientSecret,
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: redirectUri,
+          }),
+        });
+
+        const rawText = await tokenRes.text();
+        let payload = {};
+        try { payload = rawText ? JSON.parse(rawText) : {}; } catch {}
+
+        if (!tokenRes.ok || !payload?.access_token) {
+          console.error("tiendanubeAuth token exchange failed:", tokenRes.status, rawText);
+          return res.status(400).json({ok: false, step: "token_exchange_failed", status: tokenRes.status, payload, rawText});
+        }
+
+        const storeId = String(payload.user_id || payload.store_id || req.query.store_id || "").trim();
+        if (!storeId) {
+          console.error("tiendanubeAuth missing storeId. Payload keys:", Object.keys(payload || {}));
+          return res.status(400).json({ok: false, step: "missing_store_id", payload});
+        }
+
+        // ✅ Colección nueva recomendada
+        await dbAdmin.collection("tiendanubeStores").doc(storeId).set(
+          {
+            storeId,
+            access_token: payload.access_token,
+            scope: payload.scope || null,
+            token_type: payload.token_type || "bearer",
+            installedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        // 🔁 Compat: no romper integraciones viejas
+        await dbAdmin.collection("tn_stores").doc(storeId).set(
+          {
+            storeId,
+            access_token: payload.access_token,
+            scope: payload.scope || null,
+            token_type: payload.token_type || "bearer",
+            installedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+
+        const panelUrl = getPanelUrl_();
+        return res.redirect(302, `${panelUrl}?storeId=${encodeURIComponent(storeId)}`);
+      }
+
+      return res.status(404).send("Not found");
+    } catch (err) {
+      console.error("tiendanubeAuth unexpected error", err);
+      return res.status(500).json({ok: false, error: String(err?.message || err)});
+    }
+  }
+);
+
+
 const parseMonthRange = (monthInput = "") => {
   const raw = String(monthInput || "").trim();
   if (!/^\d{4}-\d{2}$/.test(raw)) {
