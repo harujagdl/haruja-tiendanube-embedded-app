@@ -72,11 +72,17 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+
           TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
           TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
+
+          PANEL_URL: ${{ secrets.PANEL_URL }}
+          TIENDANUBE_REDIRECT_URI: ${{ secrets.TIENDANUBE_REDIRECT_URI }}
         run: |
           printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
           printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
+          printf "%s" "$PANEL_URL" | firebase functions:secrets:set PANEL_URL --project "$FIREBASE_PROJECT_ID"
+          printf "%s" "$TIENDANUBE_REDIRECT_URI" | firebase functions:secrets:set TIENDANUBE_REDIRECT_URI --project "$FIREBASE_PROJECT_ID"
 
       # Deploy Firestore rules + Functions
       - name: Deploy Firestore + Functions
