@@ -20,6 +20,7 @@
     .kpi small{display:block;color:#6b7280;font-size:11px}
     .kpi strong{font-size:16px}
     .status{font-size:13px;color:#6b7280;min-height:20px}
+    .readonly{background:#f6f7fb;opacity:.9}
     @media (max-width:900px){.summary{grid-template-columns:1fr}}
   </style>
 </head>
@@ -69,6 +70,8 @@
   <script>
     const moneyMx = new Intl.NumberFormat("es-MX", {style:"currency", currency:"MXN"});
     const sellers = ["Yami", "Nora", "Andrea", "Karla", "Majo"];
+    const ENABLE_FIXED_STORE_ID = true;
+    const FIXED_STORE_ID = "26649";
 
     const storeIdInput = document.getElementById("storeId");
     const monthInput = document.getElementById("month");
@@ -80,7 +83,14 @@
 
     const todayMonth = new Date().toISOString().slice(0,7);
     monthInput.value = new URLSearchParams(location.search).get("month") || todayMonth;
-    storeIdInput.value = new URLSearchParams(location.search).get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
+    if (ENABLE_FIXED_STORE_ID) {
+      storeIdInput.value = FIXED_STORE_ID;
+      localStorage.setItem("haruja_tn_store_id", FIXED_STORE_ID);
+      storeIdInput.setAttribute("readonly", "readonly");
+      storeIdInput.classList.add("readonly");
+    } else {
+      storeIdInput.value = new URLSearchParams(location.search).get("storeId") || localStorage.getItem("haruja_tn_store_id") || "";
+    }
 
     const setStatus = (msg) => statusEl.textContent = msg || "";
 

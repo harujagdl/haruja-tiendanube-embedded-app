@@ -1497,6 +1497,30 @@ body.admin-on .admin-only{ display:table-cell; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* --- Haruja: mejora descripción tabla --- */
+:root {
+  --haruja-desc-width: 520px;
+}
+
+table .haruja-col-desc {
+  width: var(--haruja-desc-width) !important;
+  min-width: 380px !important;
+  max-width: 760px !important;
+}
+
+table td.haruja-col-desc {
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+table td.haruja-col-desc .haruja-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
 #dbCodigosSection .pager-right {
   display: flex;
   gap: 8px;
@@ -2036,7 +2060,7 @@ body.admin-on .admin-only{ display:table-cell; }
                     <th class="col-select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
                     <th class="col-orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
                     <th class="col-codigo">Código</th>
-                    <th class="col-descripcion">Descripción</th>
+                    <th class="col-descripcion haruja-col-desc">Descripción</th>
                     <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
                     <th class="col-color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
                     <th class="col-talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
@@ -2454,6 +2478,8 @@ const auth = getAuth(app);
       const editModalSaveButton = document.getElementById("editModalSave");
       const editModalCancelButton = document.getElementById("editModalCancel");
       const VIEWS = ["panel", "registro", "codigos"];
+
+      const ENABLE_DESC_BETTER_UI = true;
 
       let registroInited = false;
       let dbInited = false;
@@ -5038,7 +5064,17 @@ return `<!doctype html>
           cell.classList.add(baseClasses[index] || "");
           if (index === 2) {
             cell.classList.add("cell-desc");
-            cell.title = value;
+            if (ENABLE_DESC_BETTER_UI) {
+              cell.classList.add("haruja-col-desc");
+              const descWrap = document.createElement("div");
+              descWrap.className = "haruja-clamp";
+              descWrap.title = value;
+              descWrap.textContent = value;
+              cell.textContent = "";
+              cell.appendChild(descWrap);
+            } else {
+              cell.title = value;
+            }
           }
           row.appendChild(cell);
         });
