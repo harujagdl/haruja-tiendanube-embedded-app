@@ -467,6 +467,15 @@ const fetchPaidOrdersFromTiendanube = async ({storeId, accessToken, apiVersion, 
 
     if (!response.ok) {
       const body = await response.text();
+      let payloadErr = {};
+      try { payloadErr = body ? JSON.parse(body) : {}; } catch (_e) {}
+
+      // ✅ Tiendanube a veces responde 404 cuando "no hay pedidos" (ej. "Last page is 0")
+      const msg = String(payloadErr?.message || payloadErr?.description || body || "").toLowerCase();
+      if (response.status === 404 && msg.includes("last page is 0")) {
+        break; // no hay resultados en el mes
+      }
+
       throw buildBadRequestError(`Error Tiendanube (${response.status}): ${body || "sin detalle"}`, 502);
     }
 
