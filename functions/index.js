@@ -393,19 +393,43 @@ const parseMonthRange = (monthInput = "") => {
   };
 };
 
-const resolveTiendanubeCredentials = (storeId) => {
+const resolveTiendanubeCredentials = async (storeId) => {
   const normalizedStoreId = String(storeId || "").trim();
   if (!normalizedStoreId) {
     throw buildBadRequestError("Falta query param storeId.");
   }
 
-  const envKey = `TIENDANUBE_ACCESS_TOKEN_${normalizedStoreId}`;
-  const accessToken = String(process.env[envKey] || process.env.TIENDANUBE_ACCESS_TOKEN || "").trim();
+  // ✅ Nuevo flujo (PRO): tokens por tienda en Firestore
+  // 1) tiendanubeStores/{storeId}
+  // 2) compat: tn_stores/{storeId}
+  let accessToken = "";
+  try {
+    const snapNew = await dbAdmin.collection("tiendanubeStores").doc(normalizedStoreId).get();
+    if (snapNew.exists) {
+      const data = snapNew.data() || {};
+      accessToken = String(data.access_token || data.accessToken || "").trim();
+    }
+    if (!accessToken) {
+      const snapOld = await dbAdmin.collection("tn_stores").doc(normalizedStoreId).get();
+      if (snapOld.exists) {
+        const data = snapOld.data() || {};
+        accessToken = String(data.access_token || data.accessToken || "").trim();
+      }
+    }
+  } catch (e) {
+    console.warn("resolveTiendanubeCredentials Firestore lookup failed (fallback to env)", e?.message || e);
+  }
+
+  // 🔁 Fallback legacy: ENV tokens (no romper instalaciones viejas)
   if (!accessToken) {
-    throw buildBadRequestError(
-      `No encontré access token para Tiendanube. Configura ${envKey} o TIENDANUBE_ACCESS_TOKEN.`,
-      500
-    );
+    const envKey = `TIENDANUBE_ACCESS_TOKEN_${normalizedStoreId}`;
+    accessToken = String(process.env[envKey] || process.env.TIENDANUBE_ACCESS_TOKEN || "").trim();
+    if (!accessToken) {
+      throw buildBadRequestError(
+        `No encontré access token para Tiendanube. Conecta la tienda con OAuth (recomendado) o configura ${envKey} o TIENDANUBE_ACCESS_TOKEN.`,
+        500
+      );
+    }
   }
 
   const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
@@ -486,7 +510,7 @@ const mapSellerAssignments = async (orderIds = []) => {
 
 const buildSalesDataset = async ({storeId, month}) => {
   const {startIso, endIso} = parseMonthRange(month);
-  const credentials = resolveTiendanubeCredentials(storeId);
+  const credentials = await resolveTiendanubeCredentials(storeId);
   const paidOrders = await fetchPaidOrdersFromTiendanube({...credentials, startIso, endIso});
   const orderIds = paidOrders.map((order) => String(order.id || "").trim()).filter(Boolean);
   const assignmentMap = await mapSellerAssignments(orderIds);
