@@ -4,248 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Panel Haruja – TD | Panel</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js">
-/* =========================
-   Column Resize (mouse + touch) + Auto-fit (double click)
-   + Column Reorder (drag & drop desktop) with persistence
-   ========================= */
-
-function enableColumnResize(tableEl, storageKey) {
-  if (!tableEl) return;
-
-  const thead = tableEl.querySelector("thead");
-  if (!thead) return;
-
-  const ths = Array.from(thead.querySelectorAll("th"));
-  if (!ths.length) return;
-
-  // Restore saved widths
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
-    ths.forEach((th, i) => {
-      const w = saved[i];
-      if (w && Number(w) > 40) th.style.width = `${w}px`;
-    });
-  } catch {}
-
-  const saveWidths = () => {
-    const widths = {};
-    ths.forEach((th, i) => widths[i] = Math.round(th.getBoundingClientRect().width));
-    localStorage.setItem(storageKey, JSON.stringify(widths));
-  };
-
-  const autoFit = (colIndex) => {
-    const rows = Array.from(tableEl.querySelectorAll("tr"));
-    let max = 60;
-
-    rows.forEach((tr) => {
-      const cell = tr.children && tr.children[colIndex];
-      if (!cell) return;
-
-      // scrollWidth gives content width even if overflow hidden
-      const sw = cell.scrollWidth || 0;
-      if (sw > max) max = sw;
-    });
-
-    // add padding room, clamp
-    const target = Math.min(Math.max(max + 24, 60), 700);
-    const th = ths[colIndex];
-    if (th) th.style.width = `${target}px`;
-    saveWidths();
-  };
-
-  ths.forEach((th, i) => {
-    if (th.querySelector(".col-resizer")) return;
-
-    th.style.position = "relative";
-
-    const resizer = document.createElement("div");
-    resizer.className = "col-resizer";
-    th.appendChild(resizer);
-
-    let startX = 0;
-    let startW = 0;
-    let active = false;
-
-    const begin = (clientX, pointerId) => {
-      active = true;
-    };
-
-    const onPointerDown = (e) => {
-      // Only start if user grabbed the resizer
-      e.preventDefault();
-      startX = e.clientX;
-      startW = th.getBoundingClientRect().width;
-      active = true;
-
-      // capture pointer so we keep resizing even if pointer leaves the resizer
-      try { resizer.setPointerCapture(e.pointerId); } catch {}
-
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "col-resize";
-    };
-
-    const onPointerMove = (e) => {
-      if (!active) return;
-      const dx = e.clientX - startX;
-      const newW = Math.max(50, startW + dx);
-      th.style.width = `${newW}px`;
-    };
-
-    const onPointerUp = () => {
-      if (!active) return;
-      active = false;
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      saveWidths();
-    };
-
-    resizer.addEventListener("pointerdown", onPointerDown);
-    resizer.addEventListener("pointermove", onPointerMove);
-    resizer.addEventListener("pointerup", onPointerUp);
-    resizer.addEventListener("pointercancel", onPointerUp);
-
-    // Double click / double tap => auto-fit column to content
-    resizer.addEventListener("dblclick", (e) => {
-      e.preventDefault();
-      autoFit(i);
-    });
-  });
-}
-
-// Column reorder (desktop): drag & drop headers, persist order
-function enableColumnReorder(tableEl, orderKey) {
-  if (!tableEl) return;
-
-  // Disable on mobile to avoid accidental drags
-  if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return;
-
-  const thead = tableEl.querySelector("thead");
-  if (!thead) return;
-
-  const getThs = () => Array.from(thead.querySelectorAll("th"));
-
-  const moveCol = (fromIdx, toIdx) => {
-    if (fromIdx === toIdx) return;
-
-    Array.from(tableEl.querySelectorAll("tr")).forEach((tr) => {
-      const cells = Array.from(tr.children);
-      if (fromIdx >= cells.length || toIdx >= cells.length) return;
-      const fromCell = cells[fromIdx];
-      const reference = cells[toIdx];
-
-      // Insert before reference if moving left, else after reference
-      if (fromIdx < toIdx) {
-        tr.insertBefore(fromCell, reference.nextSibling);
-      } else {
-        tr.insertBefore(fromCell, reference);
-      }
-    });
-  };
-
-  const saveOrder = () => {
-    const ths = getThs();
-    const order = ths.map((th) => th.getAttribute("data-colkey") || th.textContent.trim());
-    localStorage.setItem(orderKey, JSON.stringify(order));
-  };
-
-  const applySavedOrder = () => {
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(orderKey) || "null"); } catch {}
-    if (!Array.isArray(saved) || !saved.length) return;
-
-    const ths = getThs();
-    const keys = ths.map((th) => th.getAttribute("data-colkey") || th.textContent.trim());
-
-    // build current index map
-    const indexByKey = new Map(keys.map((k, idx) => [k, idx]));
-
-    // reorder to match saved, skipping missing keys
-    let currentPos = 0;
-    saved.forEach((key) => {
-      const fromIdx = indexByKey.get(key);
-      if (fromIdx == null) return;
-      moveCol(fromIdx, currentPos);
-
-      // after move, recompute indices
-      const newThs = getThs();
-      const newKeys = newThs.map((th) => th.getAttribute("data-colkey") || th.textContent.trim());
-      indexByKey.clear();
-      newKeys.forEach((k, idx) => indexByKey.set(k, idx));
-      currentPos += 1;
-    });
-  };
-
-  // Mark headers draggable + add events
-  const attach = () => {
-    const ths = getThs();
-    if (!ths.length) return;
-
-    // add stable keys for persistence
-    ths.forEach((th) => {
-      if (!th.hasAttribute("data-colkey")) {
-        const key = th.getAttribute("data-col") || th.id || th.textContent.trim();
-        th.setAttribute("data-colkey", key);
-      }
-    });
-
-    applySavedOrder();
-
-    let dragFrom = null;
-
-    getThs().forEach((th, idx) => {
-      th.draggable = true;
-      th.classList.add("col-draggable");
-
-      th.addEventListener("dragstart", (e) => {
-        dragFrom = idx;
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(idx));
-      });
-
-      th.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        th.classList.add("col-drag-over");
-        e.dataTransfer.dropEffect = "move";
-      });
-
-      th.addEventListener("dragleave", () => th.classList.remove("col-drag-over"));
-
-      th.addEventListener("drop", (e) => {
-        e.preventDefault();
-        th.classList.remove("col-drag-over");
-        const from = dragFrom ?? Number(e.dataTransfer.getData("text/plain"));
-        const to = idx;
-        if (!Number.isFinite(from) || !Number.isFinite(to)) return;
-        moveCol(from, to);
-        saveOrder();
-      });
-
-      th.addEventListener("dragend", () => {
-        getThs().forEach((x) => x.classList.remove("col-drag-over"));
-        dragFrom = null;
-      });
-    });
-  };
-
-  // Run once now; safe if re-rendered later you can call again.
-  attach();
-}
-
-
-// === Activate column resize + reorder ===
-// Detect the main prendas table (first large table inside prendas section) or fallback to first table.
-(function initColumnUX(){
-  const table =
-    document.querySelector("#prendasSection table") ||
-    document.querySelector("#dbCodigosSection table") ||
-    document.querySelector("table");
-  if (!table) return;
-  enableColumnResize(table, "haruja_colwidths_prendas");
-  enableColumnReorder(table, "haruja_colorder_prendas");
-})();
-
-</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
       :root {
         color-scheme: light;
@@ -1487,7 +1246,7 @@ button.secondary.small{
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
-#tablaPrendas{
+#prendasTable{
   width: 100%;
   min-width: 1100px;
 }
@@ -2136,6 +1895,55 @@ th.col-drag-over{
   outline-offset: -4px;
 }
 
+#prendasTable {
+  width: 100%;
+  table-layout: fixed;
+}
+
+#prendasTable th,
+#prendasTable td {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+.table-container,
+.table-wrap,
+.table-scroll {
+  overflow-x: auto;
+}
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 16px;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 9999;
+}
+
+@media (pointer: coarse) {
+  .col-resizer { width: 22px; }
+}
+
+.col-resizer::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(17,24,39,.18);
+}
+
+#prendasTable th {
+  padding-right: 20px;
+}
+
 </style>
   <style id="haruja-resize-style">
 /* === Column resizing (Sheets-like) === */
@@ -2419,7 +2227,7 @@ body.haruja-col-resizing{
     <template id="prendas-empty-template"><tr><td colspan="99" style="padding:18px; text-align:center; color:#6b7280;">Sin resultados</td></tr></template>
 
     <div class="table-wrap tableWrap">
-      <table id="tablaPrendas" class="table haruja-table">
+      <table id="prendasTable" class="table haruja-table">
         <thead>
                   <tr>
                     <th class="col-select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
@@ -2795,7 +2603,7 @@ const auth = getAuth(app);
       const prendasCountNote = document.getElementById("prendas-count-note");
       const prendasTable =
         document.querySelector("[data-prendas-table]") ||
-        document.getElementById("tablaPrendas");
+        document.getElementById("prendasTable");
       const prendasTbody =
         prendasTable?.querySelector("tbody") ||
         document.querySelector("[data-prendas-tbody]") ||
@@ -4348,7 +4156,7 @@ return `<!doctype html>
 
   // boot
   window.addEventListener("DOMContentLoaded", ()=>{
-    enableColumnResizing("tablaPrendas", "haruja_colwidths_tablaPrendas");
+    enableColumnResizing("prendasTable", "haruja_colwidths_tablaPrendas");
   });
 })();
 <\/script>
@@ -7255,6 +7063,103 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         document.head.appendChild(script);
       };
 
+      function ensureColGroup(table) {
+        let colgroup = table.querySelector("colgroup");
+        const ths = table.querySelectorAll("thead th");
+        if (!ths.length) return null;
+
+        if (!colgroup) {
+          colgroup = document.createElement("colgroup");
+          for (let i = 0; i < ths.length; i += 1) {
+            colgroup.appendChild(document.createElement("col"));
+          }
+          table.insertBefore(colgroup, table.firstChild);
+        }
+        return colgroup;
+      }
+
+      function attachResizableColumns(table) {
+        const storageKey = "haruja_colwidths_v1";
+        const colgroup = ensureColGroup(table);
+        if (!colgroup) return;
+
+        const cols = Array.from(colgroup.querySelectorAll("col"));
+        const ths = Array.from(table.querySelectorAll("thead th"));
+
+        const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+        cols.forEach((col, i) => {
+          if (saved[i]) col.style.width = `${saved[i]}px`;
+        });
+
+        ths.forEach((th, i) => {
+          if (th.querySelector(".col-resizer")) return;
+
+          const resizer = document.createElement("div");
+          resizer.className = "col-resizer";
+          th.appendChild(resizer);
+
+          let startX = 0;
+          let startWidth = 0;
+          let active = false;
+
+          resizer.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            active = true;
+            startX = e.clientX;
+            startWidth = th.getBoundingClientRect().width;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+            if (typeof resizer.setPointerCapture === "function") {
+              try {
+                resizer.setPointerCapture(e.pointerId);
+              } catch (error) {
+                console.debug("No se pudo capturar puntero en resizer", error);
+              }
+            }
+          });
+
+          resizer.addEventListener("pointermove", (e) => {
+            if (!active) return;
+            const newWidth = Math.max(50, startWidth + (e.clientX - startX));
+            if (cols[i]) cols[i].style.width = `${newWidth}px`;
+          });
+
+          const finishResize = () => {
+            if (!active) return;
+            active = false;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+            const widths = {};
+            cols.forEach((col, idx) => {
+              widths[idx] = parseInt(col.style.width || 0, 10);
+            });
+            localStorage.setItem(storageKey, JSON.stringify(widths));
+          };
+
+          resizer.addEventListener("pointerup", finishResize);
+          resizer.addEventListener("pointercancel", finishResize);
+          resizer.addEventListener("lostpointercapture", finishResize);
+        });
+      }
+
+      function initResizableTable() {
+        const table = document.querySelector("#prendasTable");
+        if (!table || table.dataset.resizableInitialized === "1") return;
+
+        table.dataset.resizableInitialized = "1";
+        attachResizableColumns(table);
+
+        const tbody = table.querySelector("tbody");
+        if (!tbody) return;
+
+        const observer = new MutationObserver(() => {
+          attachResizableColumns(table);
+        });
+
+        observer.observe(tbody, { childList: true });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
         if (debugMode) {
           const panel = document.createElement("aside");
@@ -7267,6 +7172,8 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         navigateTo(getViewFromUrl(), { replace: true });
         updateDebugPanel();
       });
+
+      window.addEventListener("load", initResizableTable);
     </script>
   </body>
 </html>
