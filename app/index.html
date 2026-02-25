@@ -1874,27 +1874,6 @@ body.admin-on .admin-only{ display:table-cell; }
       }
 
     
-/* === Column resize + reorder (Sheets-like) === */
-.col-resizer{
-  width: 14px; /* easier to grab on mobile */
-  touch-action: none; /* allow dragging without page scroll */
-}
-@media (pointer: coarse){
-  .col-resizer{ width: 18px; }
-}
-
-/* Reorder hint (desktop only) */
-th.col-draggable{
-  cursor: grab;
-}
-th.col-draggable:active{
-  cursor: grabbing;
-}
-th.col-drag-over{
-  outline: 2px dashed rgba(37,99,235,.65);
-  outline-offset: -4px;
-}
-
 #prendasTable {
   width: 100%;
   table-layout: fixed;
@@ -1919,29 +1898,36 @@ th.col-drag-over{
   top: 0;
   right: 0;
   height: 100%;
-  width: 16px;
+  width: 18px;
   cursor: col-resize;
-  user-select: none;
   touch-action: none;
   z-index: 9999;
 }
 
 @media (pointer: coarse) {
-  .col-resizer { width: 22px; }
+  .col-resizer { width: 24px; }
 }
 
 .col-resizer::after {
   content: "";
   position: absolute;
-  right: 7px;
+  right: 8px;
   top: 0;
   width: 2px;
   height: 100%;
-  background: rgba(17,24,39,.18);
+  background: rgba(0,0,0,.2);
 }
 
 #prendasTable th {
-  padding-right: 20px;
+  padding-right: 22px;
+}
+
+th.col-draggable {
+  cursor: grab;
+}
+
+th.col-drag-over {
+  outline: 2px dashed #2563eb;
 }
 
 </style>
@@ -7078,20 +7064,120 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         return colgroup;
       }
 
-      function attachResizableColumns(table) {
-        const storageKey = "haruja_colwidths_v1";
+      function saveState(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+      }
+
+      function loadState(key) {
+        try {
+          return JSON.parse(localStorage.getItem(key) || "{}");
+        } catch (error) {
+          console.warn("No se pudo cargar el estado de la tabla", error);
+          return {};
+        }
+      }
+
+      function getColumnKeys(table) {
+        const ths = Array.from(table.querySelectorAll("thead th"));
+        return ths.map((th, index) => {
+          if (!th.dataset.colKey) {
+            const label = safeString(th.textContent)
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, "-")
+              .replace(/[^a-z0-9\-_]/g, "");
+            th.dataset.colKey = label || `col-${index}`;
+          }
+          return th.dataset.colKey;
+        });
+      }
+
+      function moveNode(list, fromIndex, toIndex) {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+        const item = list[fromIndex];
+        if (!item) return;
+        list.splice(fromIndex, 1);
+        list.splice(toIndex, 0, item);
+      }
+
+      function applyColumnOrder(table, orderKeys) {
+        if (!Array.isArray(orderKeys) || !orderKeys.length) return;
+
+        const headRow = table.querySelector("thead tr");
+        const colgroup = ensureColGroup(table);
+        if (!headRow || !colgroup) return;
+
+        const ths = Array.from(headRow.children);
+        const cols = Array.from(colgroup.children);
+        const keyToIndex = new Map();
+        ths.forEach((th, idx) => {
+          keyToIndex.set(th.dataset.colKey || `col-${idx}`, idx);
+        });
+
+        const normalizedOrder = orderKeys
+          .map((key) => keyToIndex.get(key))
+          .filter((idx) => Number.isInteger(idx));
+        if (!normalizedOrder.length) return;
+
+        const desiredOrder = normalizedOrder.concat(
+          ths.map((_, idx) => idx).filter((idx) => !normalizedOrder.includes(idx))
+        );
+
+        const rows = Array.from(table.querySelectorAll("tr"));
+        rows.forEach((tr) => {
+          const cells = Array.from(tr.children);
+          desiredOrder.forEach((sourceIndex) => {
+            if (cells[sourceIndex]) tr.appendChild(cells[sourceIndex]);
+          });
+        });
+
+        desiredOrder.forEach((sourceIndex) => {
+          if (cols[sourceIndex]) colgroup.appendChild(cols[sourceIndex]);
+        });
+      }
+
+      function attachResizable(table) {
+        const key = "haruja_table_state_v2";
         const colgroup = ensureColGroup(table);
         if (!colgroup) return;
 
+        const initialKeys = getColumnKeys(table);
+        const state = loadState(key);
+
+        if (Array.isArray(state.order) && state.order.length) {
+          applyColumnOrder(table, state.order);
+        }
+
         const cols = Array.from(colgroup.querySelectorAll("col"));
         const ths = Array.from(table.querySelectorAll("thead th"));
+        const keys = getColumnKeys(table);
 
-        const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
-        cols.forEach((col, i) => {
-          if (saved[i]) col.style.width = `${saved[i]}px`;
-        });
+        if (state.widths) {
+          cols.forEach((col, i) => {
+            const colKey = keys[i] || initialKeys[i] || `col-${i}`;
+            if (state.widths[colKey]) {
+              col.style.width = `${state.widths[colKey]}px`;
+            }
+          });
+        }
+
+        const persistState = () => {
+          const currentState = loadState(key);
+          const currentKeys = getColumnKeys(table);
+          const widths = {};
+          Array.from(colgroup.querySelectorAll("col")).forEach((col, idx) => {
+            const px = parseInt(col.style.width || 0, 10);
+            if (px > 0) widths[currentKeys[idx] || `col-${idx}`] = px;
+          });
+          saveState(key, {
+            ...currentState,
+            widths,
+            order: currentKeys
+          });
+        };
 
         ths.forEach((th, i) => {
+          th.classList.add("col-draggable");
           if (th.querySelector(".col-resizer")) return;
 
           const resizer = document.createElement("div");
@@ -7102,6 +7188,25 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           let startWidth = 0;
           let active = false;
 
+          const onPointerMove = (e) => {
+            if (!active) return;
+            const col = Array.from(colgroup.querySelectorAll("col"))[i];
+            if (!col) return;
+            const newWidth = Math.max(60, startWidth + (e.clientX - startX));
+            col.style.width = `${newWidth}px`;
+          };
+
+          const onPointerUp = () => {
+            if (!active) return;
+            active = false;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+            document.removeEventListener("pointermove", onPointerMove);
+            document.removeEventListener("pointerup", onPointerUp);
+            document.removeEventListener("pointercancel", onPointerUp);
+            persistState();
+          };
+
           resizer.addEventListener("pointerdown", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -7110,51 +7215,84 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
             startWidth = th.getBoundingClientRect().width;
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
-            if (typeof resizer.setPointerCapture === "function") {
-              try {
-                resizer.setPointerCapture(e.pointerId);
-              } catch (error) {
-                console.debug("No se pudo capturar puntero en resizer", error);
-              }
-            }
+            document.addEventListener("pointermove", onPointerMove);
+            document.addEventListener("pointerup", onPointerUp);
+            document.addEventListener("pointercancel", onPointerUp);
           });
 
-          resizer.addEventListener("pointermove", (e) => {
-            if (!active) return;
-            const newWidth = Math.max(50, startWidth + (e.clientX - startX));
-            if (cols[i]) cols[i].style.width = `${newWidth}px`;
-          });
-
-          const finishResize = () => {
-            if (!active) return;
-            active = false;
-            document.body.style.cursor = "";
-            document.body.style.userSelect = "";
-            const widths = {};
-            cols.forEach((col, idx) => {
-              widths[idx] = parseInt(col.style.width || 0, 10);
+          resizer.addEventListener("dblclick", () => {
+            const activeCols = Array.from(colgroup.querySelectorAll("col"));
+            const col = activeCols[i];
+            if (!col) return;
+            let max = 80;
+            table.querySelectorAll("tr").forEach((tr) => {
+              const cell = tr.children[i];
+              if (!cell) return;
+              max = Math.max(max, cell.scrollWidth);
             });
-            localStorage.setItem(storageKey, JSON.stringify(widths));
-          };
-
-          resizer.addEventListener("pointerup", finishResize);
-          resizer.addEventListener("pointercancel", finishResize);
-          resizer.addEventListener("lostpointercapture", finishResize);
+            col.style.width = `${max + 20}px`;
+            persistState();
+          });
         });
+
+        if (!window.matchMedia("(pointer: coarse)").matches) {
+          let dragIndex = null;
+
+          ths.forEach((th) => {
+            if (th.dataset.dragBound === "1") return;
+            th.dataset.dragBound = "1";
+            th.draggable = true;
+
+            th.addEventListener("dragstart", () => {
+              dragIndex = Array.from(table.querySelectorAll("thead th")).indexOf(th);
+            });
+
+            th.addEventListener("dragover", (e) => {
+              e.preventDefault();
+              th.classList.add("col-drag-over");
+            });
+
+            th.addEventListener("dragleave", () => {
+              th.classList.remove("col-drag-over");
+            });
+
+            th.addEventListener("drop", () => {
+              th.classList.remove("col-drag-over");
+              const targetIndex = Array.from(table.querySelectorAll("thead th")).indexOf(th);
+              if (dragIndex === null || dragIndex < 0 || targetIndex < 0 || dragIndex === targetIndex) return;
+
+              table.querySelectorAll("tr").forEach((tr) => {
+                const cells = Array.from(tr.children);
+                const sourceCell = cells[dragIndex];
+                const targetCell = cells[targetIndex];
+                if (!sourceCell || !targetCell) return;
+                tr.insertBefore(sourceCell, dragIndex < targetIndex ? targetCell.nextSibling : targetCell);
+              });
+
+              const activeCols = Array.from(colgroup.querySelectorAll("col"));
+              moveNode(activeCols, dragIndex, targetIndex);
+              activeCols.forEach((col) => colgroup.appendChild(col));
+
+              dragIndex = null;
+              persistState();
+            });
+          });
+        }
       }
 
-      function initResizableTable() {
+      function initPrendasTable() {
         const table = document.querySelector("#prendasTable");
-        if (!table || table.dataset.resizableInitialized === "1") return;
-
-        table.dataset.resizableInitialized = "1";
-        attachResizableColumns(table);
+        if (!table) return;
+        attachResizable(table);
 
         const tbody = table.querySelector("tbody");
         if (!tbody) return;
 
+        if (table.dataset.resizeObserverAttached === "1") return;
+        table.dataset.resizeObserverAttached = "1";
+
         const observer = new MutationObserver(() => {
-          attachResizableColumns(table);
+          attachResizable(table);
         });
 
         observer.observe(tbody, { childList: true });
@@ -7173,7 +7311,7 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
         updateDebugPanel();
       });
 
-      window.addEventListener("load", initResizableTable);
+      window.addEventListener("load", initPrendasTable);
     </script>
   </body>
 </html>
