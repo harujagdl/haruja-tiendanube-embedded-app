@@ -1423,11 +1423,6 @@ button.secondary.small{
 #dbCodigosSection .db-table { padding: 18px 24px 24px 24px; }
 #dbCodigosSection .db-table-toolbar { display:flex; justify-content:flex-end; margin-bottom: 10px; }
 #dbCodigosSection .table-wrap { width:100%; overflow:auto; border:1px solid #e6e8ef; border-radius:16px; background:#fff; }
-
-#dbCodigosSection .tableWrap{ max-height: calc(100vh - 360px); overflow:auto; }
-#dbCodigosSection table.table thead th{ position: sticky; top: 0; z-index: 2; background: #fff; }
-#dbCodigosSection .db-table-toolbar{ flex-wrap: wrap; gap: 10px; }
-#dbCodigosSection table.table td.cell-desc{ white-space: normal; }
 #dbCodigosSection table.table { width: 100%; border-collapse: collapse; min-width: 980px; table-layout: fixed; }
 #dbCodigosSection table.table th,
 #dbCodigosSection table.table td {
@@ -1833,10 +1828,52 @@ body.admin-on .admin-only{ display:table-cell; }
 }
 
 
-#dbCodigosSection .col-actions{ display:flex; gap:8px; justify-content:center; }
-#dbCodigosSection .col-actions button{ border:1px solid #e6e8ef; background:#fff; border-radius:10px; padding:6px 10px; cursor:pointer; }
-#dbCodigosSection .col-actions button:hover{ background:#fafbff; }
-</style>
+      /* ✅ Admin: columna Acciones siempre visible en Prendas */
+      #prendasSection .table-wrap, 
+      #prendasSection .tableWrap,
+      #prendasSection .table-container,
+      #prendasSection .table-scroll,
+      #prendasSection .tableWrapper {
+        overflow-x: auto;
+      }
+
+      #prendasSection th.col-actions,
+      #prendasSection td.col-actions {
+        position: sticky;
+        right: 0;
+        background: #f4fbf6; /* coincide con filas verdosas */
+        z-index: 5;
+        box-shadow: -10px 0 16px rgba(0,0,0,0.06);
+        min-width: 92px;
+        text-align: center;
+        white-space: nowrap;
+      }
+
+      #prendasSection th.col-actions { z-index: 6; }
+
+      #prendasSection .rowEditBtn,
+      #prendasSection .rowDeleteBtn {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        color: #344054;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        padding: 0;
+        margin: 0 4px;
+        cursor: pointer;
+      }
+
+      #prendasSection .rowEditBtn:hover,
+      #prendasSection .rowDeleteBtn:hover {
+        background: #f2f4f7;
+      }
+
+    </style>
   </head>
   <body>
   <header class="haruja-header">
@@ -5152,20 +5189,26 @@ const createPrendaRow = (item) => {
         if (adminEnabled) {
           const actionCell = document.createElement("td");
           actionCell.className = "col-actions";
+
+          // ✏️ Editar
           const editButton = document.createElement("button");
           editButton.type = "button";
           editButton.className = "rowEditBtn";
-          editButton.setAttribute("aria-label", "Editar prenda");
-          editButton.textContent = "✏️";
           editButton.dataset.editDoc = docId;
-          actionCell.appendChild(editButton);
+          editButton.setAttribute("aria-label", "Editar prenda");
+          editButton.title = "Editar";
+          editButton.textContent = "✏️";
 
+          // 🗑 Borrar
           const deleteButton = document.createElement("button");
           deleteButton.type = "button";
           deleteButton.className = "rowDeleteBtn";
-          deleteButton.setAttribute("aria-label", "Borrar prenda");
           deleteButton.dataset.deleteDoc = docId;
+          deleteButton.setAttribute("aria-label", "Borrar prenda");
+          deleteButton.title = "Borrar";
           deleteButton.textContent = "🗑";
+
+          actionCell.appendChild(editButton);
           actionCell.appendChild(deleteButton);
           row.appendChild(actionCell);
         }
