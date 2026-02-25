@@ -4931,11 +4931,11 @@ return `<!doctype html>
             <div class="range-fields">
               <div class="range-field">
                 <label for="range-min">Mínimo</label>
-                <input id="range-min" type="number" min="0" step="0.01" placeholder="0.00" value="${currentMin ?? ""}" data-range-min />
+                <input id="range-min" type="number" min="0" step="0.01" placeholder="0.00" value="" data-range-min />
               </div>
               <div class="range-field">
                 <label for="range-max">Máximo</label>
-                <input id="range-max" type="number" min="0" step="0.01" placeholder="0.00" value="${currentMax ?? ""}" data-range-max />
+                <input id="range-max" type="number" min="0" step="0.01" placeholder="0.00" value="" data-range-max />
               </div>
             </div>
             <div class="hint" data-range-hint></div>
@@ -4948,6 +4948,12 @@ return `<!doctype html>
           const minInput = container.querySelector("[data-range-min]");
           const maxInput = container.querySelector("[data-range-max]");
           const hintEl = container.querySelector("[data-range-hint]");
+      // ✅ FIX: no metas ${...} literal en HTML. Seteamos el valor por JS.
+      try {
+        minInput.value = (typeof currentMin !== "undefined" && currentMin !== null) ? String(currentMin) : "";
+        maxInput.value = (typeof currentMax !== "undefined" && currentMax !== null) ? String(currentMax) : "";
+      } catch (e) {}
+
 
           container.querySelector("[data-clear]").addEventListener("click", async () => {
             prendasState.filters.header.pventaMin = null;
