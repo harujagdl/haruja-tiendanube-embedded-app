@@ -2358,6 +2358,7 @@ body.haruja-col-resizing{
         getRedirectResult,
         signOut
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+      import { ajustarDesdePrecioConIVA } from "./shared/priceRules.js";
 
       // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
 // Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
@@ -5977,7 +5978,10 @@ const createPrendaRow = (item) => {
           registroSave.disabled = true;
           registroSubmit.disabled = true;
 
-          const pVenta = toNumber(adminCreatePVentaInput?.value);
+          const precioConIVAIngresado = toNumber(adminCreatePVentaInput?.value);
+          const ajustePrecio = Number.isFinite(precioConIVAIngresado)
+            ? ajustarDesdePrecioConIVA(precioConIVAIngresado)
+            : null;
           const buildPublicPayload = ({ codigo, baseCode, variantKey, orden = null, seqNumber = null }) => {
             const payload = {
               docId: safeDocId(codigo),
@@ -6005,9 +6009,14 @@ const createPrendaRow = (item) => {
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             };
-            if (Number.isFinite(pVenta)) {
-              payload.pVenta = pVenta;
-              payload.precioConIva = pVenta;
+            if (ajustePrecio) {
+              payload.pVenta = ajustePrecio.precioConIVA;
+              payload.precioConIva = ajustePrecio.precioConIVA;
+              payload.precioConIVA = ajustePrecio.precioConIVA;
+              payload.precioSinIVA = ajustePrecio.precioSinIVA;
+              payload.iva = ajustePrecio.iva;
+              payload.precioConIVAIngresado = precioConIVAIngresado;
+              payload.precioUpdatedAt = serverTimestamp();
             }
             return payload;
           };
