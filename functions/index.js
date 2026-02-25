@@ -1809,6 +1809,46 @@ const buildLogoUrl = async () => {
   return buildStorageDownloadUrl(bucket.name, TICKET_LOGO_PATH, downloadToken);
 };
 
+const TICKET_FOOTER_TEXT = `Gracias por tu compra en HarujaGdl
+
+Todos nuestros productos pasan por inspección para garantizar calidad, talla solicitada y que estén libres de defectos.
+
+CAMBIOS
+Solicítalo dentro de 7 días naturales de recibir tu compra.
+
+La prenda debe estar nueva, sin uso, sin lavar y con etiquetas originales.
+
+No aplican cambios en: prendas tejidas, bordadas, con aplicaciones, accesorios, prendas de ropa íntima, trajes de baño,
+rebajas o compras con cupón.
+
+Los gastos de envío corren por cuenta del cliente.
+
+Solicita tu cambio por WhatsApp al 33 3033 6506 indicando motivo, prenda y talla deseada.
+
+APARTADOS
+Puedes apartar con 25% de anticipo.
+Plazo máximo para recoger: 30 días.
+
+Pasado ese tiempo, la prenda vuelve a venta y el anticipo queda como saldo a favor por 3 meses a partir de la fecha inicial
+del apartado.
+
+No aplican cambios ni devoluciones en apartados.
+
+No realizamos devoluciones de dinero. Todos los cambios son por producto de igual o mayor valor.
+
+Gracias por elegirnos 💛`;
+
+const buildTicketFooterHtml = () => {
+  const blocks = TICKET_FOOTER_TEXT.split("\n\n").map((block) => block.trim()).filter(Boolean);
+  return blocks.map((block) => {
+    const content = escHtml(block).replace(/\n/g, "<br>");
+    if (block === "CAMBIOS" || block === "APARTADOS") {
+      return `<p class="legal-heading"><strong>${content}</strong></p>`;
+    }
+    return `<p>${content}</p>`;
+  }).join("");
+};
+
 const renderTicketHtml = (ctx) => {
   const {
     folio, fecha, cliente, contacto, filas = [], subtotal = 0, anticipo = 0,
@@ -1838,6 +1878,9 @@ const renderTicketHtml = (ctx) => {
 table{width:100%;border-collapse:collapse;margin-top:10px} th,td{border-bottom:1px solid #e7e7e7;padding:8px;font-size:12.5px;text-align:left;vertical-align:top}
 th{background:${beige};font-weight:bold}.right{text-align:right}.totals{width:100%;margin-top:14px}.totals td{padding:6px 8px}.totals .lbl{text-align:right}.totals .val{text-align:right;width:120px}
 .notes{margin-top:18px;font-size:11.5px;line-height:1.45}
+.legal-footer{margin-top:16px;font-size:9.5px;line-height:1.35}
+.legal-footer p{margin:0 0 8px 0}
+.legal-footer .legal-heading{margin-top:12px;page-break-inside:avoid}
 </style></head><body>
 <div class="head">
   <img src="${escHtml(logoUrl)}" class="logo">
@@ -1865,6 +1908,7 @@ th{background:${beige};font-weight:bold}.right{text-align:right}.totals{width:10
   <tr><td class="lbl" colspan="4"><b>Total de Cuenta</b></td><td class="val"><b>${fmtCurrency(total)}</b></td></tr>
 </table>
 <div class="notes">Gracias por tu compra en HarujaGdl</div>
+<section class="legal-footer">${buildTicketFooterHtml()}</section>
 </body></html>`;
 };
 
