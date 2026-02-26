@@ -41,7 +41,7 @@ export async function getGoalsSalesState(db, { year, auth } = {}) {
   });
 
   return {
-    defaultMonthlyGoal: Number(configSnap.data()?.defaultMonthlyGoal ?? 0),
+    defaultMonthlyGoal: Number(configSnap.data()?.defaultMonthlyGoal ?? 10000),
     annualGoal: Number(annualSnap.data()?.goal ?? annualSnap.data()?.meta ?? 0),
     monthlyGoals
   };

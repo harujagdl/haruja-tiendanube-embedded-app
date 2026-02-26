@@ -2878,7 +2878,7 @@ const auth = getAuth(app);
         view: "monthly",
         fromMonth: 1,
         toMonth: new Date().getMonth() + 1,
-        defaultMonthlyGoal: 0,
+        defaultMonthlyGoal: 10000,
         annualGoal: 0,
         monthlyGoals: {},
         monthlySales: emptyMonths(),
@@ -2973,18 +2973,6 @@ const auth = getAuth(app);
         if (metaState.loading) return;
         if (metaState.initialized && !force) return;
 
-        const currentUser = auth?.currentUser;
-        if (!currentUser) {
-          setMetaError(null);
-          setMetaStatus("Inicia sesión para ver metas", "warning");
-          metaState.monthlySales = emptyMonths(metaState.year);
-          metaState.defaultMonthlyGoal = 0;
-          metaState.monthlyGoals = {};
-          metaState.annualGoal = 0;
-          renderMeta();
-          return;
-        }
-
         try {
           metaState.loading = true;
           setMetaStatus("Cargando…");
@@ -2994,7 +2982,7 @@ const auth = getAuth(app);
             getGoalsSalesState(db, { year: metaState.year, auth })
           ]);
           metaState.monthlySales = sales.monthlyTotals || emptyMonths(metaState.year);
-          metaState.defaultMonthlyGoal = goals.defaultMonthlyGoal || 0;
+          metaState.defaultMonthlyGoal = goals.defaultMonthlyGoal || 10000;
           metaState.monthlyGoals = goals.monthlyGoals || {};
           metaState.annualGoal = goals.annualGoal || 0;
           metaState.initialized = true;
@@ -3054,6 +3042,15 @@ const auth = getAuth(app);
         const withAdminSaving = async (buttonId, action) => {
           const button = document.getElementById(buttonId);
           if (!button) return;
+          const adminEnabled = isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
+          if (!adminEnabled) {
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = "No tienes permisos para editar metas (solo admin).";
+              metaAdminMessage.classList.remove("hidden");
+              metaAdminMessage.classList.add("error");
+            }
+            return;
+          }
           button.disabled = true;
           try {
             await action();
