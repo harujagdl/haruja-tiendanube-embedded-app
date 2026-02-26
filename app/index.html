@@ -7008,22 +7008,35 @@ window.addEventListener("hashchange", () => {
       setMoreFiltersOpen(false);
     });
 
-    // Actualiza dot cuando cambia algo
-    [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
-    if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
-if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
-      });
-      document.addEventListener("pointerdown", (event) => {
-        const target = event.target;
-        if (prendasState.headerPopover?.container && !prendasState.headerPopover.container.contains(target)) {
-          closeHeaderPopover();
-        }
-      });
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-          closeHeaderPopover();
-        }
-      });
+// Actualiza dot cuando cambia algo
+[prendasPrecioMin, prendasPrecioMax].forEach((el) => {
+  if (el) el.addEventListener("input", updateMoreFiltersDot);
+});
+
+if (prendasPrecioSin) {
+  prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
+}
+
+if (prendasSearch) {
+  prendasSearch.addEventListener("input", handleSearchInput);
+}
+
+document.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+
+  if (
+    prendasState.headerPopover?.container &&
+    !prendasState.headerPopover.container.contains(target)
+  ) {
+    closeHeaderPopover();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeHeaderPopover();
+  }
+});
       if (prendasPrecioApply) prendasPrecioApply.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterApply(); });
       if (prendasFiltersClear) {
         prendasFiltersClear.addEventListener("pointerdown", (event) => { event.preventDefault(); handleFilterClear(); });
