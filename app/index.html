@@ -1969,6 +1969,28 @@ th.col-drag-over {
   outline: 2px dashed #2563eb;
 }
 
+
+      #dbCodigosSection .db-table-toolbar{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;}
+      #dbCodigosSection .db-table-toolbar .btn{background:#1E5EFF;color:#fff;border:none;}
+      #dbCodigosSection .table-wrap{width:100%;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid rgba(0,0,0,.12);border-radius:12px;background:#fff;}
+      #dbCodigosSection table.haruja-table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:13px;color:rgba(0,0,0,.82);}
+      #dbCodigosSection table.haruja-table thead th{position:sticky;top:0;z-index:20;background:#1E5EFF;color:#fff;text-align:left;vertical-align:top;padding:10px;border-right:1px solid rgba(255,255,255,.18);border-bottom:1px solid rgba(0,0,0,.18);overflow:visible;}
+      #dbCodigosSection table.haruja-table thead th:last-child{border-right:none;}
+      #dbCodigosSection .th-inner{display:flex;flex-direction:column;gap:8px;min-height:58px;}
+      #dbCodigosSection .th-label{font-size:12px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      #dbCodigosSection .th-label .th-sort{all:unset;cursor:pointer;color:#fff;font-weight:700;}
+      #dbCodigosSection .th-control{width:100%;display:flex;}
+      #dbCodigosSection .th-control select{width:100%;height:30px;padding:0 10px;font-size:12px;border-radius:10px;border:1px solid rgba(255,255,255,.30);background:rgba(255,255,255,.10);color:#fff;}
+      #dbCodigosSection .th-control select option{color:#111;background:#fff;}
+      #dbCodigosSection table.haruja-table tbody td{padding:10px;border-right:1px solid rgba(0,0,0,.12);border-bottom:1px solid rgba(0,0,0,.06);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;}
+      #dbCodigosSection table.haruja-table tbody tr:hover td{background:rgba(30,94,255,.05);}
+      #dbCodigosSection table.haruja-table tbody td:last-child{border-right:none;}
+      @media (max-width:768px){
+        #dbCodigosSection table.haruja-table thead th{padding:8px;}
+        #dbCodigosSection .th-inner{min-height:56px;gap:6px;}
+        #dbCodigosSection .th-control select{height:28px;border-radius:9px;}
+      }
+
 </style>
   <style id="haruja-resize-style">
 /* === Column resizing (Sheets-like) === */
@@ -2228,11 +2250,7 @@ body.haruja-col-resizing{
   </div>
 
   <div class="db-table">
-    <div class="db-table-toolbar">
-      <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
-      <button id="labels-btn" class="btn btn-ghost" type="button">Etiquetas</button>
-      <button id="export-csv-btn" class="btn btn-ghost" type="button">Exportar CSV</button>
-          </div>
+    <div id="toolbar" class="db-table-toolbar"></div>
     <div id="labels-panel" class="labels-panel hidden" aria-hidden="true">
       <div class="labels-panel-title">Imprimir etiquetas</div>
       <div class="labels-scope-options">
@@ -2252,26 +2270,7 @@ body.haruja-col-resizing{
 
     <div class="table-wrap tableWrap">
       <table id="prendasTable" class="table haruja-table">
-        <thead>
-                  <tr>
-                    <th class="col-select" data-col="select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
-                    <th class="col-orden" data-col="orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
-                    <th class="col-codigo" data-col="codigo">Código</th>
-                    <th class="col-descripcion col-desc haruja-col-desc" data-col="descripcion">Descripción</th>
-                    <th class="col-tipo" data-col="tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
-                    <th class="col-color" data-col="color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
-                    <th class="col-talla" data-col="talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
-                    <th class="col-proveedor col-prov" data-col="proveedor" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
-                    <th class="col-status" data-col="status" data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
-                    <th class="col-disponibilidad col-disp" data-col="disponibilidad" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
-                    <th class="col-fecha" data-col="fecha" data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
-                    <th class="col-pventa col-precio" data-col="pventa" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
-                    <th class="admin-only" data-col="costo">(Admin) Costo</th>
-                    <th class="admin-only" data-col="margen">(Admin) Margen</th>
-                    <th class="admin-only" data-col="utilidad">(Admin) Utilidad</th>
-                    <th class="admin-only col-actions" data-col="acciones">Acciones</th>
-                  </tr>
-                </thead>
+                <thead><tr id="prendas-head-row"></tr></thead>
         <tbody id="prendas-tbody">
           <tr id="loadingRow" data-db-loader>
             <td colspan="99" class="muted" style="padding:14px 16px;">Cargando…</td>
@@ -2614,9 +2613,8 @@ const auth = getAuth(app);
       const printRoot = document.getElementById("printRoot");
 
       const prendasSearch = document.getElementById("prendas-search");
-      const headerFilterButtons = document.querySelectorAll("[data-open-header-filter]");
-      const ordenSortBtn = document.getElementById("ordenSortBtn");
-      const ordenSortIcon = document.getElementById("ordenSortIcon");
+      const toolbar = document.getElementById("toolbar");
+      const prendasHeadRow = document.getElementById("prendas-head-row");
       const prendasYear = document.getElementById("prendas-year");
       const prendasMonth = document.getElementById("prendas-month");
       const prendasPrecioMin = document.getElementById("prendas-precio-min");
@@ -2649,12 +2647,10 @@ const auth = getAuth(app);
       const prendasPanel = document.getElementById("base-datos-codigos");
       const dbCodigosSection = document.getElementById("dbCodigosSection");
       const adminToggleDb = prendasPanel?.querySelector("#adminToggleDb");
-      const labelsButton = document.getElementById("labels-btn");
-      const exportCsvButton = document.getElementById("export-csv-btn");
       const labelsPanel = document.getElementById("labels-panel");
       const labelsPrintButton = document.getElementById("labels-print-btn");
       const labelsScopeInputs = document.querySelectorAll("input[name='labels-scope']");
-      const selectAllLabelsCheckbox = document.getElementById("select-all-labels");
+      const getSelectAllLabelsCheckbox = () => document.getElementById("select-all-labels");
 
       const adminSplitButton = document.getElementById("admin-split-collections");
       const adminLoginButton = document.getElementById("admin-login");
@@ -3680,6 +3676,7 @@ const auth = getAuth(app);
       };
 
       const updateSelectAllCheckbox = () => {
+        const selectAllLabelsCheckbox = getSelectAllLabelsCheckbox();
         if (!selectAllLabelsCheckbox) return;
         const rows = prendasState.filtered || [];
         const visibleIds = rows
@@ -3732,6 +3729,109 @@ const auth = getAuth(app);
       const getActiveColumns = () => {
         const adminMode = isAdminViewEnabled();
         return PRENDAS_COLUMNS.filter((column) => (adminMode ? column.visibleInAdmin : column.visibleInUser));
+      };
+
+      const HEADER_SELECT_FILTER_COLUMNS = new Set([
+        "tipo",
+        "color",
+        "talla",
+        "proveedor",
+        "status",
+        "disponibilidad"
+      ]);
+
+      const renderToolbar = () => {
+        if (!toolbar) return;
+        const adminEnabled = isAdminViewEnabled();
+        const adminLabel = adminEnabled ? "Salir admin" : "Entrar admin";
+
+        const mkBtn = (id, label) => {
+          const button = document.createElement("button");
+          button.id = id;
+          button.type = "button";
+          button.className = "btn btn-primary";
+          button.textContent = label;
+          return button;
+        };
+
+        toolbar.replaceChildren(
+          mkBtn(adminEnabled ? "btn-admin-exit" : "btn-admin-enter", adminLabel),
+          mkBtn("btn-etiquetas", "Etiquetas"),
+          mkBtn("btn-export-csv", "Exportar CSV")
+        );
+      };
+
+      const createHeaderControlSelect = (columnKey) => {
+        const controlWrap = document.createElement("div");
+        controlWrap.className = "th-control";
+        const select = document.createElement("select");
+        select.dataset.headerSelect = columnKey;
+
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "Todos";
+        select.appendChild(defaultOption);
+
+        const options = prendasState.uniqueOptions[columnKey] || [];
+        options.forEach((optionValue) => {
+          const option = document.createElement("option");
+          option.value = optionValue;
+          option.textContent = optionValue;
+          select.appendChild(option);
+        });
+
+        const selected = Array.from(prendasState.filters.header[columnKey] || []);
+        select.value = selected[0] || "";
+        controlWrap.appendChild(select);
+        return controlWrap;
+      };
+
+      const renderTableHeader = () => {
+        if (!prendasHeadRow) return;
+        const fragment = document.createDocumentFragment();
+        getActiveColumns().forEach((column) => {
+          const th = document.createElement("th");
+          th.dataset.col = column.id;
+          th.className = `col-${column.id}`;
+
+          if (column.id === "select") {
+            const checkbox = document.createElement("input");
+            checkbox.id = "select-all-labels";
+            checkbox.type = "checkbox";
+            checkbox.setAttribute("aria-label", "Seleccionar todo");
+            th.appendChild(checkbox);
+            fragment.appendChild(th);
+            return;
+          }
+
+          const inner = document.createElement("div");
+          inner.className = "th-inner";
+          const label = document.createElement("span");
+          label.className = "th-label";
+
+          if (column.id === "orden") {
+            const sortButton = document.createElement("button");
+            sortButton.id = "ordenSortBtn";
+            sortButton.className = "th-sort";
+            sortButton.type = "button";
+            sortButton.setAttribute("aria-label", "Ordenar por Orden");
+            sortButton.innerHTML = `Orden <span id="ordenSortIcon">↑</span>`;
+            label.appendChild(sortButton);
+          } else {
+            label.textContent = column.label;
+          }
+          inner.appendChild(label);
+
+          if (HEADER_SELECT_FILTER_COLUMNS.has(column.id)) {
+            inner.appendChild(createHeaderControlSelect(column.id));
+          }
+
+          th.appendChild(inner);
+          fragment.appendChild(th);
+        });
+
+        prendasHeadRow.replaceChildren(fragment);
+        updateOrdenSortToggleUi();
       };
 
       const setTableColumnVisibility = () => {
@@ -4582,6 +4682,8 @@ return `<!doctype html>
       };
 
       const updateOrdenSortToggleUi = () => {
+        const ordenSortBtn = document.getElementById("ordenSortBtn");
+        const ordenSortIcon = document.getElementById("ordenSortIcon");
         if (!ordenSortBtn || !ordenSortIcon) return;
         const sort = normalizeSortConfig(prendasState.sort);
         ordenSortIcon.textContent = sort.dir === "desc" ? "↓" : "↑";
@@ -4720,10 +4822,6 @@ return `<!doctype html>
       };
 
       const updateHeaderFilterButtonsState = () => {
-        headerFilterButtons.forEach((button) => {
-          const key = button.dataset.openHeaderFilter;
-          button.classList.toggle("active", isHeaderFilterActive(key));
-        });
         updateOrdenSortToggleUi();
       };
 
@@ -5749,6 +5847,7 @@ const createPrendaRow = (item) => {
           : null;
         setCounter(safeRows.length, showingTotal);
         updatePaginationUi();
+        renderTableHeader();
         setTableColumnVisibility();
 
         prendasTbody.textContent = "";
@@ -6501,6 +6600,8 @@ const createPrendaRow = (item) => {
           closeEditModal();
         }
         setAdminPanelVisible(adminPanelVisible);
+        renderToolbar();
+        renderTableHeader();
         setTableColumnVisibility();
         if (refresh) {
           loadPrendasPage({ reset: true, reason: "admin-toggle" });
@@ -6680,32 +6781,74 @@ const createPrendaRow = (item) => {
         });
       }
       
-      const adminModeBtn = document.getElementById("admin-mode-btn");
-
       const updateAdminModeBtn = () => {
-        if (!adminModeBtn) return;
-        const enabled = isAdminViewEnabled();
-        adminModeBtn.classList.toggle("is-on", enabled);
-        adminModeBtn.setAttribute("aria-pressed", enabled ? "true" : "false");
-        if (!prendasState.adminByAuth) {
-          adminModeBtn.textContent = "Modo admin";
-          adminModeBtn.title = "Inicia sesión con Google para ver Costos/Margen/Utilidad";
-          return;
-        }
-        adminModeBtn.textContent = enabled ? "Salir admin" : "Modo admin";
-        adminModeBtn.title = enabled ? "Salir de la vista admin" : "Mostrar columnas admin";
+        renderToolbar();
       };
 
-      
-      if (adminModeBtn) {
-        adminModeBtn.addEventListener("click", async () => {
+      document.addEventListener("click", async (event) => {
+        const enterAdminBtn = event.target.closest("#btn-admin-enter");
+        if (enterAdminBtn) {
           try {
             await handleAdminToggle();
-          } catch (e) {
-            console.error(e);
+          } catch (error) {
+            console.error(error);
           }
-        });
-      }
+          return;
+        }
+
+        const exitAdminBtn = event.target.closest("#btn-admin-exit");
+        if (exitAdminBtn) {
+          try {
+            await handleAdminToggle();
+          } catch (error) {
+            console.error(error);
+          }
+          return;
+        }
+
+        if (event.target.closest("#btn-etiquetas")) {
+          prendasState.labelsPanelOpen = !prendasState.labelsPanelOpen;
+          labelsPanel.classList.toggle("hidden", !prendasState.labelsPanelOpen);
+          labelsPanel.setAttribute("aria-hidden", prendasState.labelsPanelOpen ? "false" : "true");
+          return;
+        }
+
+        if (event.target.closest("#btn-export-csv")) {
+          handleExportCsv();
+          return;
+        }
+
+        if (event.target.closest("#ordenSortBtn")) {
+          const current = normalizeSortConfig(prendasState.sort);
+          const nextDir = current.dir === "asc" ? "desc" : "asc";
+          setPrendasSort({ key: "orden", dir: nextDir });
+        }
+      });
+
+      document.addEventListener("change", async (event) => {
+        const headerSelect = event.target.closest("select[data-header-select]");
+        if (headerSelect) {
+          const key = safeString(headerSelect.dataset.headerSelect).trim();
+          const value = normalizeFilterValue(headerSelect.value);
+          prendasState.filters.header[key] = value ? new Set([value]) : new Set();
+          await applyFilters();
+          return;
+        }
+
+        if (event.target.id === "select-all-labels") {
+          const checked = Boolean(event.target.checked);
+          (prendasState.filtered || []).forEach((row) => {
+            const docId = safeString(row.docId || row.id).trim();
+            if (!docId) return;
+            if (checked) prendasState.selected.add(docId);
+            else prendasState.selected.delete(docId);
+          });
+          prendasTbody.querySelectorAll(".row-select").forEach((input) => {
+            input.checked = checked;
+          });
+          updateSelectAllCheckbox();
+        }
+      });
 
       if (prendasTable) {
         prendasTable.addEventListener("click", (event) => {
@@ -6745,30 +6888,6 @@ const createPrendaRow = (item) => {
         });
       }
 
-      if (selectAllLabelsCheckbox) {
-        selectAllLabelsCheckbox.addEventListener("change", () => {
-          const checked = Boolean(selectAllLabelsCheckbox.checked);
-          (prendasState.filtered || []).forEach((row) => {
-            const docId = safeString(row.docId || row.id).trim();
-            if (!docId) return;
-            if (checked) prendasState.selected.add(docId);
-            else prendasState.selected.delete(docId);
-          });
-          prendasTbody.querySelectorAll(".row-select").forEach((input) => {
-            input.checked = checked;
-          });
-          updateSelectAllCheckbox();
-        });
-      }
-
-      if (labelsButton && labelsPanel) {
-        labelsButton.addEventListener("click", () => {
-          prendasState.labelsPanelOpen = !prendasState.labelsPanelOpen;
-          labelsPanel.classList.toggle("hidden", !prendasState.labelsPanelOpen);
-          labelsPanel.setAttribute("aria-hidden", prendasState.labelsPanelOpen ? "false" : "true");
-        });
-      }
-
       labelsScopeInputs.forEach((input) => {
         input.addEventListener("change", () => {
           if (input.checked) {
@@ -6780,12 +6899,6 @@ const createPrendaRow = (item) => {
       if (labelsPrintButton) {
         labelsPrintButton.addEventListener("click", () => {
           openPrintLabels(prendasState.labelsScope || "page");
-        });
-      }
-
-      if (exportCsvButton) {
-        exportCsvButton.addEventListener("click", () => {
-          handleExportCsv();
         });
       }
 
@@ -6899,16 +7012,6 @@ window.addEventListener("hashchange", () => {
     [prendasPrecioMin, prendasPrecioMax].forEach((el) => el && el.addEventListener("input", updateMoreFiltersDot));
     if (prendasPrecioSin) prendasPrecioSin.addEventListener("change", updateMoreFiltersDot);
 if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
-      headerFilterButtons.forEach((button) => {
-        button.addEventListener("pointerdown", (event) => {
-          event.stopPropagation();
-          const key = button.dataset.openHeaderFilter;
-          if (prendasState.headerPopover?.key === key) {
-            closeHeaderPopover();
-            return;
-          }
-          renderHeaderFilterPopover(key, button);
-        });
       });
       document.addEventListener("pointerdown", (event) => {
         const target = event.target;
@@ -6935,13 +7038,6 @@ if (prendasSearch) prendasSearch.addEventListener("input", handleSearchInput);
           if (isBooting) return;
           await loadPrendasPage({ reset: true, reason: "page-size" });
         });
-      }
-      if (ordenSortBtn) {
-        ordenSortBtn.addEventListener("click", async () => {
-          const current = normalizeSortConfig(prendasState.sort);
-          const nextDir = current.dir === "asc" ? "desc" : "asc";
-          await setPrendasSort({ key: "orden", dir: nextDir });
-        }, { passive: true });
       }
 
       [prendasPrecioMin, prendasPrecioMax].forEach((input) => {
