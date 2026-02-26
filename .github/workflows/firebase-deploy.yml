@@ -126,17 +126,21 @@ jobs:
       # Deploy only Firestore rules/indexes + Functions to avoid Extensions checks in CI
       - name: Deploy Firestore rules/indexes + Functions
         run: |
-          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-            firebase deploy \
-              --only firestore:rules,firestore:indexes,functions \
-              --project "$FIREBASE_PROJECT_ID" \
-              --force \
-              --non-interactive
+          DEPLOY_ARGS=(
+            --only firestore:rules,firestore:indexes,functions
+            --project "$FIREBASE_PROJECT_ID"
+            --force
+            --non-interactive
+          )
+
+          if firebase deploy --help | grep -q -- '--no-extensions'; then
+            DEPLOY_ARGS+=(--no-extensions)
           else
-            firebase deploy \
-              --only firestore:rules,firestore:indexes,functions \
-              --project "$FIREBASE_PROJECT_ID" \
-              --token "$FIREBASE_TOKEN" \
-              --force \
-              --non-interactive
+            echo "firebase-tools does not support --no-extensions; deploying without it."
+          fi
+
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            firebase deploy "${DEPLOY_ARGS[@]}"
+          else
+            firebase deploy "${DEPLOY_ARGS[@]}" --token "$FIREBASE_TOKEN"
           fi
