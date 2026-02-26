@@ -2970,13 +2970,26 @@ const auth = getAuth(app);
       const loadMetaVsVenta = async ({ force = false } = {}) => {
         if (metaState.loading) return;
         if (metaState.initialized && !force) return;
+
+        const currentUser = auth?.currentUser;
+        if (!currentUser) {
+          setMetaError(null);
+          setMetaStatus("Inicia sesión para ver metas", "warning");
+          metaState.monthlySales = emptyMonths(metaState.year);
+          metaState.defaultMonthlyGoal = 0;
+          metaState.monthlyGoals = {};
+          metaState.annualGoal = 0;
+          renderMeta();
+          return;
+        }
+
         try {
           metaState.loading = true;
           setMetaStatus("Cargando…");
           setMetaError(null);
           const [sales, goals] = await Promise.all([
-            getMonthlySalesTotals(db, { year: metaState.year }),
-            getGoalsSalesState(db, { year: metaState.year })
+            getMonthlySalesTotals(db, { year: metaState.year, auth }),
+            getGoalsSalesState(db, { year: metaState.year, auth })
           ]);
           metaState.monthlySales = sales.monthlyTotals || emptyMonths(metaState.year);
           metaState.defaultMonthlyGoal = goals.defaultMonthlyGoal || 0;
@@ -3049,7 +3062,9 @@ const auth = getAuth(app);
             await loadMetaVsVenta({ force: true });
           } catch (error) {
             if (metaAdminMessage) {
-              metaAdminMessage.textContent = error?.message || "No se pudo guardar la meta.";
+              metaAdminMessage.textContent = error?.code === "permission-denied"
+                ? "No tienes permisos para editar metas (solo admin)."
+                : (error?.message || "No se pudo guardar la meta.");
               metaAdminMessage.classList.remove("hidden");
               metaAdminMessage.classList.add("error");
             }
@@ -3061,18 +3076,18 @@ const auth = getAuth(app);
         document.getElementById("metaSaveMonthGoal")?.addEventListener("click", () => withAdminSaving("metaSaveMonthGoal", async () => {
           const month = Number(document.getElementById("metaAdminMonth")?.value || 0);
           const amount = Number(document.getElementById("metaAdminMonthGoal")?.value || 0);
-          await saveMonthlyGoal(db, { year: metaState.year, month, amount });
+          await saveMonthlyGoal(db, { year: metaState.year, month, amount, auth });
         }));
 
         document.getElementById("metaSaveRangeGoal")?.addEventListener("click", () => withAdminSaving("metaSaveRangeGoal", async () => {
           const amount = Number(document.getElementById("metaAdminRangeGoal")?.value || 0);
           const { start, end } = monthRange();
-          await saveRangeMonthlyGoal(db, { year: metaState.year, startMonth: start, endMonth: end, amount, writeBatch });
+          await saveRangeMonthlyGoal(db, { year: metaState.year, startMonth: start, endMonth: end, amount, writeBatch, auth });
         }));
 
         document.getElementById("metaSaveAnnualGoal")?.addEventListener("click", () => withAdminSaving("metaSaveAnnualGoal", async () => {
           const amount = Number(document.getElementById("metaAdminAnnualGoalInput")?.value || 0);
-          await saveAnnualGoal(db, { year: metaState.year, amount });
+          await saveAnnualGoal(db, { year: metaState.year, amount, auth });
         }));
       };
 
@@ -7091,6 +7106,10 @@ const createPrendaRow = (item) => {
           }
         }
         applyAdminUI();
+        if (currentView === "meta-vs-venta") {
+          metaState.initialized = false;
+          await loadMetaVsVenta({ force: true });
+        }
       });
 
       const handleTabChange = (hash) => {
