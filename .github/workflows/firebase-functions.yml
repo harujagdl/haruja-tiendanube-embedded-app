@@ -7,6 +7,10 @@ concurrency:
   group: firebase-functions-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   functionsDeploy:
     runs-on: ubuntu-latest
@@ -32,6 +36,24 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           create_credentials_file: true
           export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+
+      - name: Show deploy identity
+        run: |
+          echo "Deploying with service account from GCP_SA_KEY"
+          gcloud auth list --filter=status:ACTIVE --format='value(account)'
+
+      - name: Ensure Firebase Extensions API is enabled
+        run: gcloud services enable firebaseextensions.googleapis.com --project "${{ secrets.FIREBASE_PROJECT_ID }}"
+
+      - name: Extensions list (non-blocking diagnostics)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: npx -y firebase-tools@latest ext:list --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive || true
 
       - name: Deploy Functions
         env:
