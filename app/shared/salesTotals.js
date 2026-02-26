@@ -22,16 +22,20 @@ const safeJson = async (response) => {
 };
 
 export async function getMonthlySalesTotal(db, year, month01) { // db se mantiene por compatibilidad de firma
+  return getMonthlyTotalFromVentasComisionesSource(db, year, month01);
+}
+
+export async function getMonthlyTotalFromVentasComisionesSource(db, year, month01) { // db se mantiene por compatibilidad de firma
   const normalizedYear = Number(year) || new Date().getFullYear();
   const normalizedMonth = String(month01 || "").padStart(2, "0");
   const docId = `${normalizedYear}-${normalizedMonth}`;
 
-  console.log("[salesTotals] docId esperado:", docId);
+  console.log("[salesTotals] docId:", docId);
 
   const { storeId } = resolveSalesContext();
   if (!storeId) {
-    console.log("[salesTotals] data keys:", []);
-    console.log("[salesTotals] total obtenido:", 0);
+    console.log("[salesTotals] exists:", false);
+    console.log("[salesTotals] keys:", []);
     return 0;
   }
 
@@ -46,7 +50,8 @@ export async function getMonthlySalesTotal(db, year, month01) { // db se mantien
   }
 
   const keys = Object.keys(payload || {});
-  console.log("[salesTotals] data keys:", keys);
+  console.log("[salesTotals] exists:", true);
+  console.log("[salesTotals] keys:", keys);
 
   const total = Number(payload?.totalMes ?? 0);
   console.log("[salesTotals] total obtenido:", Number.isFinite(total) ? total : 0);
@@ -62,7 +67,7 @@ export async function getMonthlySalesMap(db, year) {
     const month01 = String(month).padStart(2, "0");
     const key = `${normalizedYear}-${month01}`;
     try {
-      monthlyTotals[key] = await getMonthlySalesTotal(db, normalizedYear, month01);
+      monthlyTotals[key] = await getMonthlyTotalFromVentasComisionesSource(db, normalizedYear, month01);
     } catch (error) {
       console.error("[salesTotals] doc no existe => revisa docId", key, error);
       monthlyTotals[key] = 0;

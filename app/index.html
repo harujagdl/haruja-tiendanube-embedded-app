@@ -2320,6 +2320,8 @@ body.haruja-col-resizing{
               </div>
               <div class="meta-topbar-actions">
                 <span id="metaRoleChip" class="meta-chip" aria-live="polite">Público</span>
+                <button type="button" id="metaAdminLoginBtn" class="secondary small">Entrar como admin</button>
+                <button type="button" id="metaAdminLogoutBtn" class="secondary small hidden">Cerrar sesión</button>
                 <button type="button" id="metaHeaderRetryBtn" class="secondary small hidden">Reintentar</button>
               </div>
             </div>
@@ -2685,6 +2687,11 @@ body.haruja-col-resizing{
         emptyMonths,
         getMonthlySalesMap
       } from "/shared/salesTotals.js";
+      import {
+        adminSignIn,
+        adminSignOut,
+        isAdminUser
+      } from "/shared/adminAuth.js";
       import {
         getGoalsSalesState,
         saveAnnualGoal,
@@ -3084,6 +3091,8 @@ const auth = getAuth(app);
       const metaAdminMonthlyTools = document.getElementById("metaAdminMonthlyTools");
       const metaAdminAnnualTools = document.getElementById("metaAdminAnnualTools");
       const metaAdminMessage = document.getElementById("metaAdminMessage");
+      const metaAdminLoginBtn = document.getElementById("metaAdminLoginBtn");
+      const metaAdminLogoutBtn = document.getElementById("metaAdminLogoutBtn");
 
       const syncMetaViewTabs = () => {
         const isAnnual = metaState.view === "annual";
@@ -3109,7 +3118,7 @@ const auth = getAuth(app);
           return;
         }
         const code = error?.code ? `Detalle: ${error.code}` : "";
-        const canShowDetail = Boolean(isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase()));
+        const canShowDetail = Boolean(isMetaAdmin());
         metaErrorBox.innerHTML = `<div class="meta-error-main"><span aria-hidden="true">⚠️</span><div><strong>No se pudo cargar Meta vs venta.</strong>${canShowDetail ? `<div><code>${code || "sin-código"}</code></div>` : ""}</div></div><button type="button" id="metaRetryBtnInline" class="secondary meta-action">Reintentar</button>`;
         metaErrorBox.classList.remove("hidden");
         metaToolbarRetryBtn?.classList.remove("hidden");
@@ -3119,6 +3128,19 @@ const auth = getAuth(app);
       };
 
       const monthKey = (year, month) => `${year}-${String(month).padStart(2, "0")}`;
+      const isMetaAdmin = () => isAdminUser(auth?.currentUser) && isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
+
+      const syncMetaAccessUi = () => {
+        const user = auth?.currentUser || null;
+        const metaAdminEnabled = isMetaAdmin();
+        if (metaRoleChip) {
+          if (!user) metaRoleChip.textContent = "Público";
+          else metaRoleChip.textContent = metaAdminEnabled ? "Admin ✅" : "Sin permisos";
+        }
+        metaAdminBlock?.classList.toggle("hidden", !metaAdminEnabled);
+        metaAdminLoginBtn?.classList.toggle("hidden", Boolean(user));
+        metaAdminLogoutBtn?.classList.toggle("hidden", !user);
+      };
       const monthRange = () => {
         const start = Math.max(1, Math.min(12, Number(metaState.fromMonth) || 1));
         const end = Math.max(start, Math.min(12, Number(metaState.toMonth) || start));
@@ -3132,9 +3154,7 @@ const auth = getAuth(app);
         metaAdminMonthlyTools?.classList.toggle("hidden", metaState.view !== "monthly");
         metaAdminAnnualTools?.classList.toggle("hidden", metaState.view !== "annual");
 
-        const adminEnabled = isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
-        if (metaRoleChip) metaRoleChip.textContent = adminEnabled ? "Admin" : "Público";
-        metaAdminBlock?.classList.toggle("hidden", !adminEnabled);
+        syncMetaAccessUi();
 
         const { start, end } = monthRange();
         const rows = [];
@@ -3222,6 +3242,35 @@ const auth = getAuth(app);
           syncMetaUiState();
         };
 
+        metaAdminLoginBtn?.addEventListener("click", async () => {
+          try {
+            await adminSignIn(auth);
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = "Sesión admin iniciada ✅";
+              metaAdminMessage.classList.remove("hidden", "error");
+            }
+          } catch (error) {
+            console.error("[MetaVsVenta] login admin", error);
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = error?.message || "No se pudo iniciar sesión admin.";
+              metaAdminMessage.classList.remove("hidden");
+              metaAdminMessage.classList.add("error");
+            }
+          }
+        });
+
+        metaAdminLogoutBtn?.addEventListener("click", async () => {
+          try {
+            await adminSignOut(auth);
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = "Sesión cerrada.";
+              metaAdminMessage.classList.remove("hidden", "error");
+            }
+          } catch (error) {
+            console.error("[MetaVsVenta] logout admin", error);
+          }
+        });
+
         metaApplyFilters?.addEventListener("click", async () => {
           syncMetaUiState();
           await loadMetaVsVenta({ force: true });
@@ -3231,6 +3280,7 @@ const auth = getAuth(app);
         metaViewMonthlyTab.addEventListener("click", () => setMetaView("monthly"));
         metaViewAnnualTab.addEventListener("click", () => setMetaView("annual"));
         syncMetaUiState();
+        syncMetaAccessUi();
 
         const metaAdminMonth = document.getElementById("metaAdminMonth");
         if (metaAdminMonth) {
@@ -3241,7 +3291,7 @@ const auth = getAuth(app);
         const withAdminSaving = async (buttonId, action) => {
           const button = document.getElementById(buttonId);
           if (!button) return;
-          const adminEnabled = isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
+          const adminEnabled = isMetaAdmin();
           if (!adminEnabled) {
             if (metaAdminMessage) {
               metaAdminMessage.textContent = "No tienes permisos para editar metas (solo admin).";
@@ -7305,6 +7355,7 @@ const createPrendaRow = (item) => {
         }
         applyAdminUI();
         const view = typeof currentView !== "undefined" && currentView ? currentView : "panel";
+        syncMetaAccessUi();
         if (view === "meta-vs-venta") {
           metaState.initialized = false;
           await loadMetaVsVenta({ force: true });
