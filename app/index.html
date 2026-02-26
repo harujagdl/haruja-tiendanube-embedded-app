@@ -2133,8 +2133,100 @@ body.haruja-col-resizing{
                   </div>
                 </div>
               </div>
+
+              <div class="toolcard" aria-label="Abrir Meta vs venta">
+                <div class="toolcard-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M4 19h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M7 16V9M12 16V6M17 16v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="toolcard-body">
+                  <div class="toolcard-title">Meta vs venta</div>
+                  <div class="toolcard-desc">Compara ventas vs meta y ajusta metas en modo admin.</div>
+                  <div class="toolcard-actions">
+                    <button type="button" class="btn btn-primary tool-open" id="btnOpenMetaVsVenta">Abrir</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </section>
+
+        <section id="view-meta-vs-venta" class="view">
+          <section class="section" id="meta-vs-venta">
+            <button type="button" class="secondary js-back" id="btnBackMetaVsVenta">← Volver al panel</button>
+            <h2>Meta vs venta</h2>
+            <p>Comparativo de ventas contra meta con filtros y edición en admin.</p>
+            <div class="toolbar" style="gap:10px;align-items:end;flex-wrap:wrap;position:sticky;top:0;background:#fff;z-index:2;padding:10px 0;">
+              <label>Año
+                <select id="metaYearSelect"></select>
+              </label>
+              <label>Vista
+                <select id="metaViewSelect">
+                  <option value="monthly">Mes a mes</option>
+                  <option value="annual">Anual</option>
+                </select>
+              </label>
+              <label id="metaFromWrap">Desde
+                <select id="metaFromMonth"></select>
+              </label>
+              <label id="metaToWrap">Hasta
+                <select id="metaToMonth"></select>
+              </label>
+              <button type="button" id="metaApplyFilters">Aplicar</button>
+            </div>
+            <p id="metaStatus" class="status hidden"></p>
+            <div id="metaErrorBox" class="status error hidden" style="margin-bottom:10px;"></div>
+            <div id="metaMonthlyView">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mes</th><th>Venta</th><th>Meta</th><th>% Cumplimiento</th><th>Comparativo</th>
+                  </tr>
+                </thead>
+                <tbody id="metaMonthlyTbody"></tbody>
+              </table>
+            </div>
+            <div id="metaAnnualView" class="hidden">
+              <div class="summary-grid">
+                <article><h3>Venta anual</h3><p id="metaAnnualSales">$0.00</p></article>
+                <article><h3>Meta anual</h3><p id="metaAnnualGoal">$0.00</p></article>
+                <article><h3>% cumplimiento</h3><p id="metaAnnualPct">0%</p></article>
+                <article><h3>Diferencia</h3><p id="metaAnnualDiff">$0.00</p></article>
+              </div>
+            </div>
+
+            <div id="metaAdminBlock" class="card hidden" style="margin-top:14px;padding:14px;">
+              <h3 style="margin-top:0;">Editar metas</h3>
+              <div id="metaAdminMonthlyTools">
+                <div class="toolbar" style="gap:8px;align-items:end;flex-wrap:wrap;">
+                  <label>Mes
+                    <select id="metaAdminMonth"></select>
+                  </label>
+                  <label>Meta
+                    <input id="metaAdminMonthGoal" type="number" min="0" step="0.01" />
+                  </label>
+                  <button type="button" id="metaSaveMonthGoal">Guardar mes</button>
+                </div>
+                <div class="toolbar" style="gap:8px;align-items:end;flex-wrap:wrap;">
+                  <label>Meta para rango
+                    <input id="metaAdminRangeGoal" type="number" min="0" step="0.01" />
+                  </label>
+                  <button type="button" id="metaSaveRangeGoal">Aplicar meta a rango</button>
+                </div>
+              </div>
+              <div id="metaAdminAnnualTools" class="hidden">
+                <div class="toolbar" style="gap:8px;align-items:end;flex-wrap:wrap;">
+                  <label>Meta anual
+                    <input id="metaAdminAnnualGoalInput" type="number" min="0" step="0.01" />
+                  </label>
+                  <button type="button" id="metaSaveAnnualGoal">Guardar meta anual</button>
+                </div>
+              </div>
+              <p id="metaAdminMessage" class="status hidden"></p>
+            </div>
+          </section>
         </section>
 
         <section id="view-registro" class="view">
@@ -2400,6 +2492,7 @@ body.haruja-col-resizing{
         startAfter,
         where,
         limit,
+        writeBatch,
         persistentLocalCache,
         persistentMultipleTabManager,
         memoryLocalCache
@@ -2414,6 +2507,16 @@ body.haruja-col-resizing{
         signOut
       } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
       import { ajustarDesdePrecioConIVA } from "./shared/priceRules.js";
+      import {
+        emptyMonths,
+        getMonthlySalesTotals
+      } from "./shared/salesTotals.js";
+      import {
+        getGoalsSalesState,
+        saveAnnualGoal,
+        saveMonthlyGoal,
+        saveRangeMonthlyGoal
+      } from "./shared/goalsSales.js";
 
       // ✅ CONFIG FIREBASE (EDITA SOLO ESTE BLOQUE SI CAMBIAS DE PROYECTO)
 // Pega aquí TU CONFIG real de Firebase (Project settings > Your apps > Firebase SDK snippet > Config)
@@ -2692,7 +2795,7 @@ const auth = getAuth(app);
       const editModalError = document.getElementById("editModalError");
       const editModalSaveButton = document.getElementById("editModalSave");
       const editModalCancelButton = document.getElementById("editModalCancel");
-      const VIEWS = ["panel", "registro", "codigos"];
+      const VIEWS = ["panel", "registro", "codigos", "meta-vs-venta"];
 
       const ENABLE_DESC_BETTER_UI = true;
 
@@ -2709,6 +2812,9 @@ const auth = getAuth(app);
 
         if (nextView === "registro") initRegistroView();
         if (nextView === "codigos") initDbView();
+        if (nextView === "meta-vs-venta") {
+          loadMetaVsVenta({ force: true });
+        }
 
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -2726,8 +2832,11 @@ const auth = getAuth(app);
       }
 
       function getViewFromUrl() {
+        if (window.location.pathname === "/tools/meta-vs-venta") {
+          return "meta-vs-venta";
+        }
         const hash = location.hash || "#/panel";
-        const match = hash.match(/^#\/(panel|registro|codigos)$/);
+        const match = hash.match(/^#\/(panel|registro|codigos|meta-vs-venta)$/);
         return match ? match[1] : "panel";
       }
 
@@ -2751,8 +2860,221 @@ const auth = getAuth(app);
       if (btnOpenCodigos) {
         btnOpenCodigos.addEventListener("click", () => navigateTo("codigos"));
       }
+      const btnOpenMetaVsVenta = document.getElementById("btnOpenMetaVsVenta");
+      if (btnOpenMetaVsVenta) {
+        btnOpenMetaVsVenta.addEventListener("click", () => {
+          window.location.href = "/tools/meta-vs-venta";
+        });
+      }
+      const btnBackMetaVsVenta = document.getElementById("btnBackMetaVsVenta");
+      if (btnBackMetaVsVenta) {
+        btnBackMetaVsVenta.addEventListener("click", () => navigateTo("panel"));
+      }
+
+      const metaState = {
+        year: new Date().getFullYear(),
+        view: "monthly",
+        fromMonth: 1,
+        toMonth: new Date().getMonth() + 1,
+        defaultMonthlyGoal: 0,
+        annualGoal: 0,
+        monthlyGoals: {},
+        monthlySales: emptyMonths(),
+        initialized: false,
+        loading: false,
+        error: null
+      };
+      const monthLabels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+      const metaYearSelect = document.getElementById("metaYearSelect");
+      const metaViewSelect = document.getElementById("metaViewSelect");
+      const metaFromMonth = document.getElementById("metaFromMonth");
+      const metaToMonth = document.getElementById("metaToMonth");
+      const metaApplyFilters = document.getElementById("metaApplyFilters");
+      const metaStatus = document.getElementById("metaStatus");
+      const metaErrorBox = document.getElementById("metaErrorBox");
+      const metaMonthlyView = document.getElementById("metaMonthlyView");
+      const metaAnnualView = document.getElementById("metaAnnualView");
+      const metaMonthlyTbody = document.getElementById("metaMonthlyTbody");
+      const metaAnnualSales = document.getElementById("metaAnnualSales");
+      const metaAnnualGoal = document.getElementById("metaAnnualGoal");
+      const metaAnnualPct = document.getElementById("metaAnnualPct");
+      const metaAnnualDiff = document.getElementById("metaAnnualDiff");
+      const metaAdminBlock = document.getElementById("metaAdminBlock");
+      const metaAdminMonthlyTools = document.getElementById("metaAdminMonthlyTools");
+      const metaAdminAnnualTools = document.getElementById("metaAdminAnnualTools");
+      const metaAdminMessage = document.getElementById("metaAdminMessage");
+
+      const setMetaStatus = (message = "", type = "") => {
+        if (!metaStatus) return;
+        metaStatus.textContent = message;
+        metaStatus.className = `status${type ? ` ${type}` : ""}${message ? "" : " hidden"}`;
+      };
+
+      const setMetaError = (error = null) => {
+        if (!metaErrorBox) return;
+        if (!error) {
+          metaErrorBox.classList.add("hidden");
+          metaErrorBox.textContent = "";
+          return;
+        }
+        const code = error?.code ? `Detalle: ${error.code}` : "";
+        const canShowDetail = Boolean(isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase()));
+        metaErrorBox.innerHTML = `No se pudo cargar Meta vs venta. <button type="button" id="metaRetryBtn" class="secondary" style="margin-left:8px;">Reintentar</button>${canShowDetail ? `<div style="margin-top:6px;font-size:12px;"><code>${code || "sin-código"}</code></div>` : ""}`;
+        metaErrorBox.classList.remove("hidden");
+        const retryBtn = document.getElementById("metaRetryBtn");
+        if (retryBtn) retryBtn.addEventListener("click", () => loadMetaVsVenta({ force: true }));
+      };
+
+      const monthKey = (year, month) => `${year}-${String(month).padStart(2, "0")}`;
+      const monthRange = () => {
+        const start = Math.max(1, Math.min(12, Number(metaState.fromMonth) || 1));
+        const end = Math.max(start, Math.min(12, Number(metaState.toMonth) || start));
+        return { start, end };
+      };
+
+      const renderMeta = () => {
+        if (!metaMonthlyTbody) return;
+        metaMonthlyView?.classList.toggle("hidden", metaState.view !== "monthly");
+        metaAnnualView?.classList.toggle("hidden", metaState.view !== "annual");
+        metaAdminMonthlyTools?.classList.toggle("hidden", metaState.view !== "monthly");
+        metaAdminAnnualTools?.classList.toggle("hidden", metaState.view !== "annual");
+
+        const adminEnabled = isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
+        metaAdminBlock?.classList.toggle("hidden", !adminEnabled);
+
+        const { start, end } = monthRange();
+        const rows = [];
+        let annualSalesTotal = 0;
+        let annualGoalTotal = 0;
+        for (let month = 1; month <= 12; month += 1) {
+          const key = monthKey(metaState.year, month);
+          const sale = Number(metaState.monthlySales[key] || 0);
+          const goal = Number(metaState.monthlyGoals[key] ?? metaState.defaultMonthlyGoal ?? 0);
+          annualSalesTotal += sale;
+          annualGoalTotal += goal;
+          if (month < start || month > end) continue;
+          const pct = goal > 0 ? (sale / goal) * 100 : 0;
+          rows.push(`<tr><td>${monthLabels[month - 1]}</td><td>${moneyMx.format(sale)}</td><td>${moneyMx.format(goal)}</td><td>${pct.toFixed(1)}%</td><td><div style="height:8px;background:#eee;border-radius:999px;overflow:hidden;"><span style="display:block;height:100%;width:${Math.min(100, Math.max(0, pct)).toFixed(0)}%;background:${pct >= 100 ? "#2f9e44" : "#1e5eff"};"></span></div></td></tr>`);
+        }
+        metaMonthlyTbody.innerHTML = rows.join("") || '<tr><td colspan="5">Sin datos para el rango seleccionado.</td></tr>';
+
+        const annualGoalValue = Number(metaState.annualGoal || annualGoalTotal);
+        const annualPctValue = annualGoalValue > 0 ? (annualSalesTotal / annualGoalValue) * 100 : 0;
+        if (metaAnnualSales) metaAnnualSales.textContent = moneyMx.format(annualSalesTotal);
+        if (metaAnnualGoal) metaAnnualGoal.textContent = moneyMx.format(annualGoalValue);
+        if (metaAnnualPct) metaAnnualPct.textContent = `${annualPctValue.toFixed(1)}%`;
+        if (metaAnnualDiff) metaAnnualDiff.textContent = moneyMx.format(annualSalesTotal - annualGoalValue);
+      };
+
+      const loadMetaVsVenta = async ({ force = false } = {}) => {
+        if (metaState.loading) return;
+        if (metaState.initialized && !force) return;
+        try {
+          metaState.loading = true;
+          setMetaStatus("Cargando…");
+          setMetaError(null);
+          const [sales, goals] = await Promise.all([
+            getMonthlySalesTotals(db, { year: metaState.year }),
+            getGoalsSalesState(db, { year: metaState.year })
+          ]);
+          metaState.monthlySales = sales.monthlyTotals || emptyMonths(metaState.year);
+          metaState.defaultMonthlyGoal = goals.defaultMonthlyGoal || 0;
+          metaState.monthlyGoals = goals.monthlyGoals || {};
+          metaState.annualGoal = goals.annualGoal || 0;
+          metaState.initialized = true;
+          setMetaStatus("");
+          renderMeta();
+        } catch (error) {
+          console.error("[MetaVsVenta]", error?.code, error?.message, error?.stack);
+          setMetaError(error);
+          setMetaStatus("", "error");
+        } finally {
+          metaState.loading = false;
+        }
+      };
 
       const moneyMx = new Intl.NumberFormat("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 2});
+
+      const initMetaFilters = () => {
+        if (!metaYearSelect || !metaFromMonth || !metaToMonth || !metaViewSelect) return;
+        const currentYear = new Date().getFullYear();
+        metaYearSelect.innerHTML = [currentYear - 1, currentYear, currentYear + 1]
+          .map((year) => `<option value="${year}">${year}</option>`)
+          .join("");
+        const monthOptions = monthLabels
+          .map((label, idx) => `<option value="${idx + 1}">${label}</option>`)
+          .join("");
+        metaFromMonth.innerHTML = monthOptions;
+        metaToMonth.innerHTML = monthOptions;
+        metaState.year = currentYear;
+        metaYearSelect.value = String(metaState.year);
+        metaFromMonth.value = String(metaState.fromMonth);
+        metaToMonth.value = String(metaState.toMonth);
+        metaViewSelect.value = metaState.view;
+
+        const syncMetaUiState = () => {
+          metaState.year = Number(metaYearSelect.value) || currentYear;
+          metaState.view = metaViewSelect.value === "annual" ? "annual" : "monthly";
+          metaState.fromMonth = Number(metaFromMonth.value) || 1;
+          metaState.toMonth = Number(metaToMonth.value) || metaState.fromMonth;
+          document.getElementById("metaFromWrap")?.classList.toggle("hidden", metaState.view !== "monthly");
+          document.getElementById("metaToWrap")?.classList.toggle("hidden", metaState.view !== "monthly");
+          renderMeta();
+        };
+
+        metaApplyFilters?.addEventListener("click", async () => {
+          syncMetaUiState();
+          await loadMetaVsVenta({ force: true });
+        });
+        metaViewSelect.addEventListener("change", syncMetaUiState);
+        syncMetaUiState();
+
+        const metaAdminMonth = document.getElementById("metaAdminMonth");
+        if (metaAdminMonth) {
+          metaAdminMonth.innerHTML = monthOptions;
+          metaAdminMonth.value = String(metaState.fromMonth);
+        }
+
+        const withAdminSaving = async (buttonId, action) => {
+          const button = document.getElementById(buttonId);
+          if (!button) return;
+          button.disabled = true;
+          try {
+            await action();
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = "Meta guardada ✅";
+              metaAdminMessage.classList.remove("hidden", "error");
+            }
+            await loadMetaVsVenta({ force: true });
+          } catch (error) {
+            if (metaAdminMessage) {
+              metaAdminMessage.textContent = error?.message || "No se pudo guardar la meta.";
+              metaAdminMessage.classList.remove("hidden");
+              metaAdminMessage.classList.add("error");
+            }
+          } finally {
+            button.disabled = false;
+          }
+        };
+
+        document.getElementById("metaSaveMonthGoal")?.addEventListener("click", () => withAdminSaving("metaSaveMonthGoal", async () => {
+          const month = Number(document.getElementById("metaAdminMonth")?.value || 0);
+          const amount = Number(document.getElementById("metaAdminMonthGoal")?.value || 0);
+          await saveMonthlyGoal(db, { year: metaState.year, month, amount });
+        }));
+
+        document.getElementById("metaSaveRangeGoal")?.addEventListener("click", () => withAdminSaving("metaSaveRangeGoal", async () => {
+          const amount = Number(document.getElementById("metaAdminRangeGoal")?.value || 0);
+          const { start, end } = monthRange();
+          await saveRangeMonthlyGoal(db, { year: metaState.year, startMonth: start, endMonth: end, amount, writeBatch });
+        }));
+
+        document.getElementById("metaSaveAnnualGoal")?.addEventListener("click", () => withAdminSaving("metaSaveAnnualGoal", async () => {
+          const amount = Number(document.getElementById("metaAdminAnnualGoalInput")?.value || 0);
+          await saveAnnualGoal(db, { year: metaState.year, amount });
+        }));
+      };
 
       const safeJson = async (response) => {
         const contentType = (response.headers.get("content-type") || "").toLowerCase();
@@ -7523,6 +7845,7 @@ document.addEventListener("keydown", (event) => {
           document.body.appendChild(panel);
         }
         setupClarity();
+        initMetaFilters();
         init();
         navigateTo(getViewFromUrl(), { replace: true });
         updateDebugPanel();

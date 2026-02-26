@@ -93,6 +93,11 @@ service cloud.firestore {
       allow write: if isAdminEmail();
     }
 
+    match /goals_sales/{doc=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdminEmail();
+    }
+
     // Cualquier otra colección cerrada por default
     match /{document=**} {
       allow read, write: if false;
