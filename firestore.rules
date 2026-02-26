@@ -93,8 +93,19 @@ service cloud.firestore {
       allow write: if isAdminEmail();
     }
 
+    // Resúmenes de ventas usados en Meta vs venta (sin exponer ventas crudas)
+    match /sales_totals/{doc=**} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
+    match /ventas_totales_mensuales/{doc=**} {
+      allow read: if true;
+      allow write: if isAdminEmail();
+    }
+
     match /goals_sales/{doc=**} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdminEmail();
     }
 
