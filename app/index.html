@@ -2683,7 +2683,7 @@ body.haruja-col-resizing{
       import { ajustarDesdePrecioConIVA } from "/shared/priceRules.js";
       import {
         emptyMonths,
-        getMonthlySalesTotals
+        getMonthlySalesMap
       } from "/shared/salesTotals.js";
       import {
         getGoalsSalesState,
@@ -3168,11 +3168,11 @@ const auth = getAuth(app);
           metaState.loading = true;
           setMetaStatus("Cargando…");
           setMetaError(null);
-          const [sales, goals] = await Promise.all([
-            getMonthlySalesTotals(db, { year: metaState.year, auth }),
+          const [salesMap, goals] = await Promise.all([
+            getMonthlySalesMap(db, metaState.year),
             getGoalsSalesState(db, { year: metaState.year, auth })
           ]);
-          metaState.monthlySales = sales.monthlyTotals || emptyMonths(metaState.year);
+          metaState.monthlySales = salesMap || emptyMonths(metaState.year);
           metaState.defaultMonthlyGoal = goals.defaultMonthlyGoal || 10000;
           metaState.monthlyGoals = goals.monthlyGoals || {};
           metaState.annualGoal = goals.annualGoal || 0;
