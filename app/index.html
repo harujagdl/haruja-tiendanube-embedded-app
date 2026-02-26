@@ -18,6 +18,22 @@
         --border: #e5e7eb;
         --shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
         --radius: 16px;
+        --col-select: 56px;
+        --col-orden: 80px;
+        --col-codigo: 170px;
+        --col-descripcion: 280px;
+        --col-tipo: 120px;
+        --col-color: 110px;
+        --col-talla: 90px;
+        --col-proveedor: 140px;
+        --col-status: 120px;
+        --col-disponibilidad: 140px;
+        --col-fecha: 120px;
+        --col-pventa: 120px;
+        --col-costo: 120px;
+        --col-margen: 110px;
+        --col-utilidad: 120px;
+        --col-acciones: 110px;
       }
 
       * {
@@ -1555,6 +1571,29 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table th.col-precio,
 #dbCodigosSection table.haruja-table td.col-precio { width: 100px; text-align: right; }
 
+/* Stable fluid table tokens (header/body share same widths) */
+#dbCodigosSection .table-wrap { width:100%; overflow:auto; -webkit-overflow-scrolling:touch; }
+#dbCodigosSection table.haruja-table { width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0; }
+#dbCodigosSection table.haruja-table thead th { position:sticky; top:0; z-index:5; background:#fff; }
+#dbCodigosSection table.haruja-table th,
+#dbCodigosSection table.haruja-table td { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#dbCodigosSection table.haruja-table th[data-col="select"], #dbCodigosSection table.haruja-table td[data-col="select"] { width:var(--col-select); min-width:var(--col-select); max-width:var(--col-select); }
+#dbCodigosSection table.haruja-table th[data-col="orden"], #dbCodigosSection table.haruja-table td[data-col="orden"] { width:var(--col-orden); min-width:var(--col-orden); max-width:var(--col-orden); }
+#dbCodigosSection table.haruja-table th[data-col="codigo"], #dbCodigosSection table.haruja-table td[data-col="codigo"] { width:var(--col-codigo); min-width:var(--col-codigo); max-width:var(--col-codigo); }
+#dbCodigosSection table.haruja-table th[data-col="descripcion"], #dbCodigosSection table.haruja-table td[data-col="descripcion"] { width:var(--col-descripcion); min-width:var(--col-descripcion); max-width:var(--col-descripcion); }
+#dbCodigosSection table.haruja-table th[data-col="tipo"], #dbCodigosSection table.haruja-table td[data-col="tipo"] { width:var(--col-tipo); min-width:var(--col-tipo); max-width:var(--col-tipo); }
+#dbCodigosSection table.haruja-table th[data-col="color"], #dbCodigosSection table.haruja-table td[data-col="color"] { width:var(--col-color); min-width:var(--col-color); max-width:var(--col-color); }
+#dbCodigosSection table.haruja-table th[data-col="talla"], #dbCodigosSection table.haruja-table td[data-col="talla"] { width:var(--col-talla); min-width:var(--col-talla); max-width:var(--col-talla); }
+#dbCodigosSection table.haruja-table th[data-col="proveedor"], #dbCodigosSection table.haruja-table td[data-col="proveedor"] { width:var(--col-proveedor); min-width:var(--col-proveedor); max-width:var(--col-proveedor); }
+#dbCodigosSection table.haruja-table th[data-col="status"], #dbCodigosSection table.haruja-table td[data-col="status"] { width:var(--col-status); min-width:var(--col-status); max-width:var(--col-status); }
+#dbCodigosSection table.haruja-table th[data-col="disponibilidad"], #dbCodigosSection table.haruja-table td[data-col="disponibilidad"] { width:var(--col-disponibilidad); min-width:var(--col-disponibilidad); max-width:var(--col-disponibilidad); }
+#dbCodigosSection table.haruja-table th[data-col="fecha"], #dbCodigosSection table.haruja-table td[data-col="fecha"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
+#dbCodigosSection table.haruja-table th[data-col="pventa"], #dbCodigosSection table.haruja-table td[data-col="pventa"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
+#dbCodigosSection table.haruja-table th[data-col="costo"], #dbCodigosSection table.haruja-table td[data-col="costo"] { width:var(--col-costo); min-width:var(--col-costo); max-width:var(--col-costo); }
+#dbCodigosSection table.haruja-table th[data-col="margen"], #dbCodigosSection table.haruja-table td[data-col="margen"] { width:var(--col-margen); min-width:var(--col-margen); max-width:var(--col-margen); }
+#dbCodigosSection table.haruja-table th[data-col="utilidad"], #dbCodigosSection table.haruja-table td[data-col="utilidad"] { width:var(--col-utilidad); min-width:var(--col-utilidad); max-width:var(--col-utilidad); }
+#dbCodigosSection table.haruja-table th[data-col="acciones"], #dbCodigosSection table.haruja-table td[data-col="acciones"] { width:var(--col-acciones); min-width:var(--col-acciones); max-width:var(--col-acciones); }
+
 #dbCodigosSection .pager-right {
   display: flex;
   gap: 8px;
@@ -2193,8 +2232,7 @@ body.haruja-col-resizing{
       <button id="admin-mode-btn" class="btn btn-ghost" type="button">Modo admin</button>
       <button id="labels-btn" class="btn btn-ghost" type="button">Etiquetas</button>
       <button id="export-csv-btn" class="btn btn-ghost" type="button">Exportar CSV</button>
-      <button id="admin-logout-quick" class="btn btn-muted hidden" type="button">Salir de admin</button>
-    </div>
+          </div>
     <div id="labels-panel" class="labels-panel hidden" aria-hidden="true">
       <div class="labels-panel-title">Imprimir etiquetas</div>
       <div class="labels-scope-options">
@@ -2216,30 +2254,30 @@ body.haruja-col-resizing{
       <table id="prendasTable" class="table haruja-table">
         <thead>
                   <tr>
-                    <th class="col-select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
-                    <th class="col-orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
-                    <th class="col-codigo">Código</th>
-                    <th class="col-descripcion col-desc haruja-col-desc">Descripción</th>
-                    <th class="col-tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
-                    <th class="col-color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
-                    <th class="col-talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
-                    <th class="col-proveedor col-prov" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
-                    <th class="col-status" data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
-                    <th class="col-disponibilidad col-disp" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
-                    <th class="col-fecha" data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
-                    <th class="col-pventa col-precio" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
-                    <th class="admin-only">(Admin) Costo</th>
-                    <th class="admin-only">(Admin) Margen</th>
-                    <th class="admin-only">(Admin) Utilidad</th>
-                    <th class="admin-only col-actions">Acciones</th>
+                    <th class="col-select" data-col="select"><input id="select-all-labels" type="checkbox" aria-label="Seleccionar todo" /></th>
+                    <th class="col-orden" data-col="orden" data-filter-key="orden"><button id="ordenSortBtn" class="th-sort" type="button" aria-label="Ordenar por Orden">Orden <span id="ordenSortIcon">↑</span></button></th>
+                    <th class="col-codigo" data-col="codigo">Código</th>
+                    <th class="col-descripcion col-desc haruja-col-desc" data-col="descripcion">Descripción</th>
+                    <th class="col-tipo" data-col="tipo" data-filter-key="tipo"><span class="th-filter">Tipo <button type="button" class="filter-btn" data-open-header-filter="tipo" aria-label="Filtrar Tipo">⌄</button></span></th>
+                    <th class="col-color" data-col="color" data-filter-key="color"><span class="th-filter">Color <button type="button" class="filter-btn" data-open-header-filter="color" aria-label="Filtrar Color">⌄</button></span></th>
+                    <th class="col-talla" data-col="talla" data-filter-key="talla"><span class="th-filter">Talla <button type="button" class="filter-btn" data-open-header-filter="talla" aria-label="Filtrar Talla">⌄</button></span></th>
+                    <th class="col-proveedor col-prov" data-col="proveedor" data-filter-key="proveedor"><span class="th-filter">Proveedor <button type="button" class="filter-btn" data-open-header-filter="proveedor" aria-label="Filtrar Proveedor">⌄</button></span></th>
+                    <th class="col-status" data-col="status" data-filter-key="status"><span class="th-filter">Status <button type="button" class="filter-btn" data-open-header-filter="status" aria-label="Filtrar Status">⌄</button></span></th>
+                    <th class="col-disponibilidad col-disp" data-col="disponibilidad" data-filter-key="disponibilidad"><span class="th-filter">Disponibilidad <button type="button" class="filter-btn" data-open-header-filter="disponibilidad" aria-label="Filtrar Disponibilidad">⌄</button></span></th>
+                    <th class="col-fecha" data-col="fecha" data-filter-key="fecha"><span class="th-filter">Fecha <button type="button" class="filter-btn" data-open-header-filter="fecha" aria-label="Filtrar Fecha">⌄</button></span></th>
+                    <th class="col-pventa col-precio" data-col="pventa" data-filter-key="pventa"><span class="th-filter">P. Venta <button type="button" class="filter-btn" data-open-header-filter="pventa" aria-label="Filtrar P. Venta">⌄</button></span></th>
+                    <th class="admin-only" data-col="costo">(Admin) Costo</th>
+                    <th class="admin-only" data-col="margen">(Admin) Margen</th>
+                    <th class="admin-only" data-col="utilidad">(Admin) Utilidad</th>
+                    <th class="admin-only col-actions" data-col="acciones">Acciones</th>
                   </tr>
                 </thead>
         <tbody id="prendas-tbody">
           <tr id="loadingRow" data-db-loader>
-            <td colspan="17" class="muted" style="padding:14px 16px;">Cargando…</td>
+            <td colspan="99" class="muted" style="padding:14px 16px;">Cargando…</td>
           </tr>
           <tr id="noResultsRow" data-empty-row style="display:none">
-            <td colspan="17" class="muted" style="padding:14px 16px;">Sin resultados.</td>
+            <td colspan="99" class="muted" style="padding:14px 16px;">Sin resultados.</td>
           </tr>
 </tbody>
       </table>
@@ -3665,6 +3703,40 @@ const auth = getAuth(app);
         return prendasState.filtered || [];
       };
 
+
+      const PRENDAS_COLUMNS = [
+        { id: "select", label: "", visibleInUser: true, visibleInAdmin: true },
+        { id: "orden", label: "Orden", visibleInUser: true, visibleInAdmin: true },
+        { id: "codigo", label: "Código", visibleInUser: true, visibleInAdmin: true },
+        { id: "descripcion", label: "Descripción", visibleInUser: true, visibleInAdmin: true },
+        { id: "tipo", label: "Tipo", visibleInUser: true, visibleInAdmin: true },
+        { id: "color", label: "Color", visibleInUser: true, visibleInAdmin: true },
+        { id: "talla", label: "Talla", visibleInUser: true, visibleInAdmin: true },
+        { id: "proveedor", label: "Proveedor", visibleInUser: true, visibleInAdmin: true },
+        { id: "status", label: "Status", visibleInUser: true, visibleInAdmin: true },
+        { id: "disponibilidad", label: "Disponibilidad", visibleInUser: true, visibleInAdmin: true },
+        { id: "fecha", label: "Fecha", visibleInUser: true, visibleInAdmin: true },
+        { id: "pventa", label: "Precio", visibleInUser: true, visibleInAdmin: true },
+        { id: "costo", label: "Costo", visibleInUser: false, visibleInAdmin: true },
+        { id: "margen", label: "Margen", visibleInUser: false, visibleInAdmin: true },
+        { id: "utilidad", label: "Utilidad", visibleInUser: false, visibleInAdmin: true },
+        { id: "acciones", label: "Acciones", visibleInUser: false, visibleInAdmin: true }
+      ];
+
+      const getActiveColumns = () => {
+        const adminMode = isAdminViewEnabled();
+        return PRENDAS_COLUMNS.filter((column) => (adminMode ? column.visibleInAdmin : column.visibleInUser));
+      };
+
+      const setTableColumnVisibility = () => {
+        if (!prendasTable) return;
+        const activeSet = new Set(getActiveColumns().map((column) => column.id));
+        prendasTable.querySelectorAll("thead th[data-col]").forEach((th) => {
+          const key = safeString(th.dataset.col).trim();
+          th.style.display = activeSet.has(key) ? "" : "none";
+        });
+      };
+
       const getTodayIso = () => {
         const now = new Date();
         const year = now.getFullYear();
@@ -3681,27 +3753,30 @@ const auth = getAuth(app);
       };
 
       const buildCsv = (rows = []) => {
-        const headers = ["Código", "Descripción", "Tipo", "Color", "Talla", "Proveedor", "Status", "Disponibilidad", "Fecha", "Precio", "Costo"];
-        const lines = [headers.map(escapeCsvValue).join(",")];
+        const csvColumns = getActiveColumns().filter((column) => !["select", "acciones"].includes(column.id));
+        const lines = [csvColumns.map((column) => escapeCsvValue(column.label)).join(",")];
 
         rows.forEach((row) => {
           const fecha = formatDateCell(row);
           const precio = getLabelPriceNumber(row);
           const costo = toNumberOrNull(row?.costo);
-          const values = [
-            safeString(row?.codigo).trim().toUpperCase(),
-            safeString(row?.descripcion).trim(),
-            safeString(row?.tipo).trim(),
-            safeString(row?.colorName || row?.color).trim(),
-            safeString(row?.tallaName || row?.talla).trim(),
-            safeString(row?.proveedor).trim(),
-            safeString(row?.status).trim(),
-            safeString(row?.disponibilidad).trim(),
-            fecha === "--" ? "" : fecha,
-            Number.isFinite(precio) ? precio : "",
-            Number.isFinite(costo) ? costo : ""
-          ];
-          lines.push(values.map(escapeCsvValue).join(","));
+          const valuesByColumn = {
+            orden: Number.isFinite(Number(row?.orden)) ? Number(row.orden) : "",
+            codigo: safeString(row?.codigo).trim().toUpperCase(),
+            descripcion: safeString(row?.descripcion).trim(),
+            tipo: safeString(row?.tipo).trim(),
+            color: safeString(row?.colorName || row?.color).trim(),
+            talla: safeString(row?.tallaName || row?.talla).trim(),
+            proveedor: safeString(row?.proveedor).trim(),
+            status: safeString(row?.status).trim(),
+            disponibilidad: safeString(row?.disponibilidad).trim(),
+            fecha: fecha === "--" ? "" : fecha,
+            pventa: Number.isFinite(precio) ? precio : "",
+            costo: Number.isFinite(costo) ? costo : "",
+            margen: toNumberOrNull(row?.margen) ?? "",
+            utilidad: toNumberOrNull(row?.utilidad) ?? ""
+          };
+          lines.push(csvColumns.map((column) => escapeCsvValue(valuesByColumn[column.id] ?? "")).join(","));
         });
 
         return lines.join("\r\n");
@@ -5288,118 +5363,92 @@ return `<!doctype html>
 
 const createPrendaRow = (item) => {
         const adminEnabled = isAdminViewEnabled();
+        const docId = safeString(item.docId || item.id).trim();
         const ordenValue = Number(item.orden);
-        const orden = Number.isFinite(ordenValue) ? String(ordenValue) : "";
-        const codigo = safeString(item.codigo || item.code) || "--";
-        const descripcion = safeString(item.descripcion) || "--";
-        const tipo = formatLabel(safeString(item.tipo)) || "--";
-        const color = safeString(item.colorName) || formatLabel(safeString(item.color)) || "--";
-        const talla = formatLabel(safeString(item.talla)) || "--";
-        const proveedor = formatLabel(safeString(item.proveedor)) || "--";
-        const statusCell = renderStatusCell(item.statusCanon || item.status);
-        const disponibilidadCell = renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status);
-        const fecha = formatDateCell(item);
-        const pVentaVisible = adminEnabled
-          ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta))
-          : toNumber(item.pVenta);
-        const pVenta = moneyFmt(pVentaVisible);
-        const costo = moneyFmt(item.costo);
-        const margen = pctFmt(item.margen);
-        const utilidad = moneyFmt(item.utilidad);
+        const values = {
+          orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
+          codigo: safeString(item.codigo || item.code) || "--",
+          descripcion: safeString(item.descripcion) || "--",
+          tipo: formatLabel(safeString(item.tipo)) || "--",
+          color: safeString(item.colorName) || formatLabel(safeString(item.color)) || "--",
+          talla: formatLabel(safeString(item.talla)) || "--",
+          proveedor: formatLabel(safeString(item.proveedor)) || "--",
+          status: renderStatusCell(item.statusCanon || item.status),
+          disponibilidad: renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status),
+          fecha: formatDateCell(item),
+          pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
+          costo: moneyFmt(item.costo),
+          margen: pctFmt(item.margen),
+          utilidad: moneyFmt(item.utilidad)
+        };
 
         const row = document.createElement("tr");
-        const docId = safeString(item.docId || item.id).trim();
         row.dataset.docId = docId;
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
 
-        const selectCell = document.createElement("td");
-        selectCell.className = "col-select";
-        const selectInput = document.createElement("input");
-        selectInput.type = "checkbox";
-        selectInput.className = "row-select";
-        selectInput.dataset.docId = docId;
-        selectInput.checked = prendasState.selected.has(docId);
-        selectCell.appendChild(selectInput);
-        row.appendChild(selectCell);
-
-        const baseCells = [orden, codigo, descripcion, tipo, color, talla, proveedor, statusCell, disponibilidadCell, fecha, pVenta];
-        const baseClasses = [
-          "col-orden","col-codigo","col-descripcion col-desc","col-tipo","col-color","col-talla","col-proveedor col-prov","col-status","col-disponibilidad col-disp","col-fecha","col-pventa col-precio"
-        ];
-
-        baseCells.forEach((value, index) => {
-          if (value instanceof HTMLElement) {
-            const cls = (baseClasses[index] || "").split(/\s+/).filter(Boolean);
-            if (cls.length) value.classList.add(...cls);
-            row.appendChild(value);
+        getActiveColumns().forEach((column) => {
+          const key = column.id;
+          if (key === "select") {
+            const selectCell = document.createElement("td");
+            selectCell.className = "col-select";
+            selectCell.dataset.col = "select";
+            const selectInput = document.createElement("input");
+            selectInput.type = "checkbox";
+            selectInput.className = "row-select";
+            selectInput.dataset.docId = docId;
+            selectInput.checked = prendasState.selected.has(docId);
+            selectCell.appendChild(selectInput);
+            row.appendChild(selectCell);
             return;
           }
 
-          const cell = document.createElement("td");
-          cell.textContent = value;
+          if (key === "acciones") {
+            const actionCell = document.createElement("td");
+            actionCell.className = "col-actions";
+            actionCell.dataset.col = "acciones";
+            const editButton = document.createElement("button");
+            editButton.type = "button";
+            editButton.className = "rowEditBtn";
+            editButton.dataset.editDoc = docId;
+            editButton.setAttribute("aria-label", "Editar prenda");
+            editButton.title = "Editar";
+            editButton.textContent = "✏️";
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "rowDeleteBtn";
+            deleteButton.dataset.deleteDoc = docId;
+            deleteButton.setAttribute("aria-label", "Borrar prenda");
+            deleteButton.title = "Borrar";
+            deleteButton.textContent = "🗑";
+            actionCell.append(editButton, deleteButton);
+            row.appendChild(actionCell);
+            return;
+          }
 
-          const cls = (baseClasses[index] || "").split(/\s+/).filter(Boolean);
-          if (cls.length) cell.classList.add(...cls);
-
-          if (index === 2) {
-            cell.classList.add("cell-desc");
-            if (ENABLE_DESC_BETTER_UI) {
+          const cell = values[key] instanceof HTMLElement ? values[key] : document.createElement("td");
+          if (!(values[key] instanceof HTMLElement)) {
+            cell.textContent = values[key] ?? "--";
+          }
+          cell.dataset.col = key;
+          cell.classList.add(`col-${key}`);
+          if (key === "descripcion") {
+            cell.classList.add("col-desc", "cell-desc");
+            if (!(values[key] instanceof HTMLElement) && ENABLE_DESC_BETTER_UI) {
               cell.classList.add("haruja-col-desc");
               const descWrap = document.createElement("div");
               descWrap.className = "clamp haruja-clamp";
-              descWrap.title = value;
-              descWrap.textContent = value;
+              descWrap.title = values[key];
+              descWrap.textContent = values[key];
               cell.textContent = "";
               cell.appendChild(descWrap);
-            } else {
-              cell.title = value;
             }
           }
-
           row.appendChild(cell);
         });
 
-        if (adminEnabled) {
-          const adminValues = [costo, margen, utilidad];
-          const adminClasses = ["col-costo", "col-margen", "col-utilidad"];
-          adminValues.forEach((value, index) => {
-            const cell = document.createElement("td");
-            cell.textContent = value;
-            cell.classList.add(adminClasses[index]);
-            row.appendChild(cell);
-          });
-        }
-
-        if (adminEnabled) {
-          const actionCell = document.createElement("td");
-          actionCell.className = "col-actions";
-
-          // ✏️ Editar
-          const editButton = document.createElement("button");
-          editButton.type = "button";
-          editButton.className = "rowEditBtn";
-          editButton.dataset.editDoc = docId;
-          editButton.setAttribute("aria-label", "Editar prenda");
-          editButton.title = "Editar";
-          editButton.textContent = "✏️";
-
-          // 🗑 Borrar
-          const deleteButton = document.createElement("button");
-          deleteButton.type = "button";
-          deleteButton.className = "rowDeleteBtn";
-          deleteButton.dataset.deleteDoc = docId;
-          deleteButton.setAttribute("aria-label", "Borrar prenda");
-          deleteButton.title = "Borrar";
-          deleteButton.textContent = "🗑";
-
-          actionCell.appendChild(editButton);
-          actionCell.appendChild(deleteButton);
-          row.appendChild(actionCell);
-        }
-
         return row;
       };
-  
+
       const updateEditPreview = () => {
         if (!editPVentaInput || !editCostoInput) return;
         const pOverride = toNumber(editPVentaInput.value);
@@ -5669,6 +5718,7 @@ const createPrendaRow = (item) => {
           : null;
         setCounter(safeRows.length, showingTotal);
         updatePaginationUi();
+        setTableColumnVisibility();
 
         prendasTbody.textContent = "";
         if (!safeRows.length) {
@@ -5681,7 +5731,7 @@ const createPrendaRow = (item) => {
           if (!emptyNode) {
             const emptyRow = document.createElement("tr");
             const cell = document.createElement("td");
-            cell.colSpan = 17;
+            cell.colSpan = getActiveColumns().length;
             cell.textContent = "Sin resultados";
             emptyRow.appendChild(cell);
             emptyNode = emptyRow;
@@ -6344,6 +6394,15 @@ const createPrendaRow = (item) => {
         safeStorageSet(window.sessionStorage, ADMIN_VIEW_KEY, finalEnabled ? "1" : "0");
         document.body.classList.toggle("is-admin", finalEnabled);
       };
+      const setAdminMode = (nextEnabled, { refresh = true } = {}) => {
+        const next = Boolean(nextEnabled) && Boolean(prendasState.adminByAuth);
+        if (isAdminMode === next) {
+          applyAdminUI({ refresh: false });
+          return;
+        }
+        setAdminViewEnabled(next);
+        applyAdminUI({ refresh });
+      };
 
       const setAdminLoginStatus = (message, type = "") => {
         if (!adminLoginStatus) return;
@@ -6411,6 +6470,7 @@ const createPrendaRow = (item) => {
           closeEditModal();
         }
         setAdminPanelVisible(adminPanelVisible);
+        setTableColumnVisibility();
         if (refresh) {
           loadPrendasPage({ reset: true, reason: "admin-toggle" });
         }
@@ -6419,20 +6479,15 @@ const createPrendaRow = (item) => {
       };
 
       const handleAdminToggle = async () => {
-        // Si no está autenticado como admin, el botón funciona como login
         if (!prendasState.adminByAuth) {
           await handleAdminLogin();
           if (prendasState.adminByAuth) {
-            setAdminViewEnabled(true);
-            applyAdminUI();
-            try { await applyFilters(); } catch (_) {}
+            setAdminMode(true);
           }
           return;
         }
         const nextEnabled = !getAdminViewEnabled();
-        setAdminViewEnabled(nextEnabled);
-        applyAdminUI();
-        try { await applyFilters(); } catch (_) {}
+        setAdminMode(nextEnabled);
       };
 
       const handleAdminLogin = async () => {
@@ -6453,8 +6508,7 @@ const createPrendaRow = (item) => {
             await signOut(auth);
             return;
           }
-          setAdminViewEnabled(true);
-          applyAdminUI();
+          setAdminMode(true);
         } catch (error) {
           console.error(error);
           setAdminLoginStatus("No se pudo iniciar sesión con Google.", "error");
