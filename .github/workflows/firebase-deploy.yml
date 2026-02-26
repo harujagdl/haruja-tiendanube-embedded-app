@@ -29,37 +29,20 @@ jobs:
             npm install --omit=dev
           fi
 
-      # Write Service Account JSON
-      - name: Write service account
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        run: |
-          SA_JSON="${FIREBASE_SERVICE_ACCOUNT:-$GCP_SA_KEY}"
-          if [ -z "$SA_JSON" ]; then
-            echo "Missing FIREBASE_SERVICE_ACCOUNT (or fallback GCP_SA_KEY) secret" >&2
-            exit 1
-          fi
-          printf '%s' "$SA_JSON" > /tmp/serviceAccount.json
-          node -e "JSON.parse(require('fs').readFileSync('/tmp/serviceAccount.json','utf8')); console.log('SA JSON OK')"
-
       # Debug info
       - name: Debug Firebase target project
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
         run: |
           echo "Deploying to project: ${{ secrets.FIREBASE_PROJECT_ID }}"
-          firebase projects:list || true
+          firebase projects:list --token "${{ secrets.FIREBASE_TOKEN }}" || true
 
       # Delete old function if exists (safe)
       - name: Delete old replicateAdminToPublic (if exists)
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
         run: |
           set +e
           firebase functions:delete replicateAdminToPublic \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --region us-central1 \
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
             --force \
             --non-interactive
           echo "Delete step finished."
@@ -68,8 +51,8 @@ jobs:
       # ✅ Set Tiendanube secrets (ONLY the 2 required for OAuth)
       - name: Set Tiendanube secrets in Firebase
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
           TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
           TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
@@ -77,25 +60,17 @@ jobs:
           PANEL_URL: ${{ secrets.PANEL_URL }}
           TIENDANUBE_REDIRECT_URI: ${{ secrets.TIENDANUBE_REDIRECT_URI }}
         run: |
-          printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
-          printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
-          printf "%s" "$PANEL_URL" | firebase functions:secrets:set PANEL_URL --project "$FIREBASE_PROJECT_ID"
-          printf "%s" "$TIENDANUBE_REDIRECT_URI" | firebase functions:secrets:set TIENDANUBE_REDIRECT_URI --project "$FIREBASE_PROJECT_ID"
+          printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
+          printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
+          printf "%s" "$PANEL_URL" | firebase functions:secrets:set PANEL_URL --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
+          printf "%s" "$TIENDANUBE_REDIRECT_URI" | firebase functions:secrets:set TIENDANUBE_REDIRECT_URI --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
 
       # Deploy only Firestore rules/indexes + Functions to avoid Extensions checks in CI
       - name: Deploy Firestore rules/indexes + Functions
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
         run: |
           firebase deploy \
-            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --only firestore:rules,firestore:indexes,functions \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
             --force \
             --non-interactive
-
-      - name: Run split migration (master -> public/admin)
-        working-directory: functions
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/serviceAccount.json
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: node scripts/run-migrate-split.cjs
