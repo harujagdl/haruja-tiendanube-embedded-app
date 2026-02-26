@@ -13,7 +13,7 @@ export const emptyMonths = (year = new Date().getFullYear()) => {
   return out;
 };
 
-export async function getMonthlySalesTotals(db, { year }) {
+export async function getMonthlySalesTotals(db, { year, auth } = {}) {
   const normalizedYear = Number(year) || new Date().getFullYear();
   const monthlyTotals = emptyMonths(normalizedYear);
 
@@ -23,7 +23,10 @@ export async function getMonthlySalesTotals(db, { year }) {
   ];
 
   for (const source of sources) {
-    const snap = await getDocs(query(collection(db, source.col), where(source.field, "==", normalizedYear)));
+    const salesQuery = query(collection(db, source.col), where(source.field, "==", normalizedYear));
+    console.log("[goals] leyendo path:", source.col, "query", `${source.field}==${normalizedYear}`);
+    console.log("[goals] user:", auth?.currentUser?.email || null);
+    const snap = await getDocs(salesQuery);
     if (snap.empty) continue;
     snap.forEach((docSnap) => {
       const data = docSnap.data() || {};
