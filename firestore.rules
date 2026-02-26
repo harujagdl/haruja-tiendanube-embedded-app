@@ -16,6 +16,10 @@ service cloud.firestore {
         );
     }
 
+    function isAdmin() {
+      return isAdminEmail();
+    }
+
     // Diccionario (colección fallback)
     match /diccionario/{doc} {
       allow read: if true;
@@ -51,7 +55,9 @@ service cloud.firestore {
 
     match /HarujaPrendas_2025_public/{doc=**} {
       allow read: if true;
-      allow write: if false;
+      allow update: if isAdmin();
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /HarujaPrendas_2025/{docId} {

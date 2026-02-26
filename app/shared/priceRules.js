@@ -21,8 +21,7 @@ export function ajustarDesdePrecioConIVA(precioConIVAIngresado) {
   const precioIngresado = parseFloat(precioConIVAIngresado);
   if (!Number.isFinite(precioIngresado) || precioIngresado <= 0) return null;
 
-  let totalObjetivo = Math.ceil(precioIngresado / 10) * 10 - 1;
-  if (totalObjetivo < precioIngresado) totalObjetivo += 10;
+  const totalObjetivo = Math.ceil(precioIngresado / 10) * 10 - 1;
   const totalMin = totalObjetivo - 10;
   const pMin = totalMin / (1 + IVA_RATE);
   const pMax = totalObjetivo / (1 + IVA_RATE);
