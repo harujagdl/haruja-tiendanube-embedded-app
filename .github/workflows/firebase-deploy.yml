@@ -91,7 +91,7 @@ jobs:
         run: |
           firebase deploy \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
-            --only firestore:indexes,firestore:rules,functions \
+            --only firestore:rules,firestore:indexes,functions \
             --force \
             --non-interactive
 
