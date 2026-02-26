@@ -62,6 +62,16 @@ jobs:
         if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
         run: gcloud services enable firebaseextensions.googleapis.com --project "$FIREBASE_PROJECT_ID"
 
+      - name: Extensions list (non-blocking diagnostics)
+        run: |
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            firebase ext:list --project "$FIREBASE_PROJECT_ID" --non-interactive || true
+          elif [ -n "$FIREBASE_TOKEN" ]; then
+            firebase ext:list --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive || true
+          else
+            echo "Skipping extensions diagnostics: no credentials found."
+          fi
+
       - name: Install functions dependencies
         working-directory: functions
         run: |
