@@ -7,6 +7,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
     steps:
       - name: Checkout
@@ -29,20 +32,14 @@ jobs:
             npm install --omit=dev
           fi
 
-      # Debug info
-      - name: Debug Firebase target project
-        run: |
-          echo "Deploying to project: ${{ secrets.FIREBASE_PROJECT_ID }}"
-          firebase projects:list --token "${{ secrets.FIREBASE_TOKEN }}" || true
-
       # Delete old function if exists (safe)
       - name: Delete old replicateAdminToPublic (if exists)
         run: |
           set +e
           firebase functions:delete replicateAdminToPublic \
-            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --project "$FIREBASE_PROJECT_ID" \
             --region us-central1 \
-            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --token "$FIREBASE_TOKEN" \
             --force \
             --non-interactive
           echo "Delete step finished."
@@ -51,9 +48,6 @@ jobs:
       # ✅ Set Tiendanube secrets (ONLY the 2 required for OAuth)
       - name: Set Tiendanube secrets in Firebase
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-
           TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
           TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
 
@@ -70,7 +64,7 @@ jobs:
         run: |
           firebase deploy \
             --only firestore:rules,firestore:indexes,functions \
-            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
-            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --project "$FIREBASE_PROJECT_ID" \
+            --token "$FIREBASE_TOKEN" \
             --force \
             --non-interactive
