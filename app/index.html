@@ -2801,9 +2801,11 @@ const auth = getAuth(app);
 
       let registroInited = false;
       let dbInited = false;
+      let currentView = getViewFromUrl();
 
       function setView(name) {
         const nextView = VIEWS.includes(name) ? name : "panel";
+        currentView = nextView;
         VIEWS.forEach((viewName) => {
           const view = document.getElementById(`view-${viewName}`);
           if (!view) return;
@@ -7106,7 +7108,8 @@ const createPrendaRow = (item) => {
           }
         }
         applyAdminUI();
-        if (currentView === "meta-vs-venta") {
+        const view = typeof currentView !== "undefined" && currentView ? currentView : "panel";
+        if (view === "meta-vs-venta") {
           metaState.initialized = false;
           await loadMetaVsVenta({ force: true });
         }
