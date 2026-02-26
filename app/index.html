@@ -3708,37 +3708,28 @@ const auth = getAuth(app);
 
 
       const PRENDAS_COLUMNS = [
-        { id: "select", label: "", visibleInUser: true, visibleInAdmin: true },
-        { id: "orden", label: "Orden", visibleInUser: true, visibleInAdmin: true },
-        { id: "codigo", label: "Código", visibleInUser: true, visibleInAdmin: true },
-        { id: "descripcion", label: "Descripción", visibleInUser: true, visibleInAdmin: true },
-        { id: "tipo", label: "Tipo", visibleInUser: true, visibleInAdmin: true },
-        { id: "color", label: "Color", visibleInUser: true, visibleInAdmin: true },
-        { id: "talla", label: "Talla", visibleInUser: true, visibleInAdmin: true },
-        { id: "proveedor", label: "Proveedor", visibleInUser: true, visibleInAdmin: true },
-        { id: "status", label: "Status", visibleInUser: true, visibleInAdmin: true },
-        { id: "disponibilidad", label: "Disponibilidad", visibleInUser: true, visibleInAdmin: true },
-        { id: "fecha", label: "Fecha", visibleInUser: true, visibleInAdmin: true },
-        { id: "pventa", label: "Precio", visibleInUser: true, visibleInAdmin: true },
-        { id: "costo", label: "Costo", visibleInUser: false, visibleInAdmin: true },
-        { id: "margen", label: "Margen", visibleInUser: false, visibleInAdmin: true },
-        { id: "utilidad", label: "Utilidad", visibleInUser: false, visibleInAdmin: true },
-        { id: "acciones", label: "Acciones", visibleInUser: false, visibleInAdmin: true }
+        { id: "select", label: "", admin: true, public: true, filter: false },
+        { id: "orden", label: "Orden", admin: true, public: true, filter: false },
+        { id: "codigo", label: "Código", admin: true, public: true, filter: false },
+        { id: "descripcion", label: "Descripción", admin: true, public: true, filter: false },
+        { id: "tipo", label: "Tipo", admin: true, public: true, filter: true },
+        { id: "color", label: "Color", admin: true, public: true, filter: true },
+        { id: "talla", label: "Talla", admin: true, public: true, filter: true },
+        { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true },
+        { id: "status", label: "Status", admin: true, public: true, filter: true },
+        { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
+        { id: "fecha", label: "Fecha", admin: true, public: true, filter: false },
+        { id: "pventa", label: "Precio", admin: true, public: true, filter: false },
+        { id: "costo", label: "Costo", admin: true, public: false, filter: false },
+        { id: "margen", label: "Margen", admin: true, public: false, filter: false },
+        { id: "utilidad", label: "Utilidad", admin: true, public: false, filter: false },
+        { id: "acciones", label: "Acciones", admin: true, public: false, filter: false }
       ];
 
       const getActiveColumns = () => {
         const adminMode = isAdminViewEnabled();
-        return PRENDAS_COLUMNS.filter((column) => (adminMode ? column.visibleInAdmin : column.visibleInUser));
+        return PRENDAS_COLUMNS.filter((column) => (adminMode ? column.admin : column.public));
       };
-
-      const HEADER_SELECT_FILTER_COLUMNS = new Set([
-        "tipo",
-        "color",
-        "talla",
-        "proveedor",
-        "status",
-        "disponibilidad"
-      ]);
 
       const renderToolbar = () => {
         if (!toolbar) return;
@@ -3822,7 +3813,7 @@ const auth = getAuth(app);
           }
           inner.appendChild(label);
 
-          if (HEADER_SELECT_FILTER_COLUMNS.has(column.id)) {
+          if (column.filter) {
             inner.appendChild(createHeaderControlSelect(column.id));
           }
 
@@ -3832,15 +3823,6 @@ const auth = getAuth(app);
 
         prendasHeadRow.replaceChildren(fragment);
         updateOrdenSortToggleUi();
-      };
-
-      const setTableColumnVisibility = () => {
-        if (!prendasTable) return;
-        const activeSet = new Set(getActiveColumns().map((column) => column.id));
-        prendasTable.querySelectorAll("thead th[data-col]").forEach((th) => {
-          const key = safeString(th.dataset.col).trim();
-          th.style.display = activeSet.has(key) ? "" : "none";
-        });
       };
 
       const getTodayIso = () => {
@@ -5848,7 +5830,6 @@ const createPrendaRow = (item) => {
         setCounter(safeRows.length, showingTotal);
         updatePaginationUi();
         renderTableHeader();
-        setTableColumnVisibility();
 
         prendasTbody.textContent = "";
         if (!safeRows.length) {
@@ -6602,7 +6583,6 @@ const createPrendaRow = (item) => {
         setAdminPanelVisible(adminPanelVisible);
         renderToolbar();
         renderTableHeader();
-        setTableColumnVisibility();
         if (refresh) {
           loadPrendasPage({ reset: true, reason: "admin-toggle" });
         }
