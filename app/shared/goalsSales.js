@@ -20,8 +20,8 @@ export async function getGoalsSalesState(db, { year, auth } = {}) {
   const monthlyGoals = {};
 
   const configRef = doc(db, "goals_sales", "config");
-  const annualRef = doc(db, "goals_sales", "annual", String(normalizedYear));
-  const monthlyRef = collection(db, "goals_sales", "monthly");
+  const annualRef = doc(db, "goals_sales", "config", "annual", String(normalizedYear));
+  const monthlyRef = collection(db, "goals_sales", "config", "monthly");
 
   logGoalsPath("getDoc", configRef.path, auth);
   logGoalsPath("getDoc", annualRef.path, auth);
@@ -49,7 +49,7 @@ export async function getGoalsSalesState(db, { year, auth } = {}) {
 
 export async function saveMonthlyGoal(db, { year, month, amount, auth } = {}) {
   const key = monthKey(year, month);
-  const monthlyRef = doc(db, "goals_sales", "monthly", key);
+  const monthlyRef = doc(db, "goals_sales", "config", "monthly", key);
   logGoalsPath("setDoc", monthlyRef.path, auth);
   await setDoc(monthlyRef, {
     year: Number(year),
@@ -63,7 +63,7 @@ export async function saveRangeMonthlyGoal(db, { year, startMonth, endMonth, amo
   const batch = writeBatch(db);
   for (let month = Number(startMonth); month <= Number(endMonth); month += 1) {
     const key = monthKey(year, month);
-    const monthlyRef = doc(db, "goals_sales", "monthly", key);
+    const monthlyRef = doc(db, "goals_sales", "config", "monthly", key);
     logGoalsPath("batch.set", monthlyRef.path, auth);
     batch.set(monthlyRef, {
       year: Number(year),
@@ -76,7 +76,7 @@ export async function saveRangeMonthlyGoal(db, { year, startMonth, endMonth, amo
 }
 
 export async function saveAnnualGoal(db, { year, amount, auth } = {}) {
-  const annualRef = doc(db, "goals_sales", "annual", String(year));
+  const annualRef = doc(db, "goals_sales", "config", "annual", String(year));
   logGoalsPath("setDoc", annualRef.path, auth);
   await setDoc(annualRef, {
     year: Number(year),
