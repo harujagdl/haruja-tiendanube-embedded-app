@@ -33,7 +33,7 @@
         --col-costo: 120px;
         --col-margen: 110px;
         --col-utilidad: 120px;
-        --col-acciones: 110px;
+        --col-acciones: 120px;
       }
 
       * {
@@ -867,6 +867,13 @@
 
       #dbCodigosSection .col-actions {
         text-align: center;
+      }
+
+      #dbCodigosSection .actions-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
       }
 
       #dbCodigosSection .labels-panel {
@@ -1883,7 +1890,9 @@ body.admin-on .admin-only{ display:table-cell; }
         background: #f4fbf6; /* coincide con filas verdosas */
         z-index: 5;
         box-shadow: -10px 0 16px rgba(0,0,0,0.06);
-        min-width: 92px;
+        width: var(--col-acciones);
+        min-width: var(--col-acciones);
+        max-width: var(--col-acciones);
         text-align: center;
         white-space: nowrap;
       }
@@ -1903,8 +1912,14 @@ body.admin-on .admin-only{ display:table-cell; }
         justify-content: center;
         font-size: 16px;
         padding: 0;
-        margin: 0 4px;
         cursor: pointer;
+      }
+
+      #prendasSection .actions-wrap {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
       }
 
       #prendasSection .rowEditBtn:hover,
@@ -3779,8 +3794,10 @@ const auth = getAuth(app);
 
       const renderTableHeader = () => {
         if (!prendasHeadRow) return;
+        const adminMode = isAdminViewEnabled();
         const fragment = document.createDocumentFragment();
-        getActiveColumns().forEach((column) => {
+        const nonActionColumns = getActiveColumns().filter((column) => column.id !== "acciones");
+        nonActionColumns.forEach((column) => {
           const th = document.createElement("th");
           th.dataset.col = column.id;
           th.className = `col-${column.id}`;
@@ -3820,6 +3837,20 @@ const auth = getAuth(app);
           th.appendChild(inner);
           fragment.appendChild(th);
         });
+
+        if (adminMode) {
+          const actionsTh = document.createElement("th");
+          actionsTh.dataset.col = "acciones";
+          actionsTh.className = "col-acciones col-actions";
+          const inner = document.createElement("div");
+          inner.className = "th-inner";
+          const label = document.createElement("span");
+          label.className = "th-label";
+          label.textContent = "Acciones";
+          inner.appendChild(label);
+          actionsTh.appendChild(inner);
+          fragment.appendChild(actionsTh);
+        }
 
         prendasHeadRow.replaceChildren(fragment);
         updateOrdenSortToggleUi();
@@ -5472,7 +5503,8 @@ const createPrendaRow = (item) => {
         row.dataset.docId = docId;
         row.className = isNew(getPrendaDate(item)) ? "row-new" : "row-old";
 
-        getActiveColumns().forEach((column) => {
+        const nonActionColumns = getActiveColumns().filter((column) => column.id !== "acciones");
+        nonActionColumns.forEach((column) => {
           const key = column.id;
           if (key === "select") {
             const selectCell = document.createElement("td");
@@ -5485,29 +5517,6 @@ const createPrendaRow = (item) => {
             selectInput.checked = prendasState.selected.has(docId);
             selectCell.appendChild(selectInput);
             row.appendChild(selectCell);
-            return;
-          }
-
-          if (key === "acciones") {
-            const actionCell = document.createElement("td");
-            actionCell.className = "col-actions";
-            actionCell.dataset.col = "acciones";
-            const editButton = document.createElement("button");
-            editButton.type = "button";
-            editButton.className = "rowEditBtn";
-            editButton.dataset.editDoc = docId;
-            editButton.setAttribute("aria-label", "Editar prenda");
-            editButton.title = "Editar";
-            editButton.textContent = "✏️";
-            const deleteButton = document.createElement("button");
-            deleteButton.type = "button";
-            deleteButton.className = "rowDeleteBtn";
-            deleteButton.dataset.deleteDoc = docId;
-            deleteButton.setAttribute("aria-label", "Borrar prenda");
-            deleteButton.title = "Borrar";
-            deleteButton.textContent = "🗑";
-            actionCell.append(editButton, deleteButton);
-            row.appendChild(actionCell);
             return;
           }
 
@@ -5531,6 +5540,31 @@ const createPrendaRow = (item) => {
           }
           row.appendChild(cell);
         });
+
+        if (adminEnabled) {
+          const actionCell = document.createElement("td");
+          actionCell.className = "col-actions";
+          actionCell.dataset.col = "acciones";
+          const actionWrap = document.createElement("div");
+          actionWrap.className = "actions-wrap";
+          const editButton = document.createElement("button");
+          editButton.type = "button";
+          editButton.className = "rowEditBtn";
+          editButton.dataset.editDoc = docId;
+          editButton.setAttribute("aria-label", "Editar prenda");
+          editButton.title = "Editar";
+          editButton.textContent = "✏️";
+          const deleteButton = document.createElement("button");
+          deleteButton.type = "button";
+          deleteButton.className = "rowDeleteBtn";
+          deleteButton.dataset.deleteDoc = docId;
+          deleteButton.setAttribute("aria-label", "Borrar prenda");
+          deleteButton.title = "Borrar";
+          deleteButton.textContent = "🗑";
+          actionWrap.append(editButton, deleteButton);
+          actionCell.appendChild(actionWrap);
+          row.appendChild(actionCell);
+        }
 
         return row;
       };
