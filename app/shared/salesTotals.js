@@ -1,8 +1,6 @@
 import {
-  collection,
-  getDocs,
-  query,
-  where
+  doc,
+  getDoc
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
 export const emptyMonths = (year = new Date().getFullYear()) => {
@@ -17,26 +15,20 @@ export async function getMonthlySalesTotals(db, { year, auth } = {}) {
   const normalizedYear = Number(year) || new Date().getFullYear();
   const monthlyTotals = emptyMonths(normalizedYear);
 
-  const sources = [
-    { col: "sales_totals", field: "year" },
-    { col: "ventas_totales_mensuales", field: "year" }
-  ];
+  console.log("[goals] leyendo path:", "ventas_totales_mensuales");
+  console.log("[goals] user:", auth?.currentUser?.email || null);
 
-  for (const source of sources) {
-    const salesQuery = query(collection(db, source.col), where(source.field, "==", normalizedYear));
-    console.log("[goals] leyendo path:", source.col, "query", `${source.field}==${normalizedYear}`);
-    console.log("[goals] user:", auth?.currentUser?.email || null);
-    const snap = await getDocs(salesQuery);
-    if (snap.empty) continue;
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const month = String(data.month || docSnap.id).slice(0, 7);
-      if (!/^\d{4}-\d{2}$/.test(month)) return;
-      const total = Number(data.totalSales ?? data.total ?? data.ventas ?? 0);
-      monthlyTotals[month] = Number.isFinite(total) ? total : 0;
-    });
-    return { monthlyTotals };
-  }
+  const monthKeys = Array.from({ length: 12 }, (_, idx) => `${normalizedYear}-${String(idx + 1).padStart(2, "0")}`);
+  const monthlySnaps = await Promise.all(
+    monthKeys.map((key) => getDoc(doc(db, "ventas_totales_mensuales", key)))
+  );
+
+  monthlySnaps.forEach((docSnap, idx) => {
+    if (!docSnap.exists()) return;
+    const data = docSnap.data() || {};
+    const total = Number(data.totalSales ?? data.total ?? data.ventas ?? 0);
+    monthlyTotals[monthKeys[idx]] = Number.isFinite(total) ? total : 0;
+  });
 
   return { monthlyTotals };
 }
