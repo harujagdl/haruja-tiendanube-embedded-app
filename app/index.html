@@ -2348,6 +2348,9 @@ body.haruja-col-resizing{
     <div class="edit-modal-meta">
       <div>Utilidad: <strong id="editUtilidadPreview">$0.00</strong></div>
       <div>Margen: <strong id="editMargenPreview">0.0%</strong></div>
+      <div>Precio final (con IVA): <strong id="editPrecioFinalPreview">--</strong></div>
+      <div>Base sin IVA: <strong id="editBaseSinIvaPreview">--</strong></div>
+      <div>IVA: <strong id="editIvaPreview">--</strong></div>
     </div>
     <p class="edit-modal-code-preview">Código resultante: <strong id="editCodigoPreview">--</strong></p>
     <p id="editModalError" class="status error hidden" style="margin:10px 0 0;"></p>
@@ -2672,6 +2675,9 @@ const auth = getAuth(app);
       const editCodigoPreview = document.getElementById("editCodigoPreview");
       const editUtilidadPreview = document.getElementById("editUtilidadPreview");
       const editMargenPreview = document.getElementById("editMargenPreview");
+      const editPrecioFinalPreview = document.getElementById("editPrecioFinalPreview");
+      const editBaseSinIvaPreview = document.getElementById("editBaseSinIvaPreview");
+      const editIvaPreview = document.getElementById("editIvaPreview");
       const editModalError = document.getElementById("editModalError");
       const editModalSaveButton = document.getElementById("editModalSave");
       const editModalCancelButton = document.getElementById("editModalCancel");
@@ -5451,13 +5457,19 @@ const createPrendaRow = (item) => {
 
       const updateEditPreview = () => {
         if (!editPVentaInput || !editCostoInput) return;
-        const pOverride = toNumber(editPVentaInput.value);
+        const pOverrideIngresado = toNumber(editPVentaInput.value);
+        const ajusteOverride = Number.isFinite(pOverrideIngresado)
+          ? ajustarDesdePrecioConIVA(pOverrideIngresado)
+          : null;
         const pPublic = toNumber(prendasState.editing?.publicPVenta);
-        const p = Number.isFinite(pOverride) ? pOverride : (pPublic ?? 0);
+        const pFinal = ajusteOverride?.precioConIVA ?? pPublic ?? 0;
         const c = toNumber(editCostoInput.value) ?? 0;
-        const { utilidad, margenPct } = computeMarginUtility(p, c);
+        const { utilidad, margenPct } = computeMarginUtility(pFinal, c);
         if (editUtilidadPreview) editUtilidadPreview.textContent = moneyFmt(utilidad);
         if (editMargenPreview) editMargenPreview.textContent = pctFmt(margenPct);
+        if (editPrecioFinalPreview) editPrecioFinalPreview.textContent = ajusteOverride ? moneyFmt(ajusteOverride.precioConIVA) : "--";
+        if (editBaseSinIvaPreview) editBaseSinIvaPreview.textContent = ajusteOverride ? moneyFmt(ajusteOverride.precioSinIVA) : "--";
+        if (editIvaPreview) editIvaPreview.textContent = ajusteOverride ? moneyFmt(ajusteOverride.iva) : "--";
 
         const baseCode = parseBaseCode(prendasState.editing?.codigoBase || prendasState.editing?.codigo || "");
         const colorCode = safeString(editColorInput?.value || prendasState.editing?.colorCode).trim().toUpperCase();
@@ -5547,7 +5559,7 @@ const createPrendaRow = (item) => {
           if (!ensureAdminMode()) return;
           if (!prendasState.editing?.docId) return;
           const oldDocId = prendasState.editing.docId;
-          const pVentaOverride = toNumber(editPVentaInput?.value);
+          const pVentaOverrideIngresado = toNumber(editPVentaInput?.value);
           const costo = toNumber(editCostoInput?.value);
           const descripcion = safeString(editDescripcionInput?.value).trim();
           const colorCode = safeString(editColorInput?.value).trim().toUpperCase();
@@ -5560,7 +5572,10 @@ const createPrendaRow = (item) => {
           }
           const newCodigo = `${codigoBase}/${colorCode}-${tallaCode}`;
           const newDocId = safeDocId(newCodigo);
-          if (Number.isFinite(pVentaOverride) && pVentaOverride < 0) {
+          const ajusteOverride = Number.isFinite(pVentaOverrideIngresado)
+            ? ajustarDesdePrecioConIVA(pVentaOverrideIngresado)
+            : null;
+          if (Number.isFinite(pVentaOverrideIngresado) && pVentaOverrideIngresado < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
           if (Number.isFinite(costo) && costo < 0) {
@@ -5589,6 +5604,18 @@ const createPrendaRow = (item) => {
             updatedAt: serverTimestamp(),
             updatedBy: userEmail
           };
+          if (ajusteOverride) {
+            nextPublicPayload.pVenta = ajusteOverride.precioConIVA;
+            nextPublicPayload.precioConIva = ajusteOverride.precioConIVA;
+            nextPublicPayload.precioConIVA = ajusteOverride.precioConIVA;
+            nextPublicPayload.precioSinIVA = ajusteOverride.precioSinIVA;
+            nextPublicPayload.iva = ajusteOverride.iva;
+            nextPublicPayload.price = ajusteOverride.precioConIVA;
+            nextPublicPayload.priceSinIVA = ajusteOverride.precioSinIVA;
+            nextPublicPayload.priceConIVA = ajusteOverride.precioConIVA;
+            nextPublicPayload.priceOverride = ajusteOverride.precioConIVA;
+            nextPublicPayload.priceOverrideRaw = pVentaOverrideIngresado;
+          }
 
           if (newDocId === oldDocId) {
             await updateDoc(oldPublicRef, nextPublicPayload);
@@ -5610,9 +5637,7 @@ const createPrendaRow = (item) => {
             await deleteDoc(oldPublicRef);
           }
 
-          const pVentaVisible = Number.isFinite(pVentaOverride)
-            ? pVentaOverride
-            : toNumber(prendasState.editing?.publicPVenta);
+          const pVentaVisible = ajusteOverride?.precioConIVA ?? toNumber(prendasState.editing?.publicPVenta);
           const { utilidad, margenPct } = computeMarginUtility(pVentaVisible, costo);
           const oldAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, oldDocId);
           const nextAdminRef = doc(db, PRENDAS_ADMIN_COLLECTION, newDocId);
@@ -5620,7 +5645,15 @@ const createPrendaRow = (item) => {
             docId: newDocId,
             codigo: newCodigo,
             costo: Number.isFinite(costo) ? costo : deleteField(),
-            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : deleteField(),
+            pVentaOverride: ajusteOverride ? ajusteOverride.precioConIVA : deleteField(),
+            precioSinIVA: ajusteOverride ? ajusteOverride.precioSinIVA : deleteField(),
+            iva: ajusteOverride ? ajusteOverride.iva : deleteField(),
+            precioConIVA: ajusteOverride ? ajusteOverride.precioConIVA : deleteField(),
+            price: ajusteOverride ? ajusteOverride.precioConIVA : deleteField(),
+            priceSinIVA: ajusteOverride ? ajusteOverride.precioSinIVA : deleteField(),
+            priceConIVA: ajusteOverride ? ajusteOverride.precioConIVA : deleteField(),
+            priceOverride: ajusteOverride ? ajusteOverride.precioConIVA : deleteField(),
+            priceOverrideRaw: ajusteOverride ? pVentaOverrideIngresado : deleteField(),
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : deleteField(),
             margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : deleteField(),
             updatedAt: serverTimestamp(),
@@ -5633,14 +5666,12 @@ const createPrendaRow = (item) => {
 
           prendasState.adminMap.set(newDocId, {
             costo: Number.isFinite(costo) ? costo : null,
-            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
+            pVentaOverride: ajusteOverride ? ajusteOverride.precioConIVA : null,
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : null,
             margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : null
           });
 
-          const nextPVenta = Number.isFinite(pVentaOverride)
-            ? pVentaOverride
-            : toNumber(prendasState.editing?.publicPVenta);
+          const nextPVenta = ajusteOverride?.precioConIVA ?? toNumber(prendasState.editing?.publicPVenta);
           const hasMarginData = Number.isFinite(nextPVenta) && Number.isFinite(costo);
           if (newDocId !== oldDocId) {
             const removeFrom = (rows = []) => {
@@ -5665,7 +5696,7 @@ const createPrendaRow = (item) => {
             tallaName,
             descripcion,
             costo: Number.isFinite(costo) ? costo : null,
-            pVentaOverride: Number.isFinite(pVentaOverride) ? pVentaOverride : null,
+            pVentaOverride: ajusteOverride ? ajusteOverride.precioConIVA : null,
             pVentaDisplay: Number.isFinite(nextPVenta) ? nextPVenta : null,
             utilidad: hasMarginData ? utilidad : null,
             margen: hasMarginData ? Number(margenPct.toFixed(1)) : null

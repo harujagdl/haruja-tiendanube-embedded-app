@@ -1,11 +1,6 @@
 const IVA_RATE = 0.16;
 
-const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-const normalizeNineEnding = (value) => Math.ceil(value / 10) * 10 - 1;
-const normalizeInputTotal = (value) => {
-  const normalized = normalizeNineEnding(value);
-  return normalized < value ? normalized + 10 : normalized;
-};
+const round2 = (value) => Number((Number(value) || 0).toFixed(2));
 
 export function calcularPrecioConIVA(precioSinIVA) {
   const base = parseFloat(precioSinIVA);
@@ -13,7 +8,7 @@ export function calcularPrecioConIVA(precioSinIVA) {
 
   const iva = round2(base * IVA_RATE);
   const total = base + iva;
-  const precioConIVA = normalizeNineEnding(total);
+  const precioConIVA = Math.ceil(total / 10) * 10 - 1;
 
   return {
     precioSinIVA: base,
@@ -23,31 +18,23 @@ export function calcularPrecioConIVA(precioSinIVA) {
 }
 
 export function ajustarDesdePrecioConIVA(precioConIVAIngresado) {
-  const precioObjetivoRaw = parseFloat(precioConIVAIngresado);
-  if (!Number.isFinite(precioObjetivoRaw) || precioObjetivoRaw <= 0) return null;
+  const precioIngresado = parseFloat(precioConIVAIngresado);
+  if (!Number.isFinite(precioIngresado) || precioIngresado <= 0) return null;
 
-  const totalObjetivo = normalizeInputTotal(precioObjetivoRaw);
+  let totalObjetivo = Math.ceil(precioIngresado / 10) * 10 - 1;
+  if (totalObjetivo < precioIngresado) totalObjetivo += 10;
+  const totalMin = totalObjetivo - 10;
+  const pMin = totalMin / (1 + IVA_RATE);
+  const pMax = totalObjetivo / (1 + IVA_RATE);
 
-  let precioSinIVA = 9;
-  while (precioSinIVA <= totalObjetivo * 2) {
-    const calculado = calcularPrecioConIVA(precioSinIVA);
+  for (let p = Math.floor(pMin); p <= Math.ceil(pMax); p += 1) {
+    if (p % 10 !== 9) continue;
+    const calculado = calcularPrecioConIVA(p);
     if (calculado && calculado.precioConIVA === totalObjetivo) {
       return calculado;
     }
-    precioSinIVA += 10;
   }
 
-  const baseAproximada = normalizeNineEnding(totalObjetivo / (1 + IVA_RATE));
-  let candidato = Math.max(9, baseAproximada);
-  if (candidato % 10 !== 9) {
-    candidato = normalizeNineEnding(candidato);
-  }
-
-  while (true) {
-    const calculado = calcularPrecioConIVA(candidato);
-    if (calculado && calculado.precioConIVA >= totalObjetivo) {
-      return calculado;
-    }
-    candidato += 10;
-  }
+  const mejorBase = Math.floor(pMax / 10) * 10 + 9;
+  return calcularPrecioConIVA(mejorBase);
 }
