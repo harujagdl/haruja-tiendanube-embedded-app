@@ -2006,6 +2006,163 @@ th.col-drag-over {
         #dbCodigosSection .th-control select{height:28px;border-radius:9px;}
       }
 
+      #meta-vs-venta .meta-topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      #meta-vs-venta .meta-topbar-title p {
+        margin: 6px 0 0;
+      }
+
+      #meta-vs-venta .meta-topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      #meta-vs-venta .meta-chip {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        color: #334155;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 10px;
+      }
+
+      #meta-vs-venta .meta-toolbar {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        background: #fff;
+        padding: 14px;
+        margin-bottom: 10px;
+      }
+
+      #meta-vs-venta .meta-toolbar-grid {
+        display: grid;
+        gap: 12px;
+        align-items: end;
+        grid-template-columns: 1fr;
+      }
+
+      #meta-vs-venta .meta-filter label,
+      #meta-vs-venta .meta-filter-label {
+        display: block;
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+
+      #meta-vs-venta .meta-toolbar select,
+      #meta-vs-venta .meta-toolbar input {
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        padding: 0 12px;
+      }
+
+      #meta-vs-venta .meta-view-tabs {
+        display: inline-flex;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 2px;
+        background: #f8fafc;
+        width: 100%;
+      }
+
+      #meta-vs-venta .meta-view-tab {
+        flex: 1;
+        height: 36px;
+        border-radius: 10px;
+        border: none;
+        background: transparent;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      #meta-vs-venta .meta-view-tab:hover {
+        background: #eef2ff;
+      }
+
+      #meta-vs-venta .meta-view-tab.is-active {
+        background: #1e5eff;
+        color: #fff;
+      }
+
+      #meta-vs-venta .meta-action {
+        height: 40px;
+        border-radius: 12px;
+        padding: 0 16px;
+      }
+
+      #meta-vs-venta .meta-error-banner {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        border: 1px solid #fecaca;
+        background: #fff1f2;
+        color: #b91c1c;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+
+      #meta-vs-venta .meta-error-banner .meta-error-main {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      #meta-vs-venta .meta-error-banner code {
+        display: inline-block;
+        margin-top: 4px;
+      }
+
+      @media (min-width: 768px) {
+        #meta-vs-venta .meta-toolbar-grid {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+
+      @media (min-width: 1024px) {
+        #meta-vs-venta .meta-toolbar-grid {
+          grid-template-columns: 140px 220px 160px 160px auto auto;
+        }
+      }
+
+      @media (max-width: 767px) {
+        #meta-vs-venta .meta-topbar {
+          flex-direction: column;
+        }
+
+        #meta-vs-venta .meta-topbar-actions,
+        #meta-vs-venta .meta-toolbar-actions {
+          width: 100%;
+        }
+
+        #meta-vs-venta .meta-action,
+        #meta-vs-venta .meta-topbar-actions button {
+          width: 100%;
+        }
+
+        #meta-vs-venta .meta-error-banner {
+          flex-direction: column;
+        }
+
+        #meta-vs-venta .meta-error-banner .meta-action {
+          width: 100%;
+        }
+      }
+
 </style>
   <style id="haruja-resize-style">
 /* === Column resizing (Sheets-like) === */
@@ -2155,29 +2312,46 @@ body.haruja-col-resizing{
 
         <section id="view-meta-vs-venta" class="view">
           <section class="section" id="meta-vs-venta">
-            <button type="button" class="secondary js-back" id="btnBackMetaVsVenta">← Volver al panel</button>
-            <h2>Meta vs venta</h2>
-            <p>Comparativo de ventas contra meta con filtros y edición en admin.</p>
-            <div class="toolbar" style="gap:10px;align-items:end;flex-wrap:wrap;position:sticky;top:0;background:#fff;z-index:2;padding:10px 0;">
-              <label>Año
-                <select id="metaYearSelect"></select>
-              </label>
-              <label>Vista
-                <select id="metaViewSelect">
-                  <option value="monthly">Mes a mes</option>
-                  <option value="annual">Anual</option>
-                </select>
-              </label>
-              <label id="metaFromWrap">Desde
-                <select id="metaFromMonth"></select>
-              </label>
-              <label id="metaToWrap">Hasta
-                <select id="metaToMonth"></select>
-              </label>
-              <button type="button" id="metaApplyFilters">Aplicar</button>
+            <div class="meta-topbar">
+              <div class="meta-topbar-title">
+                <button type="button" class="secondary js-back" id="btnBackMetaVsVenta">← Volver al panel</button>
+                <h2>Meta vs venta</h2>
+                <p>Comparativo de ventas contra meta con filtros y edición en admin.</p>
+              </div>
+              <div class="meta-topbar-actions">
+                <span id="metaRoleChip" class="meta-chip" aria-live="polite">Público</span>
+                <button type="button" id="metaHeaderRetryBtn" class="secondary small hidden">Reintentar</button>
+              </div>
+            </div>
+
+            <div class="meta-toolbar" role="region" aria-label="Filtros de Meta vs venta">
+              <div class="meta-toolbar-grid">
+                <label class="meta-filter">Año
+                  <select id="metaYearSelect" aria-label="Año"></select>
+                </label>
+
+                <div class="meta-filter">
+                  <span class="meta-filter-label" id="metaViewLabel">Vista</span>
+                  <div class="meta-view-tabs" role="tablist" aria-labelledby="metaViewLabel">
+                    <button type="button" id="metaViewMonthlyTab" class="meta-view-tab" role="tab" aria-selected="true" aria-controls="metaMonthlyView">Mes a mes</button>
+                    <button type="button" id="metaViewAnnualTab" class="meta-view-tab" role="tab" aria-selected="false" aria-controls="metaAnnualView">Anual</button>
+                  </div>
+                </div>
+
+                <label id="metaFromWrap" class="meta-filter">Desde
+                  <select id="metaFromMonth" aria-label="Mes desde"></select>
+                </label>
+
+                <label id="metaToWrap" class="meta-filter">Hasta
+                  <select id="metaToMonth" aria-label="Mes hasta"></select>
+                </label>
+
+                <button type="button" id="metaApplyFilters" class="meta-action">Aplicar</button>
+                <button type="button" id="metaToolbarRetryBtn" class="secondary meta-action hidden">Reintentar</button>
+              </div>
             </div>
             <p id="metaStatus" class="status hidden"></p>
-            <div id="metaErrorBox" class="status error hidden" style="margin-bottom:10px;"></div>
+            <div id="metaErrorBox" class="meta-error-banner hidden" role="alert" aria-live="assertive"></div>
             <div id="metaMonthlyView">
               <table>
                 <thead>
@@ -2889,10 +3063,14 @@ const auth = getAuth(app);
       const monthLabels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
       const metaYearSelect = document.getElementById("metaYearSelect");
-      const metaViewSelect = document.getElementById("metaViewSelect");
+      const metaViewMonthlyTab = document.getElementById("metaViewMonthlyTab");
+      const metaViewAnnualTab = document.getElementById("metaViewAnnualTab");
       const metaFromMonth = document.getElementById("metaFromMonth");
       const metaToMonth = document.getElementById("metaToMonth");
       const metaApplyFilters = document.getElementById("metaApplyFilters");
+      const metaToolbarRetryBtn = document.getElementById("metaToolbarRetryBtn");
+      const metaHeaderRetryBtn = document.getElementById("metaHeaderRetryBtn");
+      const metaRoleChip = document.getElementById("metaRoleChip");
       const metaStatus = document.getElementById("metaStatus");
       const metaErrorBox = document.getElementById("metaErrorBox");
       const metaMonthlyView = document.getElementById("metaMonthlyView");
@@ -2907,6 +3085,14 @@ const auth = getAuth(app);
       const metaAdminAnnualTools = document.getElementById("metaAdminAnnualTools");
       const metaAdminMessage = document.getElementById("metaAdminMessage");
 
+      const syncMetaViewTabs = () => {
+        const isAnnual = metaState.view === "annual";
+        metaViewMonthlyTab?.classList.toggle("is-active", !isAnnual);
+        metaViewAnnualTab?.classList.toggle("is-active", isAnnual);
+        metaViewMonthlyTab?.setAttribute("aria-selected", String(!isAnnual));
+        metaViewAnnualTab?.setAttribute("aria-selected", String(isAnnual));
+      };
+
       const setMetaStatus = (message = "", type = "") => {
         if (!metaStatus) return;
         metaStatus.textContent = message;
@@ -2918,14 +3104,18 @@ const auth = getAuth(app);
         if (!error) {
           metaErrorBox.classList.add("hidden");
           metaErrorBox.textContent = "";
+          metaToolbarRetryBtn?.classList.add("hidden");
+          metaHeaderRetryBtn?.classList.add("hidden");
           return;
         }
         const code = error?.code ? `Detalle: ${error.code}` : "";
         const canShowDetail = Boolean(isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase()));
-        metaErrorBox.innerHTML = `No se pudo cargar Meta vs venta. <button type="button" id="metaRetryBtn" class="secondary" style="margin-left:8px;">Reintentar</button>${canShowDetail ? `<div style="margin-top:6px;font-size:12px;"><code>${code || "sin-código"}</code></div>` : ""}`;
+        metaErrorBox.innerHTML = `<div class="meta-error-main"><span aria-hidden="true">⚠️</span><div><strong>No se pudo cargar Meta vs venta.</strong>${canShowDetail ? `<div><code>${code || "sin-código"}</code></div>` : ""}</div></div><button type="button" id="metaRetryBtnInline" class="secondary meta-action">Reintentar</button>`;
         metaErrorBox.classList.remove("hidden");
-        const retryBtn = document.getElementById("metaRetryBtn");
-        if (retryBtn) retryBtn.addEventListener("click", () => loadMetaVsVenta({ force: true }));
+        metaToolbarRetryBtn?.classList.remove("hidden");
+        metaHeaderRetryBtn?.classList.remove("hidden");
+        const retryBtnInline = document.getElementById("metaRetryBtnInline");
+        if (retryBtnInline) retryBtnInline.addEventListener("click", () => loadMetaVsVenta({ force: true }));
       };
 
       const monthKey = (year, month) => `${year}-${String(month).padStart(2, "0")}`;
@@ -2943,6 +3133,7 @@ const auth = getAuth(app);
         metaAdminAnnualTools?.classList.toggle("hidden", metaState.view !== "annual");
 
         const adminEnabled = isAllowlistedAdmin(safeString(auth?.currentUser?.email).toLowerCase());
+        if (metaRoleChip) metaRoleChip.textContent = adminEnabled ? "Admin" : "Público";
         metaAdminBlock?.classList.toggle("hidden", !adminEnabled);
 
         const { start, end } = monthRange();
@@ -3000,7 +3191,7 @@ const auth = getAuth(app);
       const moneyMx = new Intl.NumberFormat("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 2});
 
       const initMetaFilters = () => {
-        if (!metaYearSelect || !metaFromMonth || !metaToMonth || !metaViewSelect) return;
+        if (!metaYearSelect || !metaFromMonth || !metaToMonth || !metaViewMonthlyTab || !metaViewAnnualTab) return;
         const currentYear = new Date().getFullYear();
         metaYearSelect.innerHTML = [currentYear - 1, currentYear, currentYear + 1]
           .map((year) => `<option value="${year}">${year}</option>`)
@@ -3014,23 +3205,31 @@ const auth = getAuth(app);
         metaYearSelect.value = String(metaState.year);
         metaFromMonth.value = String(metaState.fromMonth);
         metaToMonth.value = String(metaState.toMonth);
-        metaViewSelect.value = metaState.view;
 
         const syncMetaUiState = () => {
           metaState.year = Number(metaYearSelect.value) || currentYear;
-          metaState.view = metaViewSelect.value === "annual" ? "annual" : "monthly";
           metaState.fromMonth = Number(metaFromMonth.value) || 1;
           metaState.toMonth = Number(metaToMonth.value) || metaState.fromMonth;
-          document.getElementById("metaFromWrap")?.classList.toggle("hidden", metaState.view !== "monthly");
-          document.getElementById("metaToWrap")?.classList.toggle("hidden", metaState.view !== "monthly");
+          const isMonthly = metaState.view === "monthly";
+          document.getElementById("metaFromWrap")?.classList.toggle("hidden", !isMonthly);
+          document.getElementById("metaToWrap")?.classList.toggle("hidden", !isMonthly);
+          syncMetaViewTabs();
           renderMeta();
+        };
+
+        const setMetaView = (nextView) => {
+          metaState.view = nextView === "annual" ? "annual" : "monthly";
+          syncMetaUiState();
         };
 
         metaApplyFilters?.addEventListener("click", async () => {
           syncMetaUiState();
           await loadMetaVsVenta({ force: true });
         });
-        metaViewSelect.addEventListener("change", syncMetaUiState);
+        metaToolbarRetryBtn?.addEventListener("click", () => loadMetaVsVenta({ force: true }));
+        metaHeaderRetryBtn?.addEventListener("click", () => loadMetaVsVenta({ force: true }));
+        metaViewMonthlyTab.addEventListener("click", () => setMetaView("monthly"));
+        metaViewAnnualTab.addEventListener("click", () => setMetaView("annual"));
         syncMetaUiState();
 
         const metaAdminMonth = document.getElementById("metaAdminMonth");
