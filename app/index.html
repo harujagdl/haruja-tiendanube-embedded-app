@@ -4852,7 +4852,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             <img class="logoImg" alt="harujagdl" src="${LOGO_DATA_URI}" />
           </section>
         `).join("\n");
-return `<!doctype html>
+        return `<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -4940,104 +4940,6 @@ return `<!doctype html>
       setTimeout(doPrintOnce, 2500);
     })();
   <\/script>
-<script id="haruja-resize-script">
-(function(){
-  function applyWidthToColumn(table, colIndex, px){
-    const w = Math.max(60, Math.min(900, px|0));
-    const rows = table.querySelectorAll("tr");
-    rows.forEach(r=>{
-      const cell = r.children && r.children[colIndex];
-      if (cell) cell.style.width = w + "px";
-    });
-  }
-
-  function loadWidths(key){
-    try { return JSON.parse(localStorage.getItem(key) || "null"); } catch(e){ return null; }
-  }
-  function saveWidths(key, arr){
-    try { localStorage.setItem(key, JSON.stringify(arr)); } catch(e){}
-  }
-
-  function enableColumnResizing(tableId, storageKey){
-    const table = document.getElementById(tableId);
-    if (!table) return;
-
-    const headRow = table.querySelector("thead tr");
-    if (!headRow) return;
-
-    const ths = Array.from(headRow.children);
-    if (!ths.length) return;
-
-    // Apply saved widths (if any)
-    const saved = loadWidths(storageKey);
-    if (Array.isArray(saved)) {
-      saved.forEach((w, i)=>{
-        if (typeof w === "number" && w > 0) applyWidthToColumn(table, i, w);
-      });
-    }
-
-    ths.forEach((th, i)=>{
-      // avoid duplicating handles
-      if (th.querySelector(".haruja-resize-handle")) return;
-
-      const handle = document.createElement("div");
-      handle.className = "haruja-resize-handle";
-      handle.title = "Arrastra para ajustar el ancho";
-      handle.addEventListener("click", (e)=> e.stopPropagation());
-      handle.addEventListener("dblclick", (e)=> e.stopPropagation());
-      th.appendChild(handle);
-
-      let startX = 0, startW = 0, dragging = false;
-
-      const onMove = (e)=>{
-        if (!dragging) return;
-        const clientX = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
-        const dx = clientX - startX;
-        const newW = startW + dx;
-        applyWidthToColumn(table, i, newW);
-      };
-
-      const onUp = ()=>{
-        if (!dragging) return;
-        dragging = false;
-        document.body.classList.remove("haruja-col-resizing");
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-        window.removeEventListener("touchmove", onMove, {passive:false});
-        window.removeEventListener("touchend", onUp);
-
-        // persist current header widths
-        const current = Array.from(headRow.children).map(th2=> Math.round(th2.getBoundingClientRect().width));
-        saveWidths(storageKey, current);
-      };
-
-      const onDown = (e)=>{
-        // Only left click / touch
-        if (e.button !== undefined && e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        dragging = true;
-        document.body.classList.add("haruja-col-resizing");
-        startX = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
-        startW = th.getBoundingClientRect().width;
-
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-        window.addEventListener("touchmove", onMove, {passive:false});
-        window.addEventListener("touchend", onUp);
-      };
-
-      handle.addEventListener("mousedown", onDown);
-      handle.addEventListener("touchstart", onDown, {passive:false});
-    });
-  }
-
-  // boot
-  window.addEventListener("DOMContentLoaded", ()=>{
-    enableColumnResizing("prendasTable", "haruja_colwidths_tablaPrendas");
-  });
-})();
-<\/script>
 </body></html>`;
       };
 
