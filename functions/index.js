@@ -470,10 +470,16 @@ const fetchPaidOrdersFromTiendanube = async ({storeId, accessToken, apiVersion, 
       let payloadErr = {};
       try { payloadErr = body ? JSON.parse(body) : {}; } catch (_e) {}
 
-      // ✅ Tiendanube a veces responde 404 cuando "no hay pedidos" (ej. "Last page is 0")
-      const msg = String(payloadErr?.message || payloadErr?.description || body || "").toLowerCase();
-      if (response.status === 404 && msg.includes("last page is 0")) {
-        break; // no hay resultados en el mes
+      // ✅ Tiendanube puede responder 404 cuando no hay pedidos en el rango.
+      if (response.status === 404) {
+        const msg = String(payloadErr?.message || payloadErr?.description || body || "");
+        console.info("[sales-summary] Tiendanube 404 => mes sin ventas", {
+          storeId,
+          startIso,
+          endIso,
+          detail: msg.slice(0, 200)
+        });
+        break;
       }
 
       throw buildBadRequestError(`Error Tiendanube (${response.status}): ${body || "sin detalle"}`, 502);
@@ -520,7 +526,17 @@ const mapSellerAssignments = async (orderIds = []) => {
 const buildSalesDataset = async ({storeId, month}) => {
   const {startIso, endIso} = parseMonthRange(month);
   const credentials = await resolveTiendanubeCredentials(storeId);
-  const paidOrders = await fetchPaidOrdersFromTiendanube({...credentials, startIso, endIso});
+  let paidOrders = [];
+  try {
+    paidOrders = await fetchPaidOrdersFromTiendanube({...credentials, startIso, endIso});
+  } catch (error) {
+    if (Number(error?.status) === 404) {
+      console.info("[sales-summary] Tiendanube 404 controlado como mes vacío", {storeId, month});
+      paidOrders = [];
+    } else {
+      throw error;
+    }
+  }
   const orderIds = paidOrders.map((order) => String(order.id || "").trim()).filter(Boolean);
   const assignmentMap = await mapSellerAssignments(orderIds);
 
