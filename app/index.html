@@ -64,9 +64,9 @@
       }
 
       .haruja-header img {
-        height: 36px;
+        height: 22px;
         width: auto;
-        max-width: min(70vw, 260px);
+        max-width: min(60vw, 220px);
         display: block;
       }
 
@@ -78,15 +78,15 @@
         }
 
         .haruja-header img {
-          height: 28px;
-          max-width: min(78vw, 240px);
+          height: 18px;
+          max-width: min(70vw, 200px);
         }
       }
 
       @media (max-width: 420px) {
         .haruja-header img {
-          height: 24px;
-          max-width: min(82vw, 220px);
+          height: 16px;
+          max-width: min(72vw, 190px);
         }
       }
 
@@ -1751,14 +1751,17 @@ body.admin-on .admin-only{ display:table-cell; }
   justify-content:center;
 }
 .haruja-header img{
-  width:100%;
-  max-width: 520px;
-  height:auto;
+  height: 22px;
+  width:auto;
+  max-width: min(60vw, 220px);
   display:block;
 }
-@media (max-width: 640px){
-  .haruja-header{ padding: 18px 14px; }
-  .haruja-header img{ max-width: 360px; }
+@media (max-width: 768px){
+  .haruja-header{ padding: 14px 14px; }
+  .haruja-header img{ height: 18px; max-width: min(70vw, 200px); }
+}
+@media (max-width: 420px){
+  .haruja-header img{ height: 16px; max-width: min(72vw, 190px); }
 }
 
 /* ===== Launcher (PWA-style) ===== */
