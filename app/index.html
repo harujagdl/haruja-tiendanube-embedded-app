@@ -4888,15 +4888,49 @@ return `<!doctype html>
   ${pages}
   <script>
     (function(){
+      // 1) Crear los QR images
+      var imgs = [];
       document.querySelectorAll('.qr').forEach(function(el){
         var value = el.dataset.qr || '';
         var img = document.createElement('img');
         img.alt = 'QR';
+        img.loading = 'eager';
         img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(value);
         el.appendChild(img);
+        imgs.push(img);
       });
+
+      // 2) Esperar a que carguen/decodifiquen antes de imprimir
+      function waitImg(img){
+        // decode() es lo más confiable cuando existe
+        if (img.decode) {
+          return img.decode().catch(function(){ /* ignore */ });
+        }
+        // fallback clásico
+        return new Promise(function(resolve){
+          if (img.complete && img.naturalWidth > 0) return resolve();
+          img.onload = function(){ resolve(); };
+          img.onerror = function(){ resolve(); };
+        });
+      }
+
+      function doPrintOnce(){
+        if (window.__HARUJA_PRINTED__) return;
+        window.__HARUJA_PRINTED__ = true;
+        window.focus();
+        window.print();
+      }
+
+      // 3) Imprime cuando TODOS terminen (o si tardan demasiado, imprime igual)
+      Promise.all(imgs.map(waitImg))
+        .then(function(){
+          // micro delay para que el layout asiente
+          setTimeout(doPrintOnce, 80);
+        });
+
+      // Fallback duro (por si el QR server tarda o se cae)
+      setTimeout(doPrintOnce, 2500);
     })();
-    setTimeout(function(){ window.print(); }, 300);
   <\/script>
 <script id="haruja-resize-script">
 (function(){
