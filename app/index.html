@@ -28,6 +28,7 @@
         --col-proveedor: 140px;
         --col-status: 120px;
         --col-disponibilidad: 140px;
+        --col-qtyAvailable: 120px;
         --col-fecha: 120px;
         --col-pventa: 120px;
         --col-costo: 120px;
@@ -1594,6 +1595,7 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table th[data-col="proveedor"], #dbCodigosSection table.haruja-table td[data-col="proveedor"] { width:var(--col-proveedor); min-width:var(--col-proveedor); max-width:var(--col-proveedor); }
 #dbCodigosSection table.haruja-table th[data-col="status"], #dbCodigosSection table.haruja-table td[data-col="status"] { width:var(--col-status); min-width:var(--col-status); max-width:var(--col-status); }
 #dbCodigosSection table.haruja-table th[data-col="disponibilidad"], #dbCodigosSection table.haruja-table td[data-col="disponibilidad"] { width:var(--col-disponibilidad); min-width:var(--col-disponibilidad); max-width:var(--col-disponibilidad); }
+#dbCodigosSection table.haruja-table th[data-col="qtyAvailable"], #dbCodigosSection table.haruja-table td[data-col="qtyAvailable"] { width:var(--col-qtyAvailable); min-width:var(--col-qtyAvailable); max-width:var(--col-qtyAvailable); }
 #dbCodigosSection table.haruja-table th[data-col="fecha"], #dbCodigosSection table.haruja-table td[data-col="fecha"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
 #dbCodigosSection table.haruja-table th[data-col="pventa"], #dbCodigosSection table.haruja-table td[data-col="pventa"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
 #dbCodigosSection table.haruja-table th[data-col="costo"], #dbCodigosSection table.haruja-table td[data-col="costo"] { width:var(--col-costo); min-width:var(--col-costo); max-width:var(--col-costo); }
@@ -2622,6 +2624,10 @@ body.haruja-col-resizing{
         <input id="editCosto" type="number" min="0" step="0.01" />
       </div>
       <div>
+        <label for="editQtyAvailable">Existencias</label>
+        <input id="editQtyAvailable" type="number" min="0" step="1" />
+      </div>
+      <div>
         <label for="editColor">Color</label>
         <select id="editColor" aria-label="Editar color"></select>
       </div>
@@ -2968,6 +2974,7 @@ const auth = getAuth(app);
       const editDescripcionInput = document.getElementById("editDescripcion");
       const editPVentaInput = document.getElementById("editPVenta");
       const editCostoInput = document.getElementById("editCosto");
+      const editQtyAvailableInput = document.getElementById("editQtyAvailable");
       const editColorInput = document.getElementById("editColor");
       const editTallaInput = document.getElementById("editTalla");
       const editCodigoPreview = document.getElementById("editCodigoPreview");
@@ -3539,6 +3546,13 @@ const auth = getAuth(app);
       };
 
       const toNumber = (value) => toNumberOrNull(value);
+
+      const clampInt = (value, min, max, fallback = min) => {
+        const parsed = toNumberOrNull(value);
+        if (!Number.isFinite(parsed)) return fallback;
+        const intValue = Math.trunc(parsed);
+        return Math.min(Math.max(intValue, min), max);
+      };
 
       const debounce = (fn, wait = 200) => {
         let timeoutId;
@@ -4388,6 +4402,7 @@ const auth = getAuth(app);
         { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true },
         { id: "status", label: "Status", admin: true, public: true, filter: true },
         { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
+        { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: false },
         { id: "fecha", label: "Fecha", admin: true, public: true, filter: false },
         { id: "pventa", label: "Precio", admin: true, public: true, filter: false },
         { id: "costo", label: "Costo", admin: true, public: false, filter: false },
@@ -4544,6 +4559,7 @@ const auth = getAuth(app);
             proveedor: safeString(row?.proveedor).trim(),
             status: safeString(row?.status).trim(),
             disponibilidad: safeString(row?.disponibilidad).trim(),
+            qtyAvailable: toNumberOrNull(row?.qtyAvailable) ?? "",
             fecha: fecha === "--" ? "" : fecha,
             pventa: Number.isFinite(precio) ? precio : "",
             costo: Number.isFinite(costo) ? costo : "",
@@ -5133,6 +5149,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
             statusCanon
           ),
+          qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 1) ?? 1,
           isActive,
           precio,
           pVenta,
@@ -6134,6 +6151,7 @@ const createPrendaRow = (item) => {
           proveedor: formatLabel(safeString(item.proveedor)) || "--",
           status: renderStatusCell(item.statusCanon || item.status),
           disponibilidad: renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status),
+          qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "--"),
           fecha: formatDateCell(item),
           pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
           costo: moneyFmt(item.costo),
@@ -6266,6 +6284,7 @@ const createPrendaRow = (item) => {
         };
         if (editPVentaInput) editPVentaInput.value = Number.isFinite(pVentaOverride) ? pVentaOverride : "";
         if (editCostoInput) editCostoInput.value = toNumber(rowData.costo) ?? "";
+        if (editQtyAvailableInput) editQtyAvailableInput.value = toNumberOrNull(rowData.qtyAvailable ?? rowData.cantidad ?? 1) ?? 1;
         if (editDescripcionInput) editDescripcionInput.value = safeString(rowData.descripcion).trim();
         if (editColorInput) editColorInput.value = colorCode;
         if (editTallaInput) editTallaInput.value = tallaCode;
@@ -6317,6 +6336,7 @@ const createPrendaRow = (item) => {
           const oldDocId = prendasState.editing.docId;
           const pVentaOverrideIngresado = toNumber(editPVentaInput?.value);
           const costo = toNumber(editCostoInput?.value);
+          const qtyAvailable = clampInt(editQtyAvailableInput?.value, 0, 9999, 1);
           const descripcion = safeString(editDescripcionInput?.value).trim();
           const colorCode = safeString(editColorInput?.value).trim().toUpperCase();
           const tallaCode = safeString(editTallaInput?.value).trim().toUpperCase();
@@ -6331,6 +6351,9 @@ const createPrendaRow = (item) => {
           const ajusteOverride = Number.isFinite(pVentaOverrideIngresado)
             ? ajustarDesdePrecioConIVA(pVentaOverrideIngresado)
             : null;
+          const availability = qtyAvailable > 0
+            ? { status: "Disponible", disponibilidad: "Disponible" }
+            : { status: "Vendido", disponibilidad: "No disponible" };
           if (Number.isFinite(pVentaOverrideIngresado) && pVentaOverrideIngresado < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
@@ -6357,6 +6380,9 @@ const createPrendaRow = (item) => {
             tallaCode,
             tallaName,
             descripcion,
+            qtyAvailable,
+            status: availability.status,
+            disponibilidad: availability.disponibilidad,
             updatedAt: serverTimestamp(),
             updatedBy: userEmail
           };
@@ -6412,6 +6438,9 @@ const createPrendaRow = (item) => {
             priceOverrideRaw: ajusteOverride ? pVentaOverrideIngresado : deleteField(),
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : deleteField(),
             margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : deleteField(),
+            qtyAvailable,
+            status: availability.status,
+            disponibilidad: availability.disponibilidad,
             updatedAt: serverTimestamp(),
             updatedBy: userEmail
           }, { merge: true });
@@ -6451,6 +6480,11 @@ const createPrendaRow = (item) => {
             tallaCode,
             tallaName,
             descripcion,
+            qtyAvailable,
+            status: availability.status,
+            statusCanon: availability.status,
+            disponibilidad: availability.disponibilidad,
+            disponibilidadCanon: availability.disponibilidad,
             costo: Number.isFinite(costo) ? costo : null,
             pVentaOverride: ajusteOverride ? ajusteOverride.precioConIVA : null,
             pVentaDisplay: Number.isFinite(nextPVenta) ? nextPVenta : null,
