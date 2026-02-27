@@ -7,6 +7,22 @@
   <style>
     body{font-family:Arial,sans-serif;background:#faf6f1;color:#383234;min-height:100vh;margin:0}
     .page{max-width:420px;width:92%;margin:24px auto}
+    .page-header-wrapper { position: relative; }
+    .panel-back-btn {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      padding: 8px 16px;
+      background: #f3f4f6;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2563eb;
+      text-decoration: none;
+      border: 1px solid #e5e7eb;
+      transition: all .2s ease;
+    }
+    .panel-back-btn:hover { background: #e5e7eb; }
     .topbar{
       display:flex;
       align-items:center;
@@ -16,20 +32,27 @@
     }
     .brandlink{ display:flex; align-items:center; text-decoration:none; }
     .brandlink img{ height:36px; width:auto; display:block; }
-    .backlink{ font-size:14px; color:#2563eb; text-decoration:none; font-weight:600; }
     .card{background:#fff;border:1px solid #e7ddd3;border-radius:14px;padding:20px;max-width:420px;width:100%}
     h1{margin:0 0 10px;font-size:22px}
     .pill{background:#d6c4b3;padding:4px 10px;border-radius:999px;display:inline-block}
     ul{padding-left:18px}
+    @media (max-width: 640px) {
+      .panel-back-btn {
+        top: 14px;
+        right: 16px;
+        font-size: 13px;
+        padding: 6px 12px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="page">
+  <div class="page page-header-wrapper">
+    <a href="https://paneltb.harujagdl.com/#/panel" class="panel-back-btn">← Volver al panel</a>
     <div class="topbar">
       <a class="brandlink" href="https://paneltb.harujagdl.com/#/panel">
         <img src="assets/haruja-logo.png" alt="HarujaGdl">
       </a>
-      <a class="backlink" href="https://paneltb.harujagdl.com/#/panel">← Volver al panel</a>
     </div>
   <div class="card">
     <h1>Tarjeta de Lealtad</h1>

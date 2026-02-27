@@ -23,6 +23,22 @@
   html,body{ margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif }
 
   .container{ max-width:980px; margin:28px auto; padding:0 16px }
+  .page-header-wrapper { position: relative; }
+  .panel-back-btn {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    padding: 8px 16px;
+    background: #f3f4f6;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
+    border: 1px solid #e5e7eb;
+    transition: all .2s ease;
+  }
+  .panel-back-btn:hover { background: #e5e7eb; }
   .header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
   .brand{ display:flex; align-items:center; text-decoration:none; }
   .brand img{ height:36px; width:auto; opacity:.95; cursor:pointer; }
@@ -135,11 +151,20 @@
     appearance:none; border:1px solid var(--line); background:#fff; color:#111827;
     border-radius:12px; padding:10px 12px; font-weight:800; cursor:pointer;
   }
+  @media (max-width: 640px) {
+    .panel-back-btn {
+      top: 14px;
+      right: 16px;
+      font-size: 13px;
+      padding: 6px 12px;
+    }
+  }
 </style>
 </head>
 
 <body>
-  <div class="container">
+  <div class="container page-header-wrapper">
+    <a href="https://paneltb.harujagdl.com/#/panel" class="panel-back-btn">← Volver al panel</a>
     <div class="header">
       <div class="title">Registrar Apartado</div>
       <a class="brand" href="https://paneltb.harujagdl.com/#/panel" aria-label="Volver al panel">
@@ -148,8 +173,6 @@
     </div>
 
     <div class="top-actions">
-      <button class="btn-ghost" onclick="history.back()">← Volver</button>
-      <a class="btn-ghost" href="https://paneltb.harujagdl.com/#/panel" style="text-decoration:none; display:inline-block;">Panel</a>
       <button class="btn-ghost" onclick="window.location.href='/apartados-historial'">Historial</button>
     </div>
 
