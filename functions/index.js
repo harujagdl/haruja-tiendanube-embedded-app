@@ -546,12 +546,46 @@ const buildSalesDataset = async ({storeId, month}) => {
 
   const orders = paidOrders.map((order) => {
     const orderId = String(order.id || "").trim();
+    const orderNumberRaw =
+      order?.number ??
+      order?.order_number ??
+      order?.orderNumber ??
+      "";
+    const orderNumber = String(orderNumberRaw ?? "").trim();
     const total = normalizeMoneyAmount(order.total, order.total_paid);
     const seller = assignmentMap.get(orderId) || "";
     const customerName = [order?.customer?.name, order?.customer?.last_name]
       .filter((value) => !!String(value || "").trim())
       .join(" ")
       .trim() || String(order?.customer?.name || "Cliente");
+    const items = Array.isArray(order?.products)
+      ? order.products.map((p) => ({
+        sku: String(p?.sku || p?.variant_id || p?.product_id || "").trim(),
+        nombre: String(p?.name || p?.product_name || p?.title || "").trim(),
+        cantidad: Number(p?.quantity || 0) || 0,
+        precioUnitario: normalizeMoneyAmount(p?.price, p?.price_number ?? p?.price ?? 0)
+      }))
+      : [];
+
+    const itemsTexto = items
+      .filter((it) => it.cantidad > 0 && (it.nombre || it.sku))
+      .map((it) => {
+        const label = it.nombre || it.sku || "Item";
+        const skuTxt = it.sku ? ` [${it.sku}]` : "";
+        return `${it.cantidad}x ${label}${skuTxt}`;
+      })
+      .join(" | ");
+
+    const subtotal = normalizeMoneyAmount(order.subtotal, order.subtotal_paid ?? 0);
+    const shipping = normalizeMoneyAmount(order.shipping_cost, order.shipping_cost_paid ?? 0);
+    const discount = normalizeMoneyAmount(order.discount, order.total_discount ?? 0);
+    const paymentMethod = String(
+      order?.payment_details?.method ||
+      order?.payment_details?.payment_method ||
+      order?.payment_method ||
+      order?.gateway ||
+      ""
+    ).trim();
 
     totalMes += total;
     if (seller) {
@@ -562,10 +596,16 @@ const buildSalesDataset = async ({storeId, month}) => {
 
     return {
       orderId,
-      fecha: String(order.created_at || order.createdAt || (order.created_at && order.created_at.date) || (order.created_at && order.created_at.iso) || order.paid_at || order.paidAt || order.completed_at || order.completedAt || order.updated_at || order.updatedAt || ""),
+      orderNumber,
+      fecha: String(order.created_at || order.createdAt || order.paid_at || order.paidAt || order.completed_at || order.completedAt || order.updated_at || order.updatedAt || ""),
       cliente: customerName,
       totalPagado: Number(total.toFixed(2)),
+      subtotal: Number(subtotal.toFixed(2)),
+      descuento: Number(discount.toFixed(2)),
+      envio: Number(shipping.toFixed(2)),
       estado: String(order.payment_status || ""),
+      metodoPago: paymentMethod,
+      itemsTexto,
       seller
     };
   });
@@ -2306,25 +2346,38 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       const storeId = String(req.query?.storeId || "").trim();
       const month = String(req.query?.month || "").trim();
       const summary = await buildSalesDataset({storeId, month});
-      const orderCounts = {};
-      for (const order of summary.orders) {
-        const sellerKey = String(order.seller || "").trim() || "Sin asignar";
-        orderCounts[sellerKey] = (orderCounts[sellerKey] || 0) + 1;
-      }
-
       const rows = [];
-      rows.push(["seller", "total vendido", "numero pedidos", "ticket promedio"]);
+      rows.push([
+        "venta_numero",
+        "order_id",
+        "fecha",
+        "cliente",
+        "total_pagado",
+        "subtotal",
+        "descuento",
+        "envio",
+        "estado_pago",
+        "metodo_pago",
+        "vendedora",
+        "items"
+      ]);
 
-      const sellers = new Set(summary.totalPorVendedora.map((item) => item.seller));
-      if (summary.totalSinAsignar > 0) sellers.add("Sin asignar");
-
-      for (const seller of sellers) {
-        const total = seller === "Sin asignar"
-          ? summary.totalSinAsignar
-          : (summary.totalPorVendedora.find((item) => item.seller === seller)?.total || 0);
-        const count = orderCounts[seller] || 0;
-        const avg = count > 0 ? Number((total / count).toFixed(2)) : 0;
-        rows.push([seller, total.toFixed(2), String(count), avg.toFixed(2)]);
+      for (const order of summary.orders) {
+        const ventaNumero = order.orderNumber ? `#${order.orderNumber}` : "";
+        rows.push([
+          ventaNumero,
+          order.orderId,
+          order.fecha,
+          order.cliente,
+          Number(order.totalPagado || 0).toFixed(2),
+          Number(order.subtotal || 0).toFixed(2),
+          Number(order.descuento || 0).toFixed(2),
+          Number(order.envio || 0).toFixed(2),
+          order.estado || "",
+          order.metodoPago || "",
+          order.seller || "",
+          order.itemsTexto || ""
+        ]);
       }
 
       const csvContent = rows.map((row) => row.map(toCsvEscaped).join(",")).join("\n");

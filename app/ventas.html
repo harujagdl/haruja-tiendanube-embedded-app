@@ -82,7 +82,7 @@
         <thead>
           <tr>
             <th>Fecha</th>
-            <th>Order ID</th>
+            <th>Venta #</th>
             <th>Cliente</th>
             <th>Total pagado</th>
             <th>Estado</th>
@@ -193,7 +193,7 @@
         tbody.innerHTML = orders.map((row) => `
           <tr data-order-id="${row.orderId}">
             <td>${formatFecha(row.fecha)}</td>
-            <td>${row.orderId}</td>
+            <td>${row.orderNumber ? `#${row.orderNumber}` : row.orderId}</td>
             <td>${row.cliente || "—"}</td>
             <td>${moneyMx.format(Number(row.totalPagado) || 0)}</td>
             <td>${row.estado || "—"}</td>
