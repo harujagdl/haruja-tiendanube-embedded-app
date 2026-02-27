@@ -64,7 +64,7 @@
       }
 
       .haruja-header img {
-        height: 72px;
+        height: 36px;
         width: auto;
         max-width: min(70vw, 260px);
         display: block;
@@ -78,14 +78,14 @@
         }
 
         .haruja-header img {
-          height: 56px;
+          height: 28px;
           max-width: min(78vw, 240px);
         }
       }
 
       @media (max-width: 420px) {
         .haruja-header img {
-          height: 48px;
+          height: 24px;
           max-width: min(82vw, 220px);
         }
       }
@@ -3041,8 +3041,8 @@ const auth = getAuth(app);
         clearLastToolRouteState();
         sessionStorage.removeItem("metaVsVentaOrigin");
 
-        const base = `${window.location.origin}${window.location.pathname}`;
-        const target = `${base}#/panel`;
+        // Siempre volver al panel en raíz (evita quedar atrapado en /tools/*)
+        const target = `${window.location.origin}/#/panel`;
 
         const topWindow = (() => {
           try {
@@ -3093,7 +3093,8 @@ const auth = getAuth(app);
       if (btnOpenMetaVsVenta) {
         btnOpenMetaVsVenta.addEventListener("click", () => {
           sessionStorage.setItem("metaVsVentaOrigin", "panel");
-          window.location.href = "/tools/meta-vs-venta";
+          // usa el router interno (hash) para no cambiar pathname
+          navigateTo("meta-vs-venta");
         });
       }
       document.addEventListener("DOMContentLoaded", () => {

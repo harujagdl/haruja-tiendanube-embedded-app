@@ -8,6 +8,31 @@
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f6f7fb; color: #111827; }
     .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
     .toplink { display:inline-block; margin-bottom: 8px; color:#2563eb; text-decoration:none; font-size:14px; }
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom: 12px;
+    }
+    .brandlink{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      text-decoration:none;
+      color:#111827;
+    }
+    .brandlink img{
+      height: 36px;
+      width:auto;
+      display:block;
+    }
+    .backlink{
+      font-size:14px;
+      color:#2563eb;
+      text-decoration:none;
+      font-weight:600;
+    }
     .card { background:#fff; border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); padding: 18px; }
     h1 { margin: 0 0 12px; font-size: 34px; }
     .controls { display:flex; gap: 12px; flex-wrap: wrap; align-items: end; }
@@ -39,7 +64,12 @@
 </head>
 <body>
   <div class="wrap">
-    <a class="toplink" href="#/panel">← Volver al panel</a>
+    <div class="topbar">
+      <a class="brandlink" href="https://paneltb.harujagdl.com/#/panel">
+        <img src="assets/haruja-logo.png" alt="HarujaGdl">
+      </a>
+      <a class="backlink" href="https://paneltb.harujagdl.com/#/panel">← Volver al panel</a>
+    </div>
 
     <div class="card">
       <h1>Ventas & Comisiones</h1>
