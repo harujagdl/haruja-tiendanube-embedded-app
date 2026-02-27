@@ -3180,6 +3180,8 @@ const auth = getAuth(app);
         if (metaAnnualDiff) metaAnnualDiff.textContent = moneyMx.format(annualSalesTotal - annualGoalValue);
       };
 
+      const monthIndex = (year, month) => ((Number(year) || 0) * 12) + (Math.max(1, Math.min(12, Number(month) || 1)) - 1);
+
       const loadMetaVsVenta = async ({ force = false } = {}) => {
         if (metaState.loading) return;
         if (metaState.initialized && !force) return;
@@ -3188,8 +3190,17 @@ const auth = getAuth(app);
           metaState.loading = true;
           setMetaStatus("Cargando…");
           setMetaError(null);
+
+          const startMonth = Math.max(1, Math.min(12, Number(metaState.fromMonth) || 1));
+          const endMonth = Math.max(startMonth, Math.min(12, Number(metaState.toMonth) || startMonth));
+          const startIndex = monthIndex(metaState.year, startMonth);
+          const endIndex = monthIndex(metaState.year, endMonth);
+
           const [salesMap, goals] = await Promise.all([
-            getMonthlySalesMap(db, metaState.year),
+            getMonthlySalesMap(db, metaState.year, {
+              startMonth: (startIndex % 12) + 1,
+              endMonth: (endIndex % 12) + 1
+            }),
             getGoalsSalesState(db, { year: metaState.year, auth })
           ]);
           metaState.monthlySales = salesMap || emptyMonths(metaState.year);

@@ -6,6 +6,12 @@ export const emptyMonths = (year = new Date().getFullYear()) => {
   return out;
 };
 
+const clampMonth = (value, fallback) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(12, Math.trunc(parsed)));
+};
+
 const resolveSalesContext = () => {
   const query = new URLSearchParams(window.location.search);
   const storeId = query.get("storeId") || window.localStorage?.getItem("haruja_tn_store_id") || "";
@@ -59,17 +65,19 @@ export async function getMonthlyTotalFromVentasComisionesSource(db, year, month0
   return Number.isFinite(total) ? total : 0;
 }
 
-export async function getMonthlySalesMap(db, year) {
+export async function getMonthlySalesMap(db, year, { startMonth = 1, endMonth = 12 } = {}) {
   const normalizedYear = Number(year) || new Date().getFullYear();
   const monthlyTotals = emptyMonths(normalizedYear);
+  const start = clampMonth(startMonth, 1);
+  const end = clampMonth(endMonth, 12);
 
-  for (let month = 1; month <= 12; month += 1) {
+  for (let month = start; month <= end; month += 1) {
     const month01 = String(month).padStart(2, "0");
     const key = `${normalizedYear}-${month01}`;
     try {
       monthlyTotals[key] = await getMonthlyTotalFromVentasComisionesSource(db, normalizedYear, month01);
     } catch (error) {
-      console.error("[salesTotals] doc no existe => revisa docId", key, error);
+      console.info(`[salesTotals] ${key} no existe → ventas 0`);
       monthlyTotals[key] = 0;
     }
   }
