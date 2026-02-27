@@ -27,7 +27,7 @@ jobs:
           node-version: 20
 
       - name: Install Firebase CLI
-        run: npm i -g firebase-tools
+        run: npm i -g firebase-tools@latest
 
       - name: Auth to Google Cloud (WIF)
         if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
@@ -40,14 +40,12 @@ jobs:
           create_credentials_file: true
           export_environment_variables: true
 
-      # ✅ Blindaje: exporta SIEMPRE el path real del cred file si existe
       - name: Export GOOGLE_APPLICATION_CREDENTIALS from WIF
         if: ${{ steps.auth.outputs.credentials_file_path != '' }}
         run: |
           echo "GOOGLE_APPLICATION_CREDENTIALS=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
           echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
 
-      # ✅ Si WIF está configurado pero no creó cred file: NO te vayas a un deploy “fantasma”
       - name: Fail if WIF expected but credentials missing
         if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' && steps.auth.outputs.credentials_file_path == '' }}
         run: |
@@ -77,19 +75,6 @@ jobs:
         if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
         run: gcloud services enable firebaseextensions.googleapis.com --project "$FIREBASE_PROJECT_ID"
 
-      - name: Extensions list (non-blocking diagnostics)
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
-        run: |
-          if [ -n "${{ steps.auth.outputs.credentials_file_path }}" ]; then
-            firebase ext:list --project "$FIREBASE_PROJECT_ID" --non-interactive || true
-          elif [ -n "$FIREBASE_TOKEN" ]; then
-            firebase ext:list --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive || true
-          else
-            echo "Skipping extensions diagnostics: no credentials found."
-          fi
-
       - name: Install functions dependencies
         working-directory: functions
         run: |
@@ -100,59 +85,45 @@ jobs:
           fi
 
       - name: Delete old replicateAdminToPublic (if exists)
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           set +e
-          if [ -n "${{ steps.auth.outputs.credentials_file_path }}" ]; then
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
             firebase functions:delete replicateAdminToPublic \
               --project "$FIREBASE_PROJECT_ID" \
               --region us-central1 \
               --force \
               --non-interactive
-          elif [ -n "$FIREBASE_TOKEN" ]; then
+          else
             firebase functions:delete replicateAdminToPublic \
               --project "$FIREBASE_PROJECT_ID" \
               --region us-central1 \
               --token "$FIREBASE_TOKEN" \
               --force \
               --non-interactive
-          else
-            echo "No credentials for delete step."
-            exit 1
           fi
           echo "Delete step finished."
           set -e
 
       - name: Set Tiendanube secrets in Firebase
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
           TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
           TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
           PANEL_URL: ${{ secrets.PANEL_URL }}
           TIENDANUBE_REDIRECT_URI: ${{ secrets.TIENDANUBE_REDIRECT_URI }}
         run: |
-          if [ -n "${{ steps.auth.outputs.credentials_file_path }}" ]; then
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
             printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID"
             printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID"
             printf "%s" "$PANEL_URL" | firebase functions:secrets:set PANEL_URL --project "$FIREBASE_PROJECT_ID"
             printf "%s" "$TIENDANUBE_REDIRECT_URI" | firebase functions:secrets:set TIENDANUBE_REDIRECT_URI --project "$FIREBASE_PROJECT_ID"
-          elif [ -n "$FIREBASE_TOKEN" ]; then
+          else
             printf "%s" "$TIENDANUBE_CLIENT_ID" | firebase functions:secrets:set TIENDANUBE_CLIENT_ID --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
             printf "%s" "$TIENDANUBE_CLIENT_SECRET" | firebase functions:secrets:set TIENDANUBE_CLIENT_SECRET --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
             printf "%s" "$PANEL_URL" | firebase functions:secrets:set PANEL_URL --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
             printf "%s" "$TIENDANUBE_REDIRECT_URI" | firebase functions:secrets:set TIENDANUBE_REDIRECT_URI --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
-          else
-            echo "No credentials for secrets step."
-            exit 1
           fi
 
       - name: Deploy Firestore rules/indexes + Functions
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.auth.outputs.credentials_file_path }}
         run: |
           DEPLOY_ARGS=(
             --only firestore:rules,firestore:indexes,functions
@@ -167,11 +138,8 @@ jobs:
             echo "firebase-tools does not support --no-extensions; deploying without it."
           fi
 
-          if [ -n "${{ steps.auth.outputs.credentials_file_path }}" ]; then
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
             firebase deploy "${DEPLOY_ARGS[@]}"
-          elif [ -n "$FIREBASE_TOKEN" ]; then
-            firebase deploy "${DEPLOY_ARGS[@]}" --token "$FIREBASE_TOKEN"
           else
-            echo "No credentials for deploy."
-            exit 1
+            firebase deploy "${DEPLOY_ARGS[@]}" --token "$FIREBASE_TOKEN"
           fi
