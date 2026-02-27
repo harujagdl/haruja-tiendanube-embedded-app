@@ -3014,6 +3014,47 @@ const auth = getAuth(app);
         setView(nextView);
       }
 
+      function hasInternalPanelHistory() {
+        if (history.state?.view === "meta-vs-venta") return true;
+        return sessionStorage.getItem("metaVsVentaOrigin") === "panel";
+      }
+
+      function getPanelRouteTarget() {
+        if ((location.hash || "").startsWith("#/")) return "#/panel";
+        if (/^\/panel\/?$/.test(location.pathname)) return "/panel";
+        if (location.pathname === "/tools/meta-vs-venta") return "/#/panel";
+        return "/panel";
+      }
+
+      function assignPanelRoute(target) {
+        const topWindow = (() => {
+          try {
+            return window.top && window.top !== window ? window.top : null;
+          } catch (_) {
+            return null;
+          }
+        })();
+
+        if (topWindow) {
+          topWindow.location.assign(target);
+          return;
+        }
+
+        location.assign(target);
+      }
+
+      function handleBackToPanel(event) {
+        event.preventDefault();
+
+        if (hasInternalPanelHistory()) {
+          sessionStorage.removeItem("metaVsVentaOrigin");
+          history.back();
+          return;
+        }
+
+        assignPanelRoute(getPanelRouteTarget());
+      }
+
       function getViewFromUrl() {
         if (window.location.pathname === "/tools/meta-vs-venta") {
           return "meta-vs-venta";
@@ -3046,12 +3087,13 @@ const auth = getAuth(app);
       const btnOpenMetaVsVenta = document.getElementById("btnOpenMetaVsVenta");
       if (btnOpenMetaVsVenta) {
         btnOpenMetaVsVenta.addEventListener("click", () => {
+          sessionStorage.setItem("metaVsVentaOrigin", "panel");
           window.location.href = "/tools/meta-vs-venta";
         });
       }
       const btnBackMetaVsVenta = document.getElementById("btnBackMetaVsVenta");
       if (btnBackMetaVsVenta) {
-        btnBackMetaVsVenta.addEventListener("click", () => navigateTo("panel"));
+        btnBackMetaVsVenta.addEventListener("click", handleBackToPanel);
       }
 
       const metaState = {
