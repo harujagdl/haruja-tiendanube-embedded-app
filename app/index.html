@@ -4331,11 +4331,12 @@ const auth = getAuth(app);
       const getLabelPriceNumber = (row) => {
         const adminEnabled = isAdminViewEnabled();
 
-        // En admin, respetamos override si existe
+        // 1) En admin: respetar override si existe
         const override = toNumberOrNull(row?.pVentaOverride);
         if (adminEnabled && Number.isFinite(override)) return override;
 
-        // Fallback robusto: usa el resolver oficial (precioConIva / precio / price / pVenta)
+        // 2) En cualquier modo: usar el mismo resolver que la tabla
+        // (prioriza precioConIva -> precio -> pVenta)
         const resolved = resolvePVenta(row);
         return Number.isFinite(resolved) ? resolved : null;
       };
