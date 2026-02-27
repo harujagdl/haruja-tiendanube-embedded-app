@@ -4993,46 +4993,33 @@ return `<!doctype html>
       };
 
       const openPrintLabels = (scope = "page") => {
-        const getSelectedRows = () => {
-          const selectedRows = getRowsForScope("selected");
-          if (Array.isArray(selectedRows) && selectedRows.length) return selectedRows;
-
-          const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-row-id]:checked'));
-          if (!checked.length) return null;
-
-          const base = window.__ROWS__ || prendasState.rowsAfterAll || prendasState.baseRows || [];
-          const ids = new Set(checked.map((el) => safeString(el.getAttribute("data-row-id")).trim()));
-          const selectedFromDom = base.filter((row) => {
-            const rowId = safeString(row.docId || row.id || row.codigo || row.code).trim();
-            return rowId && ids.has(rowId);
-          });
-          return selectedFromDom.length ? selectedFromDom : null;
-        };
-
-        const getRenderedRows = () => {
-          const rendered =
+        // --- FIX: safeRows siempre definido (NO global) ---
+        const safeRows = (() => {
+          const base =
             getRowsForScope(scope) ||
             prendasState.filtered ||
             prendasState.rowsAfterAll ||
-            window.filteredRows ||
-            window.currentRows ||
-            window.lastRenderedRows ||
-            null;
-          return Array.isArray(rendered) && rendered.length ? rendered : null;
-        };
-
-        const getAllRows = () => {
-          const allRows =
-            window.__ROWS__ ||
             prendasState.baseRows ||
-            prendasState.rowsAfterAll ||
+            window.currentRows ||
+            window.filteredRows ||
+            window.lastRenderedRows ||
+            window.__ROWS__ ||
             window.rows ||
             window.allRows ||
             [];
-          return Array.isArray(allRows) ? allRows : [];
-        };
 
-        const safeRows = getSelectedRows() || getRenderedRows() || getAllRows();
+          const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-row-id]:checked'));
+          if (checked.length) {
+            const ids = new Set(checked.map((el) => String(el.getAttribute("data-row-id"))));
+            const selected = Array.isArray(base)
+              ? base.filter((row) => ids.has(String(row?.id ?? row?.docId ?? row?.codigo ?? row?.code)))
+              : [];
+            return selected.length ? selected : (Array.isArray(base) ? base : []);
+          }
+
+          return Array.isArray(base) ? base : [];
+        })();
+
         if (!safeRows.length) {
           setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
           return;
