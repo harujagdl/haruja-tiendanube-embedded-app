@@ -40,6 +40,18 @@ jobs:
           create_credentials_file: true
           export_environment_variables: true
 
+      # ✅ FIX QUIRÚRGICO: Exportar credenciales WIF a GOOGLE_APPLICATION_CREDENTIALS
+      - name: Export GOOGLE_APPLICATION_CREDENTIALS from WIF
+        if: ${{ steps.auth.outputs.credentials_file_path != '' }}
+        run: echo "GOOGLE_APPLICATION_CREDENTIALS=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
+
+      # ✅ FIX QUIRÚRGICO: Si WIF está configurado pero no generó cred file, falla aquí (evita caer a --token sin querer)
+      - name: Fail if WIF expected but credentials missing
+        if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' && steps.auth.outputs.credentials_file_path == '' }}
+        run: |
+          echo "WIF secrets exist but credentials_file_path is empty. Check GCP_WIF_PROVIDER / GCP_SA_EMAIL."
+          exit 1
+
       - name: Set up gcloud
         if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
         uses: google-github-actions/setup-gcloud@v2
@@ -107,7 +119,6 @@ jobs:
         env:
           TIENDANUBE_CLIENT_ID: ${{ secrets.TIENDANUBE_CLIENT_ID }}
           TIENDANUBE_CLIENT_SECRET: ${{ secrets.TIENDANUBE_CLIENT_SECRET }}
-
           PANEL_URL: ${{ secrets.PANEL_URL }}
           TIENDANUBE_REDIRECT_URI: ${{ secrets.TIENDANUBE_REDIRECT_URI }}
         run: |
