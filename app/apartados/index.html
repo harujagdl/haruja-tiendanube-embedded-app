@@ -24,7 +24,8 @@
 
   .container{ max-width:980px; margin:28px auto; padding:0 16px }
   .header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px }
-  .brand img{ height:22px; opacity:.9 }
+  .brand{ display:flex; align-items:center; text-decoration:none; }
+  .brand img{ height:36px; width:auto; opacity:.95; cursor:pointer; }
   .title{ font-size:28px; font-weight:800; letter-spacing:-.01em }
 
   .card{
@@ -141,14 +142,14 @@
   <div class="container">
     <div class="header">
       <div class="title">Registrar Apartado</div>
-      <div class="brand">
-        <img src="https://i.postimg.cc/nMphkZcC/haruja-logo.png" alt="harujagdl">
-      </div>
+      <a class="brand" href="https://paneltb.harujagdl.com/#/panel" aria-label="Volver al panel">
+        <img src="../assets/haruja-logo.png" alt="HarujaGdl">
+      </a>
     </div>
 
     <div class="top-actions">
       <button class="btn-ghost" onclick="history.back()">← Volver</button>
-      <a class="btn-ghost" href="/" style="text-decoration:none; display:inline-block;">Panel</a>
+      <a class="btn-ghost" href="https://paneltb.harujagdl.com/#/panel" style="text-decoration:none; display:inline-block;">Panel</a>
       <button class="btn-ghost" onclick="window.location.href='/apartados-historial'">Historial</button>
     </div>
 
