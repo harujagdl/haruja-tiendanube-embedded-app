@@ -4330,12 +4330,14 @@ const auth = getAuth(app);
 
       const getLabelPriceNumber = (row) => {
         const adminEnabled = isAdminViewEnabled();
+
+        // En admin, respetamos override si existe
         const override = toNumberOrNull(row?.pVentaOverride);
-        const publicPrice = toNumberOrNull(row?.pVenta);
-        if (adminEnabled && Number.isFinite(override)) {
-          return override;
-        }
-        return Number.isFinite(publicPrice) ? publicPrice : null;
+        if (adminEnabled && Number.isFinite(override)) return override;
+
+        // Fallback robusto: usa el resolver oficial (precioConIva / precio / price / pVenta)
+        const resolved = resolvePVenta(row);
+        return Number.isFinite(resolved) ? resolved : null;
       };
 
       const updateSelectAllCheckbox = () => {
