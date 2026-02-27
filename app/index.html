@@ -2314,7 +2314,7 @@ body.haruja-col-resizing{
           <section class="section" id="meta-vs-venta">
             <div class="meta-topbar">
               <div class="meta-topbar-title">
-                <button type="button" class="secondary js-back" id="btn-back-panel">← Volver al panel</button>
+                <button type="button" class="secondary js-go-panel" id="btn-back-panel" data-go-panel="1">← Volver al panel</button>
                 <h2>Meta vs venta</h2>
                 <p>Comparativo de ventas contra meta con filtros y edición en admin.</p>
               </div>
@@ -2407,7 +2407,7 @@ body.haruja-col-resizing{
 
         <section id="view-registro" class="view">
         <section class="section" id="registro">
-          <button type="button" id="btnBackRegistro" class="secondary js-back">← Volver al panel</button>
+          <button type="button" id="btnBackRegistro" class="secondary js-go-panel" data-go-panel="1">← Volver al panel</button>
           <h2>Registro de nuevas prendas</h2>
           <p>Selecciona los atributos clave para generar el código y guardar la prenda en Firestore.</p>
           <form class="form form-row" id="registro-form">
@@ -2491,7 +2491,7 @@ body.haruja-col-resizing{
 
         <section id="view-codigos" class="view">
         <section class="section" id="base-datos-codigos">
-          <button type="button" id="btnBackCodigos" class="secondary js-back">← Volver al panel</button>
+          <button type="button" id="btnBackCodigos" class="secondary js-go-panel" data-go-panel="1">← Volver al panel</button>
           <div id="dbCodigosSection" class="card section-card">
   <div class="card-header">
     <div class="card-title">Base de datos códigos HarujaGdl</div>
@@ -3018,7 +3018,11 @@ const auth = getAuth(app);
       }
 
       function clearLastToolRouteState() {
-        const keys = ["lastTool", "lastRoute", "lastView"];
+        const keys = [
+          "lastTool", "lastRoute", "lastView",
+          "activeTool", "activeRoute",
+          "panel:lastTool", "panel:lastRoute", "panel:lastView"
+        ];
         keys.forEach((key) => {
           try {
             localStorage.removeItem(key);
@@ -3029,12 +3033,16 @@ const auth = getAuth(app);
         });
       }
 
-      function goToPanel(event) {
-        if (event) event.preventDefault();
+      window.goToPanel = function goToPanel(event) {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         clearLastToolRouteState();
         sessionStorage.removeItem("metaVsVentaOrigin");
 
-        const target = `${window.location.origin}${window.location.pathname}#/panel`;
+        const base = `${window.location.origin}${window.location.pathname}`;
+        const target = `${base}#/panel`;
 
         const topWindow = (() => {
           try {
@@ -3050,7 +3058,7 @@ const auth = getAuth(app);
         }
 
         window.location.replace(target);
-      }
+      };
 
       function getViewFromUrl() {
         if (window.location.pathname === "/tools/meta-vs-venta") {
@@ -3088,16 +3096,25 @@ const auth = getAuth(app);
           window.location.href = "/tools/meta-vs-venta";
         });
       }
-      const btnBackPanel = document.getElementById("btn-back-panel") || document.getElementById("btnBackMetaVsVenta");
-      if (btnBackPanel) {
-        btnBackPanel.addEventListener("click", goToPanel);
-      }
+      document.addEventListener("DOMContentLoaded", () => {
+        const harujaLogoButton = document.getElementById("haruja-logo");
+        if (harujaLogoButton) {
+          harujaLogoButton.style.cursor = "pointer";
+          harujaLogoButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            window.goToPanel();
+          });
+        }
+      });
 
-      const harujaLogoButton = document.getElementById("haruja-logo") || document.getElementById("harujaLogo");
-      if (harujaLogoButton) {
-        harujaLogoButton.style.cursor = "pointer";
-        harujaLogoButton.addEventListener("click", goToPanel);
-      }
+      document.addEventListener("click", (event) => {
+        const trigger = event.target?.closest?.("[data-go-panel='1'], .js-go-panel");
+        if (!trigger) return;
+        event.preventDefault();
+        event.stopPropagation();
+        window.goToPanel();
+      });
 
       const metaState = {
         year: new Date().getFullYear(),
@@ -3455,16 +3472,6 @@ const auth = getAuth(app);
         }
       };
 
-      document.querySelectorAll(".js-back").forEach((button) => {
-        if (!button) return;
-        button.addEventListener("click", () => {
-          if (history.length > 1) {
-            history.back();
-            return;
-          }
-          navigateTo("panel", { replace: true });
-        });
-      });
       console.assert(prendasTable, "No existe tabla de prendas");
       console.assert(prendasTbody, "No existe tbody de prendas");
       console.assert(loadingRow, "No existe loader de prendas");
