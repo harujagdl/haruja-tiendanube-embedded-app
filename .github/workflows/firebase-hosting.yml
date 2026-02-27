@@ -1,0 +1,72 @@
+name: Deploy Firebase Hosting
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "app/**"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-hosting.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-hosting:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools@latest
+
+      - name: Auth to Google Cloud (WIF)
+        if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA_EMAIL }}
+          project_id: ${{ env.FIREBASE_PROJECT_ID }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Export GOOGLE_APPLICATION_CREDENTIALS from WIF
+        if: ${{ steps.auth.outputs.credentials_file_path != '' }}
+        run: |
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
+          echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
+
+      - name: Show deploy identity
+        run: |
+          if [ -n "$GCP_SA_EMAIL" ] && [ -n "$GCP_WIF_PROVIDER" ]; then
+            echo "Deploying Hosting with WIF service account: $GCP_SA_EMAIL"
+          elif [ -n "$FIREBASE_TOKEN" ]; then
+            echo "Deploying Hosting with FIREBASE_TOKEN (legacy auth)."
+          else
+            echo "No CI credentials configured. Set WIF secrets or FIREBASE_TOKEN."
+            exit 1
+          fi
+
+      - name: Deploy Hosting
+        run: |
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --non-interactive
+          else
+            firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN" --non-interactive
+          fi
