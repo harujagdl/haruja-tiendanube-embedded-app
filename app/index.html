@@ -4712,7 +4712,7 @@ const auth = getAuth(app);
 
           if (token === ":") {
             cursor += 1;
-            if (!safeRows.length) {
+            if (!rows.length) {
               throw new Error("Token ':' sin fila previa en GFA");
             }
             for (let i = 0; i < repeat; i += 1) {
@@ -4993,16 +4993,70 @@ return `<!doctype html>
       };
 
       const openPrintLabels = (scope = "page") => {
-        const rows = getRowsForScope(scope);
+        const getSelectedRows = () => {
+          const selectedRows = getRowsForScope("selected");
+          if (Array.isArray(selectedRows) && selectedRows.length) return selectedRows;
+
+          const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-row-id]:checked'));
+          if (!checked.length) return null;
+
+          const base = window.__ROWS__ || prendasState.rowsAfterAll || prendasState.baseRows || [];
+          const ids = new Set(checked.map((el) => safeString(el.getAttribute("data-row-id")).trim()));
+          const selectedFromDom = base.filter((row) => {
+            const rowId = safeString(row.docId || row.id || row.codigo || row.code).trim();
+            return rowId && ids.has(rowId);
+          });
+          return selectedFromDom.length ? selectedFromDom : null;
+        };
+
+        const getRenderedRows = () => {
+          const rendered =
+            getRowsForScope(scope) ||
+            prendasState.filtered ||
+            prendasState.rowsAfterAll ||
+            window.filteredRows ||
+            window.currentRows ||
+            window.lastRenderedRows ||
+            null;
+          return Array.isArray(rendered) && rendered.length ? rendered : null;
+        };
+
+        const getAllRows = () => {
+          const allRows =
+            window.__ROWS__ ||
+            prendasState.baseRows ||
+            prendasState.rowsAfterAll ||
+            window.rows ||
+            window.allRows ||
+            [];
+          return Array.isArray(allRows) ? allRows : [];
+        };
+
+        const safeRows = getSelectedRows() || getRenderedRows() || getAllRows();
         if (!safeRows.length) {
           setPrendasAlert("No hay filas para imprimir en el alcance seleccionado.");
+          return;
+        }
+
+        const norm = (r) => ({
+          id: String(r?.id ?? r?.docId ?? ""),
+          codigo: String(r?.codigo ?? r?.code ?? "").trim(),
+          descripcion: String(r?.descripcion ?? r?.desc ?? r?.nombre ?? "").trim(),
+          precio: String(r?.precio ?? r?.price ?? r?.pVenta ?? "").trim(),
+          talla: String(r?.talla ?? r?.size ?? r?.tallaCode ?? "").trim(),
+          color: String(r?.color ?? r?.colorName ?? "").trim()
+        });
+
+        const rowsToPrint = safeRows.map(norm).filter((row) => row.codigo);
+        if (!rowsToPrint.length) {
+          setPrendasAlert("No hay prendas válidas para imprimir etiquetas.");
           return;
         }
         
         const logoSrc = "";
                 // Nota: el layout objetivo usa el logo como texto (harujagdl) debajo del QR,
                 // así que no intentamos renderizar ^GFA aquí para evitar errores por compresión.
-                const labels = rows.map((row) => {
+                const labels = rowsToPrint.map((row) => {
           const codigo = safeString(row.codigo || row.code).trim().toUpperCase();
           const precioNum = getLabelPriceNumber(row);
           return {
@@ -5953,6 +6007,7 @@ return `<!doctype html>
         });
 
         prendasState.baseRows = orderedRows;
+        window.__ROWS__ = orderedRows;
         prendasState.baseRowsCacheKey = cacheKey;
         return prendasState.baseRows;
       };
@@ -5960,6 +6015,7 @@ return `<!doctype html>
       const resetPrendasState = () => {
         prendasState.filtered = [];
         prendasState.baseRows = [];
+        window.__ROWS__ = [];
         prendasState.baseRowsCacheKey = prendasState.isAdmin ? "admin" : "public";
         prendasState.rowsAfterGlobal = [];
         prendasState.rowsAfterAll = [];
