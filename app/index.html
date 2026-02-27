@@ -4866,7 +4866,7 @@ return `<!doctype html>
   .codigo { position:absolute; left:3.13mm; top:5.0mm; font-size:3.3mm; font-weight:600; font-family: Arial, sans-serif; }
   .precio { position:absolute; left:3.13mm; top:12.5mm; font-size:6.2mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
   .qr { position:absolute; left:32.53mm; top:2.13mm; width:15.5mm; height:15.5mm; }
-  .qr img { width:100%; height:100%; display:block; }
+  .qr canvas, .qr img { width:100% !important; height:100% !important; display:block; }
   
 .logoImg {
   position:absolute;
@@ -4886,31 +4886,41 @@ return `<!doctype html>
 <body>
   <div class="print-actions"><button onclick="window.print()">Imprimir</button></div>
   ${pages}
+  <script src="assets/qrcode.min.js"></script>
   <script>
     (function(){
-      // 1) Crear los QR images
-      var imgs = [];
-      document.querySelectorAll('.qr').forEach(function(el){
+      // Render QR local (sin internet)
+      var els = Array.from(document.querySelectorAll('.qr'));
+      els.forEach(function(el){
         var value = el.dataset.qr || '';
-        var img = document.createElement('img');
-        img.alt = 'QR';
-        img.loading = 'eager';
-        img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(value);
-        el.appendChild(img);
-        imgs.push(img);
+        el.innerHTML = ""; // limpia por si acaso
+
+        // qrcodejs crea canvas/img dentro del contenedor
+        new QRCode(el, {
+          text: value,
+          width: 220,
+          height: 220,
+          correctLevel: QRCode.CorrectLevel.M
+        });
       });
 
-      // 2) Esperar a que carguen/decodifiquen antes de imprimir
-      function waitImg(img){
-        // decode() es lo más confiable cuando existe
-        if (img.decode) {
-          return img.decode().catch(function(){ /* ignore */ });
-        }
-        // fallback clásico
+      function isRendered(el){
+        var c = el.querySelector("canvas");
+        if (c && c.width > 0 && c.height > 0) return true;
+        var img = el.querySelector("img");
+        if (img && img.complete && img.naturalWidth > 0) return true;
+        return false;
+      }
+
+      function waitAllRendered(){
         return new Promise(function(resolve){
-          if (img.complete && img.naturalWidth > 0) return resolve();
-          img.onload = function(){ resolve(); };
-          img.onerror = function(){ resolve(); };
+          var start = Date.now();
+          (function tick(){
+            var ok = els.every(isRendered);
+            if (ok) return resolve(true);
+            if (Date.now() - start > 1500) return resolve(false); // timeout suave
+            requestAnimationFrame(tick);
+          })();
         });
       }
 
@@ -4921,14 +4931,12 @@ return `<!doctype html>
         window.print();
       }
 
-      // 3) Imprime cuando TODOS terminen (o si tardan demasiado, imprime igual)
-      Promise.all(imgs.map(waitImg))
-        .then(function(){
-          // micro delay para que el layout asiente
-          setTimeout(doPrintOnce, 80);
-        });
+      waitAllRendered().then(function(){
+        // micro-delay para que el layout asiente
+        setTimeout(doPrintOnce, 80);
+      });
 
-      // Fallback duro (por si el QR server tarda o se cae)
+      // fallback duro por si algo se atora (no debería)
       setTimeout(doPrintOnce, 2500);
     })();
   <\/script>
