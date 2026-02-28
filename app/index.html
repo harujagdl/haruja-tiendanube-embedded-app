@@ -7026,8 +7026,18 @@ const createPrendaRow = (item) => {
               throw new Error("No se confirmó el guardado del documento en Firestore.");
             }
             console.log("[Registro] Documento guardado:", publicRef.id);
-            preview.codigo = codigoFinal;
-            preview.baseCode = "";
+            if (adminCreateCostoInput) adminCreateCostoInput.value = "";
+            if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
+            registroForm.reset();
+            registroPreview = null;
+            registroCodeModeValue = "haruja";
+            registroSupplierCodeWrap?.classList.add("hidden");
+            if (registroSupplierCodeInput) registroSupplierCodeInput.value = "";
+            setBaseMode({ enabled: false, baseValue: "" });
+            registroResult.classList.add("hidden");
+            await loadPrendasPage({ reset: true, reason: "save-garment" });
+            setRegistroStatus(`Prenda guardada correctamente: ${safeDocId(codigoFinal)}`, "success");
+            return;
           } else if (preview.usingExistingBase) {
             const docId = safeDocId(preview.codigo);
             const publicRef = doc(db, activePrendasPublicCollection, docId);
