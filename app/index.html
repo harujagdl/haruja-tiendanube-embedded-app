@@ -2429,6 +2429,18 @@ body.haruja-col-resizing{
               </select>
             </div>
             <div>
+              <label for="registro-code-mode">Tipo de código *</label>
+              <select id="registro-code-mode" name="codeMode" required>
+                <option value="haruja" selected>Haruja (automático)</option>
+                <option value="supplier">Proveedor / Colaboración (conservar original)</option>
+              </select>
+            </div>
+            <div id="registro-supplier-code-wrap" class="hidden">
+              <label for="registro-supplier-code">Código original (proveedor/marca) *</label>
+              <input id="registro-supplier-code" name="supplierCode" type="text" placeholder="Ej: NIKE-DV1234-100" />
+              <small class="muted">Se guardará como: CODIGO_ORIGINAL/COLOR-TALLA</small>
+            </div>
+            <div>
               <label for="registro-color">Color *</label>
               <select id="registro-color" name="color" required>
                 <option value="">Seleccionar</option>
@@ -2902,6 +2914,9 @@ const auth = getAuth(app);
       const registroSubmit = registroForm.querySelector("button[type='submit']");
       const registroProducto = document.getElementById("registro-producto");
       const registroProveedor = document.getElementById("registro-proveedor");
+      const registroCodeMode = document.getElementById("registro-code-mode");
+      const registroSupplierCodeWrap = document.getElementById("registro-supplier-code-wrap");
+      const registroSupplierCodeInput = document.getElementById("registro-supplier-code");
       const registroColor = document.getElementById("registro-color");
       const registroTalla = document.getElementById("registro-talla");
       const registroDetalles = document.getElementById("registro-detalles");
@@ -3531,6 +3546,21 @@ const auth = getAuth(app);
           .replace(/\//g, "__");
 
       const safeDocId = (codigo) => normalizeSku(codigo);
+
+      const normalizeSupplierCode = (raw) =>
+        safeString(raw)
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^[-/]+|[-/]+$/g, "");
+
+      const buildSupplierFinalCode = ({ supplierRaw, colorClave, tallaClave }) => {
+        const base = normalizeSupplierCode(supplierRaw);
+        if (!base) throw new Error("Falta el código original del proveedor.");
+        if (!colorClave || !tallaClave) throw new Error("Completa Color y Talla.");
+        return `${base}/${colorClave}-${tallaClave}`;
+      };
 
       const normalizeSkuPrefix = (input) =>
         safeString(input)
@@ -6610,6 +6640,16 @@ const createPrendaRow = (item) => {
         const proveedor = safeString(registroProveedor.value).trim();
         const color = safeString(registroColor.value).trim();
         const talla = safeString(registroTalla.value).trim();
+        const isSupplier = registroCodeModeValue === "supplier";
+        const supplierCode = safeString(registroSupplierCodeInput?.value).trim();
+
+        if (isSupplier) {
+          if (!tipo || !proveedor || !color || !talla || !supplierCode) {
+            mostrarErrorRegistro("Completa Proveedor, Producto, Código original, Color y Talla");
+            return false;
+          }
+          return true;
+        }
 
         if (baseMode) {
           if (!color || !talla) {
@@ -6634,6 +6674,7 @@ const createPrendaRow = (item) => {
       let registroPreview = null;
       let registroBaseCode = "";
       let baseMode = false;
+      let registroCodeModeValue = "haruja";
       let lockedBaseTipo = "";
       let lockedBaseProveedor = "";
 
@@ -6731,6 +6772,8 @@ const createPrendaRow = (item) => {
         const tallaClave = safeString(registroTalla.value).trim().toUpperCase();
         const createdByValue = document.getElementById("registro-created-by").value.trim();
         const detallesValue = registroDetalles.value.trim();
+        const codeMode = registroCodeModeValue;
+        const supplierRaw = safeString(registroSupplierCodeInput?.value).trim();
 
         if (baseMode) {
           if (!lockedBaseTipo || !lockedBaseProveedor) {
@@ -6748,15 +6791,45 @@ const createPrendaRow = (item) => {
           colorClave,
           tallaClave,
           createdByValue,
-          detallesValue
+          detallesValue,
+          codeMode,
+          supplierRaw
         };
       };
 
       const buildRegistroPreview = async () => {
         const formPayload = getFormPayload();
         if (!formPayload) return null;
-        const { providerCode, typeCode, colorClave, tallaClave, createdByValue, detallesValue } = formPayload;
+        const {
+          providerCode,
+          typeCode,
+          colorClave,
+          tallaClave,
+          createdByValue,
+          detallesValue,
+          codeMode,
+          supplierRaw
+        } = formPayload;
         const descripcion = detallesValue.trim();
+
+        if (codeMode === "supplier") {
+          const codigo = buildSupplierFinalCode({ supplierRaw, colorClave, tallaClave });
+          return {
+            providerCode,
+            typeCode,
+            colorClave,
+            tallaClave,
+            createdByValue,
+            detallesValue,
+            descripcion,
+            baseCode: "",
+            variantKey: `${colorClave}_${tallaClave}`,
+            codigo,
+            usingExistingBase: false,
+            isSupplier: true,
+            codigoOrigen: normalizeSupplierCode(supplierRaw)
+          };
+        }
 
         const baseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
         const usingExistingBase = Boolean(baseCode);
@@ -6779,7 +6852,9 @@ const createPrendaRow = (item) => {
           baseCode,
           variantKey,
           codigo,
-          usingExistingBase
+          usingExistingBase,
+          isSupplier: false,
+          codigoOrigen: ""
         };
       };
 
@@ -6918,7 +6993,42 @@ const createPrendaRow = (item) => {
             throw new Error("No se pudo reservar un código único. Intenta nuevamente.");
           };
 
-          if (preview.usingExistingBase) {
+          if (preview.isSupplier) {
+            const codigoFinal = preview.codigo;
+            const docId = safeDocId(codigoFinal);
+            const publicRef = doc(db, activePrendasPublicCollection, docId);
+            const existingSnap = await getDoc(publicRef);
+            if (existingSnap.exists()) {
+              throw new Error("Ese código ya existe en la base pública.");
+            }
+
+            const highestSnap = await getDocs(
+              query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1))
+            );
+            const highestOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
+            const nextOrden = Number.isFinite(highestOrden) ? highestOrden + 1 : 1;
+
+            const publicPayload = buildPublicPayload({
+              codigo: codigoFinal,
+              baseCode: null,
+              variantKey: preview.variantKey,
+              orden: nextOrden,
+              seqNumber: nextOrden
+            });
+            publicPayload.codigoBase = null;
+            publicPayload.baseCode = null;
+            publicPayload.modo_codigo = "supplier";
+            publicPayload.codigo_origen = preview.codigoOrigen;
+
+            await setDoc(publicRef, publicPayload);
+            const savedSnap = await getDoc(publicRef);
+            if (!savedSnap.exists()) {
+              throw new Error("No se confirmó el guardado del documento en Firestore.");
+            }
+            console.log("[Registro] Documento guardado:", publicRef.id);
+            preview.codigo = codigoFinal;
+            preview.baseCode = "";
+          } else if (preview.usingExistingBase) {
             const docId = safeDocId(preview.codigo);
             const publicRef = doc(db, activePrendasPublicCollection, docId);
             const existingSnap = await getDoc(publicRef);
@@ -6994,6 +7104,9 @@ const createPrendaRow = (item) => {
       const handleRegistroReset = () => {
         registroForm.reset();
         registroPreview = null;
+        registroCodeModeValue = "haruja";
+        registroSupplierCodeWrap?.classList.add("hidden");
+        if (registroSupplierCodeInput) registroSupplierCodeInput.value = "";
         setBaseMode({ enabled: false, baseValue: "" });
         registroResult.classList.add("hidden");
         setRegistroStatus("");
@@ -7007,6 +7120,19 @@ const createPrendaRow = (item) => {
         if (registroCopy) registroCopy.addEventListener("click", handleRegistroCopy);
         if (registroReset) registroReset.addEventListener("click", handleRegistroReset);
         if (registroSearchExistingButton) registroSearchExistingButton.addEventListener("click", handleBuscarCodigoExistente);
+        if (registroCodeMode) {
+          registroCodeMode.addEventListener("change", () => {
+            registroCodeModeValue = registroCodeMode.value === "supplier" ? "supplier" : "haruja";
+            const isSupplier = registroCodeModeValue === "supplier";
+            registroSupplierCodeWrap?.classList.toggle("hidden", !isSupplier);
+            if (!isSupplier && registroSupplierCodeInput) registroSupplierCodeInput.value = "";
+            if (isSupplier) {
+              setBaseMode({ enabled: false, baseValue: "" });
+              if (registroBaseCodeInput) registroBaseCodeInput.value = "";
+              if (registroExistingCode) registroExistingCode.value = "";
+            }
+          });
+        }
         if (registroExistingCode) {
           registroExistingCode.addEventListener("input", () => {
             const raw = safeString(registroExistingCode.value).trim();
