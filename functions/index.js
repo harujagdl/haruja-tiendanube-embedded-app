@@ -469,6 +469,26 @@ const fetchTiendanubeOrderById_ = async ({storeId, orderId, accessToken, apiVers
   return response.json();
 };
 
+const fetchTiendanubeProductById_ = async ({storeId, productId, accessToken, apiVersion}) => {
+  const url = `https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products/${encodeURIComponent(productId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authentication: `bearer ${accessToken}`,
+      "User-Agent": "Haruja (harujagdl@gmail.com)",
+      "Content-Type": "application/json",
+      "X-Api-Version": apiVersion
+    }
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw buildBadRequestError(`Error Tiendanube product (${response.status}): ${body || "sin detalle"}`, 502);
+  }
+
+  return response.json();
+};
+
 const aggregateOrderSkuQty_ = (order = {}) => {
   const sourceItems = Array.isArray(order.products) && order.products.length ? order.products : order.line_items;
   const items = Array.isArray(sourceItems) ? sourceItems : [];
@@ -485,6 +505,9 @@ const aggregateOrderSkuQty_ = (order = {}) => {
 };
 
 const resolveAvailabilityFromQty_ = (qtyAvailable) => {
+  if (qtyAvailable === null || qtyAvailable === undefined || !Number.isFinite(Number(qtyAvailable))) {
+    return {status: "No definido", disponibilidad: "No definido"};
+  }
   if (qtyAvailable > 0) {
     return {status: "Disponible", disponibilidad: "Disponible"};
   }
@@ -520,8 +543,28 @@ const updateStockBySku_ = async ({sku, quantity, eventType, storeId, orderId}) =
     const snap = await tx.get(docRef);
     if (!snap.exists) return;
     const data = snap.data() || {};
-    const currentQty = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 1);
-    const safeCurrentQty = Number.isFinite(currentQty) ? currentQty : 1;
+    const currentQty = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad);
+    if (!Number.isFinite(currentQty)) {
+      tx.set(docRef, {
+        inventorySource: "undefined",
+        status: "No definido",
+        disponibilidad: "No definido",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, {merge: true});
+      await db.collection("sync_errors").add({
+        type: "qty_undefined_on_webhook",
+        source: "tnWebhook",
+        storeId: String(storeId || ""),
+        orderId: String(orderId || ""),
+        eventType,
+        sku,
+        quantity,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return;
+    }
+
+    const safeCurrentQty = currentQty;
     const currentSold = Number(data.qtySold ?? 0);
     const safeCurrentSold = Number.isFinite(currentSold) ? currentSold : 0;
 
@@ -532,11 +575,59 @@ const updateStockBySku_ = async ({sku, quantity, eventType, storeId, orderId}) =
     tx.set(docRef, {
       qtyAvailable: nextQty,
       qtySold: nextSold,
+      inventorySource: "tiendanube",
       status: availability.status,
       disponibilidad: availability.disponibilidad,
+      lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, {merge: true});
   });
+};
+
+const setStockBySkuFromProductWebhook_ = async ({sku, stock, storeId, productId, eventType}) => {
+  const querySnap = await db.collection(PRENDAS_ADMIN_COLLECTION)
+    .where("codigo", "==", sku)
+    .limit(1)
+    .get();
+
+  if (querySnap.empty) {
+    await db.collection("sync_errors").add({
+      type: "missing_sku",
+      source: "tnWebhook",
+      storeId: String(storeId || ""),
+      productId: String(productId || ""),
+      eventType,
+      sku,
+      quantity: stock,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return;
+  }
+
+  const qtyAvailable = Number(stock);
+  if (!Number.isFinite(qtyAvailable)) {
+    await db.collection("sync_errors").add({
+      type: "invalid_stock_on_product_updated",
+      source: "tnWebhook",
+      storeId: String(storeId || ""),
+      productId: String(productId || ""),
+      eventType,
+      sku,
+      quantity: stock,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return;
+  }
+
+  const availability = resolveAvailabilityFromQty_(qtyAvailable);
+  await querySnap.docs[0].ref.set({
+    qtyAvailable,
+    inventorySource: "tiendanube",
+    status: availability.status,
+    disponibilidad: availability.disponibilidad,
+    lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, {merge: true});
 };
 
 const normalizeMoneyAmount = (rawAmount, fallback = 0) => {
@@ -2550,14 +2641,18 @@ exports.tnWebhook = onRequest(
 
     const storeId = String(payload?.store_id || payload?.storeId || "").trim();
     const eventType = String(payload?.event || "").trim().toLowerCase();
-    const orderId = String(payload?.id || payload?.order_id || "").trim();
-    const allowedEvents = new Set(["order/paid", "order/cancelled", "order/voided"]);
+    const allowedEvents = new Set(["order/paid", "order/cancelled", "order/voided", "product/updated"]);
 
-    if (!storeId || !orderId || !allowedEvents.has(eventType)) {
+    if (!storeId || !allowedEvents.has(eventType)) {
       return res.status(200).json({ok: true, ignored: true});
     }
 
-    const dedupeId = `${storeId}:${eventType}:${orderId}`;
+    const resourceId = String(payload?.id || payload?.order_id || payload?.product_id || "").trim();
+    if (!resourceId) {
+      return res.status(200).json({ok: true, ignored: true});
+    }
+
+    const dedupeId = `${storeId}:${eventType}:${resourceId}`;
     const dedupeRef = db.collection("webhook_dedupe").doc(dedupeId);
     const alreadyProcessed = await db.runTransaction(async (tx) => {
       const snap = await tx.get(dedupeRef);
@@ -2565,7 +2660,7 @@ exports.tnWebhook = onRequest(
       tx.create(dedupeRef, {
         storeId,
         eventType,
-        orderId,
+        resourceId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
       return false;
@@ -2577,6 +2672,23 @@ exports.tnWebhook = onRequest(
 
     try {
       const {accessToken, apiVersion} = await resolveTiendanubeCredentials(storeId);
+
+      if (eventType === "product/updated") {
+        const productId = resourceId;
+        const product = await fetchTiendanubeProductById_({storeId, productId, accessToken, apiVersion});
+        const variants = Array.isArray(product?.variants) ? product.variants : [];
+        let processed = 0;
+        for (const variant of variants) {
+          const sku = normalizeCodigo(variant?.sku || "");
+          const stock = Number(variant?.stock);
+          if (!sku || !Number.isFinite(stock)) continue;
+          await setStockBySkuFromProductWebhook_({sku, stock, storeId, productId, eventType});
+          processed += 1;
+        }
+        return res.status(200).json({ok: true, processed});
+      }
+
+      const orderId = resourceId;
       const order = await fetchTiendanubeOrderById_({storeId, orderId, accessToken, apiVersion});
       const skuRows = aggregateOrderSkuQty_(order);
       for (const row of skuRows) {
@@ -2590,7 +2702,7 @@ exports.tnWebhook = onRequest(
       }
       return res.status(200).json({ok: true, processed: skuRows.length});
     } catch (error) {
-      console.error("tnWebhook processing error", {storeId, orderId, eventType, error});
+      console.error("tnWebhook processing error", {storeId, resourceId, eventType, error});
       await dedupeRef.set({
         failed: true,
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
