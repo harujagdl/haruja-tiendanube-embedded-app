@@ -7979,14 +7979,8 @@ document.addEventListener("keydown", (event) => {
       function getColumnKeys(table) {
         const ths = Array.from(table.querySelectorAll("thead th"));
         return ths.map((th, index) => {
-          if (!th.dataset.colKey) {
-            const label = safeString(th.textContent)
-              .trim()
-              .toLowerCase()
-              .replace(/\s+/g, "-")
-              .replace(/[^a-z0-9\-_]/g, "");
-            th.dataset.colKey = label || `col-${index}`;
-          }
+          const key = safeString(th.dataset.col).trim() || `col-${index}`;
+          th.dataset.colKey = key;
           return th.dataset.colKey;
         });
       }
@@ -8036,7 +8030,7 @@ document.addEventListener("keydown", (event) => {
       }
 
       function attachResizable(table) {
-        const key = "haruja_table_state_v2";
+        const key = "haruja_table_state_v3";
         const colgroup = ensureColGroup(table);
         if (!colgroup) return;
 
