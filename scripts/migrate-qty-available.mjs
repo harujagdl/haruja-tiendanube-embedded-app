@@ -54,6 +54,9 @@ const toNumberOrNull = (value) => {
 };
 
 const resolveAvailability = (qtyAvailable) => {
+  if (qtyAvailable === null) {
+    return { status: "No definido", disponibilidad: "No definido" };
+  }
   if (qtyAvailable > 0) {
     return { status: "Disponible", disponibilidad: "Disponible" };
   }
@@ -74,8 +77,8 @@ const main = async () => {
     const data = docSnap.data() || {};
     const qtyFromCantidad = toNumberOrNull(data.cantidad);
     const hasQtyAvailable = data.qtyAvailable !== undefined && data.qtyAvailable !== null && data.qtyAvailable !== "";
-    const qtyRaw = hasQtyAvailable ? data.qtyAvailable : (qtyFromCantidad ?? 1);
-    const qtyAvailable = toNumberOrNull(qtyRaw) ?? 1;
+    const qtyRaw = hasQtyAvailable ? data.qtyAvailable : qtyFromCantidad;
+    const qtyAvailable = toNumberOrNull(qtyRaw);
     const qtySold = toNumberOrNull(data.qtySold) ?? 0;
     const availability = resolveAvailability(qtyAvailable);
 

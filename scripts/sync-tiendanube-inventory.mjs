@@ -1,0 +1,227 @@
+import process from "process";
+import admin from "firebase-admin";
+
+const ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+const BATCH_LIMIT = 450;
+
+const parseBoolean = (value, defaultValue = false) => {
+  if (value === undefined || value === null) return defaultValue;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "y"].includes(normalized)) return true;
+  if (["false", "0", "no", "n"].includes(normalized)) return false;
+  return defaultValue;
+};
+
+const parseArgs = () => {
+  const result = { storeId: "", dryRun: undefined };
+  for (const arg of process.argv.slice(2)) {
+    if (arg === "--dry" || arg === "--dry-run" || arg === "--dryRun") {
+      result.dryRun = "true";
+      continue;
+    }
+    if (arg.startsWith("--storeId=")) {
+      result.storeId = arg.split("=")[1] || "";
+      continue;
+    }
+    if (arg.startsWith("--dry=") || arg.startsWith("--dry-run=") || arg.startsWith("--dryRun=")) {
+      result.dryRun = arg.split("=")[1];
+    }
+  }
+  return result;
+};
+
+const loadServiceAccount = () => {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GCP_SA_KEY;
+  if (!raw) {
+    throw new Error("Falta FIREBASE_SERVICE_ACCOUNT_JSON o GCP_SA_KEY en env");
+  }
+  return JSON.parse(raw);
+};
+
+const initFirestore = () => {
+  if (!process.env.FIREBASE_PROJECT_ID) {
+    throw new Error("Falta FIREBASE_PROJECT_ID en env");
+  }
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(loadServiceAccount()),
+      projectId: process.env.FIREBASE_PROJECT_ID,
+    });
+  }
+  return admin.firestore();
+};
+
+const normalizeSku = (value) => String(value ?? "").trim().toUpperCase();
+
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(String(value).replace(/[,$\s]/g, ""));
+  return Number.isFinite(num) ? num : null;
+};
+
+const resolveAvailability = (qtyAvailable) => {
+  if (qtyAvailable === null) {
+    return { status: "No definido", disponibilidad: "No definido" };
+  }
+  if (qtyAvailable > 0) {
+    return { status: "Disponible", disponibilidad: "Disponible" };
+  }
+  return { status: "Vendido", disponibilidad: "No disponible" };
+};
+
+const resolveTiendanubeCredentials = async (db, storeIdRaw) => {
+  const storeId = String(storeIdRaw || "").trim();
+  if (!storeId) throw new Error("Debes indicar --storeId=XXXX");
+
+  let accessToken = "";
+  const snapNew = await db.collection("tiendanubeStores").doc(storeId).get();
+  if (snapNew.exists) {
+    const data = snapNew.data() || {};
+    accessToken = String(data.access_token || data.accessToken || "").trim();
+  }
+
+  if (!accessToken) {
+    const snapOld = await db.collection("tn_stores").doc(storeId).get();
+    if (snapOld.exists) {
+      const data = snapOld.data() || {};
+      accessToken = String(data.access_token || data.accessToken || "").trim();
+    }
+  }
+
+  if (!accessToken) {
+    const envKey = `TIENDANUBE_ACCESS_TOKEN_${storeId}`;
+    accessToken = String(process.env[envKey] || process.env.TIENDANUBE_ACCESS_TOKEN || "").trim();
+  }
+
+  if (!accessToken) {
+    throw new Error("No encontré access token para Tiendanube en tiendanubeStores, tn_stores ni env");
+  }
+
+  const apiVersion = String(process.env.TIENDANUBE_API_VERSION || "2024-04").trim();
+  return { storeId, accessToken, apiVersion };
+};
+
+const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
+  const skuStockMap = new Map();
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const url = new URL(`https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products`);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("per_page", String(perPage));
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authentication: `bearer ${accessToken}`,
+        "User-Agent": "Haruja (harujagdl@gmail.com)",
+        "Content-Type": "application/json",
+        "X-Api-Version": apiVersion,
+      },
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Error Tiendanube products (${response.status}): ${body || "sin detalle"}`);
+    }
+
+    const products = await response.json();
+    if (!Array.isArray(products) || !products.length) break;
+
+    for (const product of products) {
+      const variants = Array.isArray(product?.variants) ? product.variants : [];
+      for (const variant of variants) {
+        const sku = normalizeSku(variant?.sku);
+        const stock = toNumberOrNull(variant?.stock);
+        if (!sku || stock === null) continue;
+        skuStockMap.set(sku, stock);
+      }
+    }
+
+    if (products.length < perPage) break;
+    page += 1;
+  }
+
+  return skuStockMap;
+};
+
+const main = async () => {
+  const args = parseArgs();
+  const dryRun = parseBoolean(process.env.DRY_RUN ?? args.dryRun ?? "false", false);
+  const db = initFirestore();
+  const { storeId, accessToken, apiVersion } = await resolveTiendanubeCredentials(db, args.storeId || process.env.TIENDANUBE_STORE_ID);
+
+  const skuStockMap = await fetchAllSkuStocks({ storeId, accessToken, apiVersion });
+  console.log(`SKUs encontrados en Tiendanube: ${skuStockMap.size}`);
+
+  const snap = await db.collection(ADMIN_COLLECTION).get();
+
+  const updates = [];
+  let totalAdminDocs = 0;
+  let totalSyncedWithTiendanube = 0;
+  let totalUndefined = 0;
+
+  snap.forEach((docSnap) => {
+    totalAdminDocs += 1;
+    const data = docSnap.data() || {};
+    const sku = normalizeSku(data.codigo);
+    const stock = sku ? (skuStockMap.has(sku) ? skuStockMap.get(sku) : null) : null;
+    const qtyAvailable = typeof stock === "number" ? stock : null;
+    const inventorySource = qtyAvailable === null ? "undefined" : "tiendanube";
+    const availability = resolveAvailability(qtyAvailable);
+
+    if (qtyAvailable === null) {
+      totalUndefined += 1;
+    } else {
+      totalSyncedWithTiendanube += 1;
+    }
+
+    const payload = {
+      qtyAvailable,
+      inventorySource,
+      status: availability.status,
+      disponibilidad: availability.disponibilidad,
+      lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    updates.push({ id: docSnap.id, payload });
+  });
+
+  console.log(`Colección admin: ${ADMIN_COLLECTION}`);
+  console.log(`Total docs admin: ${totalAdminDocs}`);
+  console.log(`Total sincronizados con Tiendanube: ${totalSyncedWithTiendanube}`);
+  console.log(`Total NO definidos: ${totalUndefined}`);
+  console.log(`Documentos a escribir: ${updates.length}`);
+
+  if (dryRun) {
+    console.log("DRY_RUN=true → no se escribirá en Firestore.");
+    updates.slice(0, 20).forEach((item, index) => {
+      console.log(`${index + 1}. ${item.id} -> ${JSON.stringify(item.payload)}`);
+    });
+    return;
+  }
+
+  let written = 0;
+  for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
+    const chunk = updates.slice(i, i + BATCH_LIMIT);
+    const batch = db.batch();
+
+    chunk.forEach((item) => {
+      const ref = db.collection(ADMIN_COLLECTION).doc(item.id);
+      batch.set(ref, item.payload, { merge: true });
+    });
+
+    await batch.commit();
+    written += chunk.length;
+    console.log(`✔ Batch ${Math.floor(i / BATCH_LIMIT) + 1}: ${chunk.length} docs`);
+  }
+
+  console.log(`✔ Total escritos: ${written}`);
+};
+
+main().catch((err) => {
+  console.error("Error:", err?.message || err);
+  process.exit(1);
+});
