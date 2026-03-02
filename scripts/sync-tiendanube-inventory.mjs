@@ -108,26 +108,29 @@ const resolveTiendanubeCredentials = async (db, storeIdRaw) => {
   return { storeId, accessToken, apiVersion };
 };
 
-const fetchProductById = async ({ storeId, productId, accessToken, apiVersion }) => {
+const fetchProductById = async ({ storeId, accessToken, apiVersion, productId }) => {
   const url = `https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products/${encodeURIComponent(productId)}`;
   const response = await fetch(url, {
     method: "GET",
-    headers: tnHeaders({ accessToken, apiVersion }),
+    headers: {
+      Authentication: `bearer ${accessToken}`,
+      "User-Agent": "Haruja (harujagdl@gmail.com)",
+      "Content-Type": "application/json",
+      "X-Api-Version": apiVersion,
+    },
   });
-
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Error Tiendanube product/${productId} (${response.status}): ${body || "sin detalle"}`);
+    throw new Error(`Error Tiendanube productById (${response.status}) id=${productId}: ${body || "sin detalle"}`);
   }
-
-  return response.json();
+  return await response.json();
 };
 
 const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
   const skuStockMap = new Map();
   let page = 1;
   const perPage = 200;
-  const productIdsWithoutVariants = [];
+  const CONCURRENCY = 8;
 
   while (true) {
     const url = new URL(`https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products`);
@@ -147,36 +150,48 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
     const products = await response.json();
     if (!Array.isArray(products) || !products.length) break;
 
-    for (const product of products) {
-      const variants = Array.isArray(product?.variants) ? product.variants : [];
-      const productId = String(product?.id ?? "").trim();
-      if (!variants.length && productId) {
-        productIdsWithoutVariants.push(productId);
+    const hasInlineVariants = products.some((p) => Array.isArray(p?.variants) && p.variants.length);
+
+    if (hasInlineVariants) {
+      for (const product of products) {
+        const variants = Array.isArray(product?.variants) ? product.variants : [];
+        for (const variant of variants) {
+          const sku = normalizeSku(variant?.sku);
+          const stock = toNumberOrNull(variant?.stock);
+          if (!sku || stock === null) continue;
+          skuStockMap.set(sku, stock);
+        }
       }
-      for (const variant of variants) {
-        const sku = normalizeSku(variant?.sku);
-        const stock = toNumberOrNull(variant?.stock);
-        if (!sku || stock === null) continue;
-        skuStockMap.set(sku, stock);
+    } else {
+      const ids = products.map((p) => p?.id).filter(Boolean);
+
+      for (let i = 0; i < ids.length; i += CONCURRENCY) {
+        const chunk = ids.slice(i, i + CONCURRENCY);
+
+        const detailed = await Promise.all(
+          chunk.map((productId) =>
+            fetchProductById({ storeId, accessToken, apiVersion, productId }).catch((e) => {
+              console.log("WARN productById failed:", productId, e?.message || e);
+              return null;
+            }),
+          ),
+        );
+
+        for (const product of detailed) {
+          if (!product) continue;
+          const variants = Array.isArray(product?.variants) ? product.variants : [];
+          for (const variant of variants) {
+            const sku = normalizeSku(variant?.sku);
+            const stock = toNumberOrNull(variant?.stock);
+            if (!sku || stock === null) continue;
+            skuStockMap.set(sku, stock);
+          }
+        }
       }
     }
 
     if (products.length < perPage) break;
     page += 1;
-  }
-
-  if (productIdsWithoutVariants.length) {
-    console.log(`Modo robusto: consultando ${productIdsWithoutVariants.length} productos sin variants en listado.`);
-    for (const productId of productIdsWithoutVariants) {
-      const product = await fetchProductById({ storeId, productId, accessToken, apiVersion });
-      const variants = Array.isArray(product?.variants) ? product.variants : [];
-      for (const variant of variants) {
-        const sku = normalizeSku(variant?.sku);
-        const stock = toNumberOrNull(variant?.stock);
-        if (!sku || stock === null) continue;
-        skuStockMap.set(sku, stock);
-      }
-    }
   }
 
   return skuStockMap;
