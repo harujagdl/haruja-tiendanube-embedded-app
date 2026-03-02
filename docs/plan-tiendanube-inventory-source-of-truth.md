@@ -204,3 +204,68 @@ Cubre:
   - definido por `qtyAvailable` sincronizado,
   - trazable por `inventorySource`,
   - corregible automáticamente por reconciliación.
+
+---
+
+## 9) Runbook operativo (solo SYNC, sin cambios de UI)
+
+Este runbook aterriza la ejecución puntual para pasar de `No definido` a inventario real en `HarujaPrendas_2025_admin`.
+
+### 9.1 Confirmar fuente de verdad
+
+- SKU Tiendanube: `variants[].sku`
+- SKU Firestore: `codigo`
+- Stock Tiendanube: `variants[].stock`
+- Colección destino: `HarujaPrendas_2025_admin`
+
+### 9.2 Ejecutar DRY RUN (sin escritura)
+
+```bash
+cd scripts
+npm i
+
+FIREBASE_PROJECT_ID="haruja-tiendanube" \
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}' \
+node sync-tiendanube-inventory.mjs --storeId=TU_STORE_ID --dry
+```
+
+Validar en logs:
+
+- `SKUs encontrados en Tiendanube`
+- `Total sincronizados con Tiendanube`
+- `Total NO definidos`
+
+### 9.3 Ejecutar sincronización real
+
+```bash
+FIREBASE_PROJECT_ID="haruja-tiendanube" \
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}' \
+node sync-tiendanube-inventory.mjs --storeId=TU_STORE_ID
+```
+
+### 9.4 Validar en Firestore
+
+En un documento de `HarujaPrendas_2025_admin`, confirmar:
+
+- `qtyAvailable: <number|null>`
+- `inventorySource: "tiendanube" | "undefined"`
+- `statusCanon: "Disponible" | "Vendido" | "No definido"`
+- `disponibilidadCanon: "Disponible" | "No disponible" | "No definido"`
+- `lastInventorySyncAt: <timestamp>`
+
+### 9.5 Validar en UI (solo lectura)
+
+- Hacer recarga dura (`Ctrl+Shift+R`) en el panel.
+- Verificar que “Existencias” muestra números en SKUs existentes en Tiendanube.
+- Los que sigan en “No definido” corresponden a SKU ausente/no informado en Tiendanube.
+
+### 9.6 Si el DRY RUN encuentra muy pocos SKUs
+
+El script `sync-tiendanube-inventory.mjs` ya contempla modo robusto:
+
+1. lista `/products` por páginas,
+2. detecta productos sin `variants` en el listado,
+3. hace `GET /products/{id}` por cada caso,
+4. consolida `sku -> stock` desde el detalle.
+
+Con eso se cubre el escenario donde el listado de productos no incluye variantes completas.
