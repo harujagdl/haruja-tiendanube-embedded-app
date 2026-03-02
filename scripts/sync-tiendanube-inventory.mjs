@@ -51,13 +51,36 @@ const initFirestore = () => {
   return admin.firestore();
 };
 
-const normalizeSku = (value) => String(value ?? "").trim().toUpperCase();
+function normalizeSku(sku) {
+  const s = String(sku ?? "").trim();
+  if (!s) return "";
+  return s.toUpperCase();
+}
 
 const toNumberOrNull = (value) => {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(String(value).replace(/[,$\s]/g, ""));
   return Number.isFinite(num) ? num : null;
 };
+
+function getVariantStock(variant) {
+  const levels = variant?.inventory_levels;
+  if (Array.isArray(levels) && levels.length) {
+    let sum = 0;
+    for (const lvl of levels) {
+      const q = Number(lvl?.quantity);
+      if (!Number.isNaN(q)) sum += q;
+    }
+    return sum;
+  }
+
+  const s = variant?.stock;
+  if (s === "") return null;
+
+  const n = Number(s);
+  if (Number.isNaN(n)) return null;
+  return n;
+}
 
 const resolveAvailability = (qtyAvailable) => {
   if (qtyAvailable === null) {
@@ -157,7 +180,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
         const variants = Array.isArray(product?.variants) ? product.variants : [];
         for (const variant of variants) {
           const sku = normalizeSku(variant?.sku);
-          const stock = toNumberOrNull(variant?.stock);
+          const stock = getVariantStock(variant);
           if (!sku || stock === null) continue;
           skuStockMap.set(sku, stock);
         }
@@ -182,7 +205,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
           const variants = Array.isArray(product?.variants) ? product.variants : [];
           for (const variant of variants) {
             const sku = normalizeSku(variant?.sku);
-            const stock = toNumberOrNull(variant?.stock);
+            const stock = getVariantStock(variant);
             if (!sku || stock === null) continue;
             skuStockMap.set(sku, stock);
           }
@@ -205,6 +228,9 @@ const main = async () => {
 
   const skuStockMap = await fetchAllSkuStocks({ storeId, accessToken, apiVersion });
   console.log(`SKUs encontrados en Tiendanube: ${skuStockMap.size}`);
+  console.log("DEBUG skuStockMap size:", skuStockMap.size);
+  console.log("DEBUG first 10 SKUs:", Array.from(skuStockMap.keys()).slice(0, 10));
+  console.log("DEBUG first 10 stocks:", Array.from(skuStockMap.values()).slice(0, 10));
 
   const snap = await db.collection(ADMIN_COLLECTION).get();
 
