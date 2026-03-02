@@ -2417,18 +2417,6 @@ body.haruja-col-resizing{
           <p>Selecciona los atributos clave para generar el código y guardar la prenda en Firestore.</p>
           <form class="form form-row" id="registro-form">
             <div>
-              <label for="registro-producto">Tipo / Producto *</label>
-              <select id="registro-producto" name="producto" required>
-                <option value="">Seleccionar</option>
-              </select>
-            </div>
-            <div>
-              <label for="registro-proveedor">Proveedor *</label>
-              <select id="registro-proveedor" name="proveedor" required>
-                <option value="">Seleccionar</option>
-              </select>
-            </div>
-            <div>
               <label for="registro-code-mode">Tipo de código *</label>
               <select id="registro-code-mode" name="codeMode" required>
                 <option value="haruja" selected>Haruja (automático)</option>
@@ -2439,6 +2427,18 @@ body.haruja-col-resizing{
               <label for="registro-supplier-code">Código original (proveedor/marca) *</label>
               <input id="registro-supplier-code" name="supplierCode" type="text" placeholder="Ej: NIKE-DV1234-100" />
               <small class="muted">Se guardará como: CODIGO_ORIGINAL/COLOR-TALLA</small>
+            </div>
+            <div>
+              <label for="registro-producto">Tipo / Producto *</label>
+              <select id="registro-producto" name="producto" required>
+                <option value="">Seleccionar</option>
+              </select>
+            </div>
+            <div>
+              <label for="registro-proveedor">Proveedor *</label>
+              <select id="registro-proveedor" name="proveedor" required>
+                <option value="">Seleccionar</option>
+              </select>
             </div>
             <div>
               <label for="registro-color">Color *</label>
@@ -7123,6 +7123,10 @@ const createPrendaRow = (item) => {
       };
 
       function initRegistroView() {
+        if (registroCodeMode) registroCodeMode.value = "haruja";
+        registroCodeModeValue = "haruja";
+        registroSupplierCodeWrap?.classList.add("hidden");
+        if (registroSupplierCodeInput) registroSupplierCodeInput.value = "";
         if (registroInited) return;
         registroInited = true;
         if (registroForm) registroForm.addEventListener("submit", handleRegistroSubmit);
