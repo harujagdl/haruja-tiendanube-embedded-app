@@ -2919,6 +2919,7 @@ const auth = getAuth(app);
       const registroSupplierCodeInput = document.getElementById("registro-supplier-code");
       const registroColor = document.getElementById("registro-color");
       const registroTalla = document.getElementById("registro-talla");
+      const registroCreatedBy = document.getElementById("registro-created-by");
       const registroDetalles = document.getElementById("registro-detalles");
       const registroExistingCode = document.getElementById("registro-existing-code");
       const registroSearchExistingButton = document.getElementById("registro-search-existing");
@@ -6761,6 +6762,16 @@ const createPrendaRow = (item) => {
             registroBaseModeHint.classList.add("hidden");
           }
         }
+
+        setSupplierLock(registroCodeModeValue === "supplier");
+      };
+
+      const setSupplierLock = (isSupplier) => {
+        const lock = Boolean(isSupplier);
+        setLocked(registroProducto, lock);
+        setLocked(registroProveedor, lock);
+        setLocked(registroCreatedBy, lock);
+        if (registroDetalles) setLocked(registroDetalles, lock);
       };
 
       const getFormPayload = () => {
@@ -7145,6 +7156,7 @@ const createPrendaRow = (item) => {
               if (registroBaseCodeInput) registroBaseCodeInput.value = "";
               if (registroExistingCode) registroExistingCode.value = "";
             }
+            setSupplierLock(registroCodeMode.value === "supplier");
           });
         }
         if (registroExistingCode) {
@@ -7164,6 +7176,7 @@ const createPrendaRow = (item) => {
             }
           });
         }
+        setSupplierLock(registroCodeMode.value === "supplier");
       }
 
       const formatPrice = (value) => {
