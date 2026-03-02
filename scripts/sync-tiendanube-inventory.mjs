@@ -69,6 +69,13 @@ const resolveAvailability = (qtyAvailable) => {
   return { status: "Vendido", disponibilidad: "No disponible" };
 };
 
+const tnHeaders = ({ accessToken, apiVersion }) => ({
+  Authentication: `bearer ${accessToken}`,
+  "User-Agent": "Haruja (harujagdl@gmail.com)",
+  "Content-Type": "application/json",
+  "X-Api-Version": apiVersion,
+});
+
 const resolveTiendanubeCredentials = async (db, storeIdRaw) => {
   const storeId = String(storeIdRaw || "").trim();
   if (!storeId) throw new Error("Debes indicar --storeId=XXXX");
@@ -101,10 +108,26 @@ const resolveTiendanubeCredentials = async (db, storeIdRaw) => {
   return { storeId, accessToken, apiVersion };
 };
 
+const fetchProductById = async ({ storeId, productId, accessToken, apiVersion }) => {
+  const url = `https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products/${encodeURIComponent(productId)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: tnHeaders({ accessToken, apiVersion }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Error Tiendanube product/${productId} (${response.status}): ${body || "sin detalle"}`);
+  }
+
+  return response.json();
+};
+
 const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
   const skuStockMap = new Map();
   let page = 1;
   const perPage = 200;
+  const productIdsWithoutVariants = [];
 
   while (true) {
     const url = new URL(`https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products`);
@@ -113,12 +136,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
 
     const response = await fetch(url.toString(), {
       method: "GET",
-      headers: {
-        Authentication: `bearer ${accessToken}`,
-        "User-Agent": "Haruja (harujagdl@gmail.com)",
-        "Content-Type": "application/json",
-        "X-Api-Version": apiVersion,
-      },
+      headers: tnHeaders({ accessToken, apiVersion }),
     });
 
     if (!response.ok) {
@@ -131,6 +149,10 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
 
     for (const product of products) {
       const variants = Array.isArray(product?.variants) ? product.variants : [];
+      const productId = String(product?.id ?? "").trim();
+      if (!variants.length && productId) {
+        productIdsWithoutVariants.push(productId);
+      }
       for (const variant of variants) {
         const sku = normalizeSku(variant?.sku);
         const stock = toNumberOrNull(variant?.stock);
@@ -141,6 +163,20 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
 
     if (products.length < perPage) break;
     page += 1;
+  }
+
+  if (productIdsWithoutVariants.length) {
+    console.log(`Modo robusto: consultando ${productIdsWithoutVariants.length} productos sin variants en listado.`);
+    for (const productId of productIdsWithoutVariants) {
+      const product = await fetchProductById({ storeId, productId, accessToken, apiVersion });
+      const variants = Array.isArray(product?.variants) ? product.variants : [];
+      for (const variant of variants) {
+        const sku = normalizeSku(variant?.sku);
+        const stock = toNumberOrNull(variant?.stock);
+        if (!sku || stock === null) continue;
+        skuStockMap.set(sku, stock);
+      }
+    }
   }
 
   return skuStockMap;
@@ -181,7 +217,9 @@ const main = async () => {
       qtyAvailable,
       inventorySource,
       status: availability.status,
+      statusCanon: availability.status,
       disponibilidad: availability.disponibilidad,
+      disponibilidadCanon: availability.disponibilidad,
       lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };

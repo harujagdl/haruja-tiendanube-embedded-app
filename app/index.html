@@ -5112,8 +5112,15 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
         const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || resolveColorName(colorCode);
         const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || resolveTallaName(tallaCode);
-        const statusRaw = safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim();
-        const statusCanon = normalizeStatus(statusRaw);
+        const qtyAvailable = toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad);
+        let statusCanon = normalizeStatus(
+          safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim()
+        );
+        if (qtyAvailable === null) statusCanon = "No definido";
+        const disponibilidadCanon = normalizeDisponibilidad(
+          safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
+          statusCanon
+        );
         const precioRaw = pickFirstValue(
           data.precio,
           data.Precio,
@@ -5176,15 +5183,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           tipo,
           status: statusCanon,
           statusCanon,
-          disponibilidad: normalizeDisponibilidad(
-            safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
-            statusCanon
-          ),
-          disponibilidadCanon: normalizeDisponibilidad(
-            safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
-            statusCanon
-          ),
-          qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad),
+          disponibilidad: disponibilidadCanon,
+          disponibilidadCanon,
+          qtyAvailable,
           isActive,
           precio,
           pVenta,

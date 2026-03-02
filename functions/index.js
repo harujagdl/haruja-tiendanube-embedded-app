@@ -543,12 +543,16 @@ const updateStockBySku_ = async ({sku, quantity, eventType, storeId, orderId}) =
     const snap = await tx.get(docRef);
     if (!snap.exists) return;
     const data = snap.data() || {};
-    const currentQty = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad);
-    if (!Number.isFinite(currentQty)) {
+    const currentQty = toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad);
+    if (currentQty === null) {
       tx.set(docRef, {
+        qtyAvailable: null,
         inventorySource: "undefined",
         status: "No definido",
+        statusCanon: "No definido",
         disponibilidad: "No definido",
+        disponibilidadCanon: "No definido",
+        lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, {merge: true});
       await db.collection("sync_errors").add({
@@ -577,7 +581,9 @@ const updateStockBySku_ = async ({sku, quantity, eventType, storeId, orderId}) =
       qtySold: nextSold,
       inventorySource: "tiendanube",
       status: availability.status,
+      statusCanon: availability.status,
       disponibilidad: availability.disponibilidad,
+      disponibilidadCanon: availability.disponibilidad,
       lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, {merge: true});
@@ -611,7 +617,9 @@ const setStockBySkuFromProductWebhook_ = async ({sku, stock, storeId, productId,
     qtyAvailable,
     inventorySource: qtyAvailable === null ? "undefined" : "tiendanube",
     status: availability.status,
+    statusCanon: availability.status,
     disponibilidad: availability.disponibilidad,
+    disponibilidadCanon: availability.disponibilidad,
     lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, {merge: true});
