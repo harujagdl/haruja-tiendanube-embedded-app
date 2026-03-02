@@ -604,25 +604,12 @@ const setStockBySkuFromProductWebhook_ = async ({sku, stock, storeId, productId,
     return;
   }
 
-  const qtyAvailable = Number(stock);
-  if (!Number.isFinite(qtyAvailable)) {
-    await db.collection("sync_errors").add({
-      type: "invalid_stock_on_product_updated",
-      source: "tnWebhook",
-      storeId: String(storeId || ""),
-      productId: String(productId || ""),
-      eventType,
-      sku,
-      quantity: stock,
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    return;
-  }
-
+  const parsedStock = Number(stock);
+  const qtyAvailable = Number.isFinite(parsedStock) ? parsedStock : null;
   const availability = resolveAvailabilityFromQty_(qtyAvailable);
   await querySnap.docs[0].ref.set({
     qtyAvailable,
-    inventorySource: "tiendanube",
+    inventorySource: qtyAvailable === null ? "undefined" : "tiendanube",
     status: availability.status,
     disponibilidad: availability.disponibilidad,
     lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2680,8 +2667,8 @@ exports.tnWebhook = onRequest(
         let processed = 0;
         for (const variant of variants) {
           const sku = normalizeCodigo(variant?.sku || "");
-          const stock = Number(variant?.stock);
-          if (!sku || !Number.isFinite(stock)) continue;
+          const stock = variant?.stock;
+          if (!sku) continue;
           await setStockBySkuFromProductWebhook_({sku, stock, storeId, productId, eventType});
           processed += 1;
         }

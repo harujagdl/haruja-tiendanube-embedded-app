@@ -4273,11 +4273,15 @@ const auth = getAuth(app);
         if (["existente", "en stock", "disponible", "activo"].includes(normalized)) {
           return "Disponible";
         }
+        if (["no definido", "undefined", "sin definir"].includes(normalized)) {
+          return "No definido";
+        }
         return "";
       };
 
       const normalizeDisponibilidad = (raw, statusCanon) => {
-        if (statusCanon === "Vendido") return "No disponible";
+        if (normalizeStatus(statusCanon) === "No definido") return "No definido";
+        if (normalizeStatus(statusCanon) === "Vendido") return "No disponible";
         const normalized = normalizeText(raw);
         if (!normalized) return "Disponible";
         if (["no disponible", "agotado", "sin stock", "0"].includes(normalized)) {
@@ -5180,7 +5184,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             safeString((data.disponibilidadCanon ?? data.disponibilidad ?? data.Disponibilidad ?? "")).trim(),
             statusCanon
           ),
-          qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 1) ?? 1,
+          qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad),
           isActive,
           precio,
           pVenta,
@@ -6182,7 +6186,7 @@ const createPrendaRow = (item) => {
           proveedor: formatLabel(safeString(item.proveedor)) || "--",
           status: renderStatusCell(item.statusCanon || item.status),
           disponibilidad: renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status),
-          qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "--"),
+          qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "—"),
           fecha: formatDateCell(item),
           pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
           costo: moneyFmt(item.costo),
@@ -6315,7 +6319,7 @@ const createPrendaRow = (item) => {
         };
         if (editPVentaInput) editPVentaInput.value = Number.isFinite(pVentaOverride) ? pVentaOverride : "";
         if (editCostoInput) editCostoInput.value = toNumber(rowData.costo) ?? "";
-        if (editQtyAvailableInput) editQtyAvailableInput.value = toNumberOrNull(rowData.qtyAvailable ?? rowData.cantidad ?? 1) ?? 1;
+        if (editQtyAvailableInput) editQtyAvailableInput.value = toNumberOrNull(rowData.qtyAvailable ?? rowData.cantidad) ?? "";
         if (editDescripcionInput) editDescripcionInput.value = safeString(rowData.descripcion).trim();
         if (editColorInput) editColorInput.value = colorCode;
         if (editTallaInput) editTallaInput.value = tallaCode;
@@ -6367,7 +6371,8 @@ const createPrendaRow = (item) => {
           const oldDocId = prendasState.editing.docId;
           const pVentaOverrideIngresado = toNumber(editPVentaInput?.value);
           const costo = toNumber(editCostoInput?.value);
-          const qtyAvailable = clampInt(editQtyAvailableInput?.value, 0, 9999, 1);
+          const qtyAvailableInput = safeString(editQtyAvailableInput?.value).trim();
+          const qtyAvailable = qtyAvailableInput === "" ? null : clampInt(qtyAvailableInput, 0, 9999, 0);
           const descripcion = safeString(editDescripcionInput?.value).trim();
           const colorCode = safeString(editColorInput?.value).trim().toUpperCase();
           const tallaCode = safeString(editTallaInput?.value).trim().toUpperCase();
@@ -6382,9 +6387,11 @@ const createPrendaRow = (item) => {
           const ajusteOverride = Number.isFinite(pVentaOverrideIngresado)
             ? ajustarDesdePrecioConIVA(pVentaOverrideIngresado)
             : null;
-          const availability = qtyAvailable > 0
-            ? { status: "Disponible", disponibilidad: "Disponible" }
-            : { status: "Vendido", disponibilidad: "No disponible" };
+          const availability = qtyAvailable === null
+            ? { status: "No definido", disponibilidad: "No definido" }
+            : qtyAvailable > 0
+              ? { status: "Disponible", disponibilidad: "Disponible" }
+              : { status: "Vendido", disponibilidad: "No disponible" };
           if (Number.isFinite(pVentaOverrideIngresado) && pVentaOverrideIngresado < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
