@@ -2730,7 +2730,9 @@ const pickPublicFieldsFromAdmin = (data = {}) => ({
   pVenta: toNumberOrNull(data.pVenta ?? data.precioConIva),
   precioConIva: toNumberOrNull(data.precioConIva ?? data.pVenta),
   pVentaVisible: toNumberOrNull(data.pVenta ?? data.precioConIva),
-  qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad)
+  qtyAvailable: toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad),
+  inventorySource: data.inventorySource ?? null,
+  lastInventorySyncAt: data.lastInventorySyncAt ?? null
 });
 
 exports.replicateAdminToPublic = onDocumentWritten(
