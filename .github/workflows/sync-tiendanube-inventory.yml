@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       storeId:
-        description: "Store ID de Tiendanube (ej: 6432936). Si vacío usa secret TIENDANUBE_STORE_ID o fallback hardcode."
+        description: "Store ID de Tiendanube (si vacío usa secret TIENDANUBE_STORE_ID)"
         required: false
-        default: "6432936"
+        default: ""
         type: string
       dryRun:
         description: "true = solo logs, false = escribe en Firestore"
@@ -22,10 +22,17 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
+      TIENDANUBE_STORE_ID: ${{ secrets.TIENDANUBE_STORE_ID }}
 
     steps:
       - name: Checkout
@@ -36,37 +43,58 @@ jobs:
         with:
           node-version: 20
 
-      # Auth con Service Account JSON (secrets.GCP_SA_KEY)
-      - name: Auth Google Cloud
+      - name: Install dependencies
+        run: npm install
+
+      # --- Auth WIF (si existe) ---
+      - name: Auth to Google Cloud (WIF)
+        if: ${{ env.GCP_WIF_PROVIDER != '' && env.GCP_SA_EMAIL != '' }}
+        id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA_EMAIL }}
+          project_id: ${{ env.FIREBASE_PROJECT_ID }}
           create_credentials_file: true
           export_environment_variables: true
 
-      - name: Install deps
-        run: npm install
+      - name: Export GOOGLE_APPLICATION_CREDENTIALS from WIF
+        if: ${{ steps.auth.outputs.credentials_file_path != '' }}
+        run: |
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
+          echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=${{ steps.auth.outputs.credentials_file_path }}" >> $GITHUB_ENV
 
+      # --- Fail fast si no hay auth ---
+      - name: Fail if no auth configured
+        run: |
+          if [ -n "$GCP_WIF_PROVIDER" ] && [ -n "$GCP_SA_EMAIL" ]; then
+            if [ -z "${{ steps.auth.outputs.credentials_file_path }}" ]; then
+              echo "ERROR: WIF configured but auth did not produce credentials_file_path."
+              exit 1
+            fi
+          else
+            if [ -z "$FIREBASE_TOKEN" ]; then
+              echo "ERROR: Missing auth. Configure WIF (GCP_WIF_PROVIDER + GCP_SA_EMAIL) OR FIREBASE_TOKEN."
+              exit 1
+            fi
+          fi
+
+      # --- Resolver storeId + dryRun ---
       - name: Resolve storeId + dryRun
         id: vars
         run: |
-          # 1) storeId: input (manual) -> secret -> fallback hardcode
-          STORE_ID="${{ github.event.inputs.storeId }}"
-
-          if [ -z "$STORE_ID" ]; then
-            STORE_ID="${{ secrets.TIENDANUBE_STORE_ID }}"
+          STORE_ID_INPUT="${{ github.event.inputs.storeId }}"
+          if [ -n "$STORE_ID_INPUT" ]; then
+            STORE_ID="$STORE_ID_INPUT"
+          else
+            STORE_ID="$TIENDANUBE_STORE_ID"
           fi
 
           if [ -z "$STORE_ID" ]; then
-            STORE_ID="6432936"
-          fi
-
-          if [ -z "$STORE_ID" ]; then
-            echo "ERROR: Missing storeId. Provide workflow input storeId or set secret TIENDANUBE_STORE_ID."
+            echo "ERROR: Missing storeId. Provide input storeId or set secret TIENDANUBE_STORE_ID."
             exit 1
           fi
 
-          # 2) dryRun: input (manual) -> default false for cron
           DRY="${{ github.event.inputs.dryRun }}"
           if [ -z "$DRY" ]; then
             DRY="false"
@@ -78,15 +106,33 @@ jobs:
           echo "Resolved storeId=$STORE_ID"
           echo "Resolved dryRun=$DRY"
 
-      - name: Run sync
+      # --- Debug seguro: confirma que el secret sí llegó al step (solo longitud) ---
+      - name: Debug credentials env (safe)
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          echo "GCP_SA_KEY length: ${#GCP_SA_KEY}"
+          if [ "${#GCP_SA_KEY}" -lt 50 ]; then
+            echo "ERROR: GCP_SA_KEY no está llegando a este workflow (vacío o muy corto)."
+            exit 1
+          fi
+
+      # --- Correr el script (AQUI va el secret que tu script necesita) ---
+      - name: Run inventory sync
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SA_KEY }}
           STORE_ID: ${{ steps.vars.outputs.storeId }}
           DRY: ${{ steps.vars.outputs.dry }}
         run: |
-          echo "Running inventory sync..."
+          echo "=== SYNC START ==="
           echo "Project: $FIREBASE_PROJECT_ID"
           echo "Store:   $STORE_ID"
           echo "DryRun:  $DRY"
+          echo "GCP_SA_KEY length: ${#GCP_SA_KEY}"
+          echo "=================="
 
           node scripts/sync-tiendanube-inventory.mjs --storeId="$STORE_ID" --dry="$DRY"
+
+          echo "=== SYNC DONE ==="
