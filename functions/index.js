@@ -439,15 +439,32 @@ const resolveTiendanubeCredentials = async (storeId) => {
 const getWebhookAppSecret_ = () => String(TIENDANUBE_CLIENT_SECRET.value() || "").trim();
 
 const verifyTiendanubeWebhookHmac_ = (req, appSecret) => {
-  const provided = String(req.get("x-linkedstore-hmac-sha256") || "").trim().toLowerCase();
-  if (!provided || !appSecret || !req.rawBody) return false;
+  // Tiendanube / Nuvemshop historically uses this header name, but some setups use alternatives.
+  const providedRaw = String(
+    req.get("x-linkedstore-hmac-sha256")
+      || req.get("x-tiendanube-hmac-sha256")
+      || req.get("x-nuvemshop-hmac-sha256")
+      || ""
+  ).trim();
 
-  const expected = createHmac("sha256", appSecret).update(req.rawBody).digest("hex").toLowerCase();
-  const providedBuffer = Buffer.from(provided, "utf8");
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  if (providedBuffer.length !== expectedBuffer.length) return false;
-  return timingSafeEqual(providedBuffer, expectedBuffer);
+  if (!providedRaw || !appSecret || !req.rawBody) return false;
+
+  const provided = providedRaw.toLowerCase();
+
+  // Some integrations send hex, others base64. We'll accept either.
+  const expectedHex = createHmac("sha256", appSecret).update(req.rawBody).digest("hex").toLowerCase();
+  const expectedB64 = createHmac("sha256", appSecret).update(req.rawBody).digest("base64").trim();
+
+  const safeEq = (a, b) => {
+    const ab = Buffer.from(String(a), "utf8");
+    const bb = Buffer.from(String(b), "utf8");
+    if (ab.length !== bb.length) return false;
+    return timingSafeEqual(ab, bb);
+  };
+
+  return safeEq(provided, expectedHex) || safeEq(providedRaw, expectedB64);
 };
+
 
 const fetchTiendanubeOrderById_ = async ({storeId, orderId, accessToken, apiVersion}) => {
   const url = `https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/orders/${encodeURIComponent(orderId)}`;
@@ -868,8 +885,12 @@ const safeDocId = (val) =>
     .trim()
     .toUpperCase()
     .replaceAll("/", "__");
-const normalizeCodigo = (val) => String(val ?? "").trim().toUpperCase();
-
+const normalizeCodigo = (val) => String(val ?? "")
+  .replace(/\u00A0/g, " ")
+  .replace(/[\u2010-\u2015]/g, "-")
+  .replace(/\s+/g, " ")
+  .trim()
+  .toUpperCase();
 const normalizeHeaderKey = (value) =>
   String(value ?? "")
     .normalize("NFD")
@@ -2666,6 +2687,13 @@ exports.tnWebhook = onRequest(
 
     const appSecret = getWebhookAppSecret_();
     if (!verifyTiendanubeWebhookHmac_(req, appSecret)) {
+      console.warn("tnWebhook invalid signature", {
+        ip: req.ip,
+        ua: req.get("user-agent") || null,
+        provided: String(req.get("x-linkedstore-hmac-sha256") || req.get("x-tiendanube-hmac-sha256") || req.get("x-nuvemshop-hmac-sha256") || "").slice(0, 16) || null,
+        hasRawBody: Boolean(req.rawBody),
+        contentType: req.get("content-type") || null
+      });
       return res.status(401).json({ok: false, error: "Invalid webhook signature"});
     }
 
