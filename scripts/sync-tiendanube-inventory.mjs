@@ -57,13 +57,8 @@ function normalizeSku(sku) {
   return s.toUpperCase();
 }
 
-const toNumberOrNull = (value) => {
-  if (value === null || value === undefined || value === "") return null;
-  const num = Number(String(value).replace(/[,$\s]/g, ""));
-  return Number.isFinite(num) ? num : null;
-};
-
 function getVariantStock(variant) {
+  // 1) Si trae inventory_levels, sumar cantidades
   const levels = variant?.inventory_levels;
   if (Array.isArray(levels) && levels.length) {
     let sum = 0;
@@ -74,8 +69,12 @@ function getVariantStock(variant) {
     return sum;
   }
 
+  // 2) Fallback a variant.stock (puede venir "" para infinito)
   const s = variant?.stock;
+
+  // stock infinito (""), tratamos como null para no mentir
   if (s === "") return null;
+  if (s === null || s === undefined) return null;
 
   const n = Number(s);
   if (Number.isNaN(n)) return null;
