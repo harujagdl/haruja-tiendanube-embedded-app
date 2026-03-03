@@ -17,9 +17,6 @@ on:
           - "true"
           - "false"
 
-  schedule:
-    - cron: "*/30 * * * *"
-
 permissions:
   contents: read
 
@@ -39,7 +36,6 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Resolver storeId + dryRun
       - name: Resolve storeId + dryRun
         id: vars
         run: |
@@ -49,7 +45,7 @@ jobs:
           fi
 
           if [ -z "$STORE_ID" ]; then
-            echo "ERROR: Missing storeId. Provide input storeId or set secret TIENDANUBE_STORE_ID."
+            echo "ERROR: Missing storeId."
             exit 1
           fi
 
@@ -61,10 +57,6 @@ jobs:
           echo "storeId=$STORE_ID" >> $GITHUB_OUTPUT
           echo "dry=$DRY" >> $GITHUB_OUTPUT
 
-          echo "Resolved storeId=$STORE_ID"
-          echo "Resolved dryRun=$DRY"
-
-      # Ejecutar sync
       - name: Run inventory sync
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -72,12 +64,9 @@ jobs:
           STORE_ID: ${{ steps.vars.outputs.storeId }}
           DRY: ${{ steps.vars.outputs.dry }}
         run: |
-          echo "=== SYNC START ==="
+          echo "Running inventory sync..."
           echo "Project: $FIREBASE_PROJECT_ID"
           echo "Store:   $STORE_ID"
           echo "DryRun:  $DRY"
-          echo "=================="
 
           node scripts/sync-tiendanube-inventory.mjs --storeId="$STORE_ID" --dry="$DRY"
-
-          echo "=== SYNC DONE ==="
