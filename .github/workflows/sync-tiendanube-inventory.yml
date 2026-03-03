@@ -1,0 +1,52 @@
+name: Sync Tiendanube Inventory -> Firestore
+
+on:
+  workflow_dispatch:
+    inputs:
+      storeId:
+        description: "Store ID de Tiendanube"
+        required: true
+        type: string
+      dryRun:
+        description: "Si true, no escribe en Firestore"
+        required: true
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Auth Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          create_credentials_file: true
+
+      - name: Install deps
+        run: npm install
+
+      - name: Run sync
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          STORE_ID="${{ github.event.inputs.storeId }}"
+          if [ -z "$STORE_ID" ]; then
+            STORE_ID="${{ secrets.TIENDANUBE_STORE_ID }}"
+          fi
+          DRY="${{ github.event.inputs.dryRun }}"
+          if [ -z "$DRY" ]; then DRY="false"; fi
+
+          node scripts/sync-tiendanube-inventory.mjs --storeId="$STORE_ID" --dry="$DRY"

@@ -489,19 +489,61 @@ const fetchTiendanubeProductById_ = async ({storeId, productId, accessToken, api
   return response.json();
 };
 
-const aggregateOrderSkuQty_ = (order = {}) => {
-  const sourceItems = Array.isArray(order.products) && order.products.length ? order.products : order.line_items;
+const extractOrderLines_ = (order = {}) => {
+  const sourceItems = (Array.isArray(order.products) && order.products.length)
+    ? order.products
+    : order.line_items;
+
   const items = Array.isArray(sourceItems) ? sourceItems : [];
-  const skuQtyMap = new Map();
+  const rows = [];
 
   for (const item of items) {
     const sku = normalizeCodigo(item?.sku ?? item?.code ?? item?.codigo ?? "");
     const qty = Number(item?.quantity ?? item?.qty ?? 0);
     if (!sku || !Number.isFinite(qty) || qty <= 0) continue;
-    skuQtyMap.set(sku, (skuQtyMap.get(sku) || 0) + qty);
+
+    const productId = String(item?.product_id ?? item?.productId ?? item?.product?.id ?? "").trim();
+    const variantId = String(item?.variant_id ?? item?.variantId ?? item?.variant?.id ?? "").trim();
+
+    rows.push({sku, quantity: qty, productId, variantId});
+  }
+  return rows;
+};
+
+const getVariantStock_ = (variant) => {
+  const levels = variant?.inventory_levels;
+  if (Array.isArray(levels) && levels.length) {
+    let sum = 0;
+    for (const lvl of levels) {
+      const q = Number(lvl?.quantity);
+      if (!Number.isNaN(q)) sum += q;
+    }
+    return sum;
   }
 
-  return Array.from(skuQtyMap.entries()).map(([sku, quantity]) => ({sku, quantity}));
+  const s = variant?.stock;
+  if (s === "") return null;
+  if (s === null || s === undefined) return null;
+
+  const n = Number(s);
+  if (Number.isNaN(n)) return null;
+  return n;
+};
+
+const resolveVariantFromProduct_ = ({product, variantId, sku}) => {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (!variants.length) return null;
+
+  if (variantId) {
+    const foundById = variants.find((v) => String(v?.id) === String(variantId));
+    if (foundById) return foundById;
+  }
+  const normalizedSku = normalizeCodigo(sku || "");
+  if (normalizedSku) {
+    const foundBySku = variants.find((v) => normalizeCodigo(v?.sku || "") === normalizedSku);
+    if (foundBySku) return foundBySku;
+  }
+  return null;
 };
 
 const resolveAvailabilityFromQty_ = (qtyAvailable) => {
@@ -2675,7 +2717,7 @@ exports.tnWebhook = onRequest(
         let processed = 0;
         for (const variant of variants) {
           const sku = normalizeCodigo(variant?.sku || "");
-          const stock = variant?.stock;
+          const stock = getVariantStock_(variant);
           if (!sku) continue;
           await setStockBySkuFromProductWebhook_({sku, stock, storeId, productId, eventType});
           processed += 1;
@@ -2685,17 +2727,42 @@ exports.tnWebhook = onRequest(
 
       const orderId = resourceId;
       const order = await fetchTiendanubeOrderById_({storeId, orderId, accessToken, apiVersion});
-      const skuRows = aggregateOrderSkuQty_(order);
-      for (const row of skuRows) {
+      const lines = extractOrderLines_(order);
+
+      let processed = 0;
+
+      for (const line of lines) {
+        const sku = line.sku;
+        const productId = line.productId;
+
+        if (productId) {
+          const product = await fetchTiendanubeProductById_({storeId, productId, accessToken, apiVersion});
+          const variant = resolveVariantFromProduct_({product, variantId: line.variantId, sku});
+          const stock = variant ? getVariantStock_(variant) : null;
+
+          await setStockBySkuFromProductWebhook_({
+            sku,
+            stock,
+            storeId,
+            productId,
+            eventType
+          });
+
+          processed += 1;
+          continue;
+        }
+
         await updateStockBySku_({
-          sku: row.sku,
-          quantity: row.quantity,
+          sku,
+          quantity: line.quantity,
           eventType,
           storeId,
           orderId
         });
+        processed += 1;
       }
-      return res.status(200).json({ok: true, processed: skuRows.length});
+
+      return res.status(200).json({ok: true, processed});
     } catch (error) {
       console.error("tnWebhook processing error", {storeId, resourceId, eventType, error});
       await dedupeRef.set({
