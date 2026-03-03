@@ -4,21 +4,29 @@ on:
   workflow_dispatch:
     inputs:
       storeId:
-        description: "Store ID de Tiendanube"
-        required: true
+        description: "Store ID de Tiendanube (ej: 6432936). Si vacío usa secret TIENDANUBE_STORE_ID o fallback hardcode."
+        required: false
+        default: "6432936"
         type: string
       dryRun:
-        description: "Si true, no escribe en Firestore"
+        description: "true = solo logs, false = escribe en Firestore"
         required: true
         default: "false"
         type: choice
-        options: ["true", "false"]
+        options:
+          - "true"
+          - "false"
+
   schedule:
     - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,25 +36,57 @@ jobs:
         with:
           node-version: 20
 
+      # Auth con Service Account JSON (secrets.GCP_SA_KEY)
       - name: Auth Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           create_credentials_file: true
+          export_environment_variables: true
 
       - name: Install deps
         run: npm install
 
-      - name: Run sync
-        env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      - name: Resolve storeId + dryRun
+        id: vars
         run: |
+          # 1) storeId: input (manual) -> secret -> fallback hardcode
           STORE_ID="${{ github.event.inputs.storeId }}"
+
           if [ -z "$STORE_ID" ]; then
             STORE_ID="${{ secrets.TIENDANUBE_STORE_ID }}"
           fi
+
+          if [ -z "$STORE_ID" ]; then
+            STORE_ID="6432936"
+          fi
+
+          if [ -z "$STORE_ID" ]; then
+            echo "ERROR: Missing storeId. Provide workflow input storeId or set secret TIENDANUBE_STORE_ID."
+            exit 1
+          fi
+
+          # 2) dryRun: input (manual) -> default false for cron
           DRY="${{ github.event.inputs.dryRun }}"
-          if [ -z "$DRY" ]; then DRY="false"; fi
+          if [ -z "$DRY" ]; then
+            DRY="false"
+          fi
+
+          echo "storeId=$STORE_ID" >> $GITHUB_OUTPUT
+          echo "dry=$DRY" >> $GITHUB_OUTPUT
+
+          echo "Resolved storeId=$STORE_ID"
+          echo "Resolved dryRun=$DRY"
+
+      - name: Run sync
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          STORE_ID: ${{ steps.vars.outputs.storeId }}
+          DRY: ${{ steps.vars.outputs.dry }}
+        run: |
+          echo "Running inventory sync..."
+          echo "Project: $FIREBASE_PROJECT_ID"
+          echo "Store:   $STORE_ID"
+          echo "DryRun:  $DRY"
 
           node scripts/sync-tiendanube-inventory.mjs --storeId="$STORE_ID" --dry="$DRY"
