@@ -51,10 +51,14 @@ const initFirestore = () => {
   return admin.firestore();
 };
 
-function normalizeSku(sku) {
-  const s = String(sku ?? "").trim();
-  if (!s) return "";
-  return s.toUpperCase();
+function normalizeCodigo(val) {
+  return String(val ?? "")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase()
+    .replace(/\//g, "-");
 }
 
 function getVariantStock(variant) {
@@ -81,15 +85,6 @@ function getVariantStock(variant) {
   return n;
 }
 
-const resolveAvailability = (qtyAvailable) => {
-  if (qtyAvailable === null) {
-    return { status: "No definido", disponibilidad: "No definido" };
-  }
-  if (qtyAvailable > 0) {
-    return { status: "Disponible", disponibilidad: "Disponible" };
-  }
-  return { status: "Vendido", disponibilidad: "No disponible" };
-};
 
 const tnHeaders = ({ accessToken, apiVersion }) => ({
   Authentication: `bearer ${accessToken}`,
@@ -178,7 +173,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
       for (const product of products) {
         const variants = Array.isArray(product?.variants) ? product.variants : [];
         for (const variant of variants) {
-          const sku = normalizeSku(variant?.sku);
+          const sku = normalizeCodigo(variant?.sku);
           const stock = getVariantStock(variant);
           if (!sku || stock === null) continue;
           skuStockMap.set(sku, stock);
@@ -203,7 +198,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
           if (!product) continue;
           const variants = Array.isArray(product?.variants) ? product.variants : [];
           for (const variant of variants) {
-            const sku = normalizeSku(variant?.sku);
+            const sku = normalizeCodigo(variant?.sku);
             const stock = getVariantStock(variant);
             if (!sku || stock === null) continue;
             skuStockMap.set(sku, stock);
@@ -219,6 +214,20 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
   return skuStockMap;
 };
 
+const findAdminDocBySku = async (col, sku) => {
+  const skuNorm = normalizeCodigo(sku);
+
+  let snap = await col.where("codigo", "==", skuNorm).limit(1).get();
+
+  if (snap.empty) {
+    const alt = skuNorm.replace(/-/g, "/");
+    snap = await col.where("codigo", "==", alt).limit(1).get();
+  }
+
+  if (snap.empty) return null;
+  return snap.docs[0].ref;
+};
+
 const main = async () => {
   const args = parseArgs();
   const dryRun = parseBoolean(process.env.DRY_RUN ?? args.dryRun ?? "false", false);
@@ -231,52 +240,53 @@ const main = async () => {
   console.log("DEBUG first 10 SKUs:", Array.from(skuStockMap.keys()).slice(0, 10));
   console.log("DEBUG first 10 stocks:", Array.from(skuStockMap.values()).slice(0, 10));
 
-  const snap = await db.collection(ADMIN_COLLECTION).get();
+  const col = db.collection(ADMIN_COLLECTION);
 
   const updates = [];
-  let totalAdminDocs = 0;
+  let totalSkusTiendanube = 0;
   let totalSyncedWithTiendanube = 0;
-  let totalUndefined = 0;
+  let totalNotFound = 0;
 
-  snap.forEach((docSnap) => {
-    totalAdminDocs += 1;
-    const data = docSnap.data() || {};
-    const sku = normalizeSku(data.codigo);
-    const stock = sku ? (skuStockMap.has(sku) ? skuStockMap.get(sku) : null) : null;
-    const qtyAvailable = typeof stock === "number" ? stock : null;
-    const inventorySource = qtyAvailable === null ? "undefined" : "tiendanube";
-    const availability = resolveAvailability(qtyAvailable);
+  for (const [sku, stock] of skuStockMap.entries()) {
+    totalSkusTiendanube += 1;
 
-    if (qtyAvailable === null) {
-      totalUndefined += 1;
-    } else {
-      totalSyncedWithTiendanube += 1;
+    const docRef = await findAdminDocBySku(col, sku);
+    if (!docRef) {
+      totalNotFound += 1;
+      console.log("SKU no encontrado:", sku);
+      continue;
     }
 
-    const payload = {
-      qtyAvailable,
-      inventorySource,
-      status: availability.status,
-      statusCanon: availability.status,
-      disponibilidad: availability.disponibilidad,
-      disponibilidadCanon: availability.disponibilidad,
-      lastInventorySyncAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    const qtyAvailable = typeof stock === "number" ? stock : null;
+    const disponibilidad = qtyAvailable > 0 ? "Disponible" : "No disponible";
+    const statusCanon = qtyAvailable > 0 ? "Disponible" : "Vendido";
 
-    updates.push({ id: docSnap.id, payload });
-  });
+    updates.push({
+      ref: docRef,
+      payload: {
+        qtyAvailable,
+        disponibilidad,
+        disponibilidadCanon: disponibilidad,
+        status: statusCanon,
+        statusCanon,
+        inventorySource: "tiendanube",
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    totalSyncedWithTiendanube += 1;
+  }
 
   console.log(`Colección admin: ${ADMIN_COLLECTION}`);
-  console.log(`Total docs admin: ${totalAdminDocs}`);
+  console.log(`Total SKUs Tiendanube: ${totalSkusTiendanube}`);
   console.log(`Total sincronizados con Tiendanube: ${totalSyncedWithTiendanube}`);
-  console.log(`Total NO definidos: ${totalUndefined}`);
+  console.log(`Total SKUs no encontrados en Firestore: ${totalNotFound}`);
   console.log(`Documentos a escribir: ${updates.length}`);
 
   if (dryRun) {
     console.log("DRY_RUN=true → no se escribirá en Firestore.");
     updates.slice(0, 20).forEach((item, index) => {
-      console.log(`${index + 1}. ${item.id} -> ${JSON.stringify(item.payload)}`);
+      console.log(`${index + 1}. ${item.ref.id} -> ${JSON.stringify(item.payload)}`);
     });
     return;
   }
@@ -287,8 +297,7 @@ const main = async () => {
     const batch = db.batch();
 
     chunk.forEach((item) => {
-      const ref = db.collection(ADMIN_COLLECTION).doc(item.id);
-      batch.set(ref, item.payload, { merge: true });
+      batch.set(item.ref, item.payload, { merge: true });
     });
 
     await batch.commit();
