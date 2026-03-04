@@ -1,0 +1,3 @@
+codigo,tnMatch,tnSku,tnVariantId,tnProductId,statusManual,disponibilidadManual,manualOverride,tnNotes
+HA12A138/NE-M,OK,HA12A138/NE-M,123456789,987654321,Disponible,Disponible,true,Match manual confirmado
+HA12A139/RO-L,N/A,,,,Vendido,No disponible,false,Sin match en TN

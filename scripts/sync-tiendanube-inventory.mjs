@@ -176,7 +176,12 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
           const sku = normalizeCodigo(variant?.sku);
           const stock = getVariantStock(variant);
           if (!sku || stock === null) continue;
-          skuStockMap.set(sku, stock);
+          skuStockMap.set(sku, {
+            stock,
+            tnSku: String(variant?.sku ?? "").trim() || sku,
+            tnVariantId: String(variant?.id ?? "").trim() || null,
+            tnProductId: String(product?.id ?? "").trim() || null,
+          });
         }
       }
     } else {
@@ -201,7 +206,12 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
             const sku = normalizeCodigo(variant?.sku);
             const stock = getVariantStock(variant);
             if (!sku || stock === null) continue;
-            skuStockMap.set(sku, stock);
+            skuStockMap.set(sku, {
+              stock,
+              tnSku: String(variant?.sku ?? "").trim() || sku,
+              tnVariantId: String(variant?.id ?? "").trim() || null,
+              tnProductId: String(product?.id ?? "").trim() || null,
+            });
           }
         }
       }
@@ -247,7 +257,7 @@ const main = async () => {
   let totalSyncedWithTiendanube = 0;
   let totalNotFound = 0;
 
-  for (const [sku, stock] of skuStockMap.entries()) {
+  for (const [sku, tnInfo] of skuStockMap.entries()) {
     totalSkusTiendanube += 1;
 
     const docRef = await findAdminDocBySku(col, sku);
@@ -257,7 +267,7 @@ const main = async () => {
       continue;
     }
 
-    const qtyAvailable = typeof stock === "number" ? stock : null;
+    const qtyAvailable = typeof tnInfo?.stock === "number" ? tnInfo.stock : null;
     const disponibilidad = qtyAvailable > 0 ? "Disponible" : "No disponible";
     const statusCanon = qtyAvailable > 0 ? "Disponible" : "Vendido";
 
@@ -270,6 +280,11 @@ const main = async () => {
         status: statusCanon,
         statusCanon,
         inventorySource: "tiendanube",
+        tnMatch: "OK",
+        tnSku: tnInfo?.tnSku || sku,
+        tnVariantId: tnInfo?.tnVariantId || null,
+        tnProductId: tnInfo?.tnProductId || null,
+        tnLastSyncAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
     });
