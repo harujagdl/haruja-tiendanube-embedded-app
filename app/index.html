@@ -2686,10 +2686,40 @@ body.haruja-col-resizing{
   </div>
 </div>
 
+<div id="correctionsModal" class="edit-modal hidden" aria-hidden="true">
+  <div id="correctionsModalOverlay" class="edit-modal-overlay"></div>
+  <div class="edit-modal-sheet" role="dialog" aria-modal="true" aria-labelledby="correctionsModalTitle">
+    <h3 id="correctionsModalTitle" style="margin:0 0 12px;">Subir correcciones</h3>
+    <div class="edit-modal-grid">
+      <div>
+        <label for="correctionsFile">Archivo (.csv, .xlsx)</label>
+        <input id="correctionsFile" type="file" accept=".csv,.xlsx" />
+      </div>
+      <div>
+        <label for="correctionsDryRun">Modo</label>
+        <label class="check" style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+          <input id="correctionsDryRun" type="checkbox" checked />
+          <span>Solo validar (no guardar)</span>
+        </label>
+      </div>
+    </div>
+    <pre id="correctionsResults" class="muted" style="background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:10px; min-height:110px; white-space:pre-wrap;">Total filas: 0
+Encontrados: 0
+No encontrados: 0
+Actualizados: 0
+Errores: 0</pre>
+    <div class="edit-modal-actions">
+      <button id="correctionsClose" type="button" class="secondary">Cerrar</button>
+      <button id="correctionsProcess" type="button">Procesar</button>
+    </div>
+  </div>
+</div>
+
 <script src="/__/firebase/8.10.1/firebase-app.js"></script>
 <script src="/__/firebase/8.10.1/firebase-auth.js"></script>
 <script src="/__/firebase/init.js"></script>
 <script src="/shared/firebase-init.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -3027,6 +3057,13 @@ const auth = getAuth(app);
       const editModalError = document.getElementById("editModalError");
       const editModalSaveButton = document.getElementById("editModalSave");
       const editModalCancelButton = document.getElementById("editModalCancel");
+      const correctionsModal = document.getElementById("correctionsModal");
+      const correctionsModalOverlay = document.getElementById("correctionsModalOverlay");
+      const correctionsFileInput = document.getElementById("correctionsFile");
+      const correctionsDryRunInput = document.getElementById("correctionsDryRun");
+      const correctionsProcessBtn = document.getElementById("correctionsProcess");
+      const correctionsCloseBtn = document.getElementById("correctionsClose");
+      const correctionsResults = document.getElementById("correctionsResults");
       const VIEWS = ["panel", "registro", "codigos", "meta-vs-venta"];
 
       const ENABLE_DESC_BETTER_UI = true;
@@ -4463,6 +4500,7 @@ const auth = getAuth(app);
         { id: "status", label: "Status", admin: true, public: true, filter: true },
         { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
         { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: false },
+        { id: "tn", label: "TN", admin: true, public: true, filter: false },
         { id: "fecha", label: "Fecha", admin: true, public: true, filter: false },
         { id: "pventa", label: "Precio", admin: true, public: true, filter: false },
         { id: "costo", label: "Costo", admin: true, public: false, filter: false },
@@ -4490,11 +4528,15 @@ const auth = getAuth(app);
           return button;
         };
 
-        toolbar.replaceChildren(
+        const toolbarButtons = [
           mkBtn(adminEnabled ? "btn-admin-exit" : "btn-admin-enter", adminLabel),
           mkBtn("btn-etiquetas", "Etiquetas"),
           mkBtn("btn-export-csv", "Exportar CSV")
-        );
+        ];
+        if (adminEnabled) {
+          toolbarButtons.push(mkBtn("btn-upload-corrections", "Subir correcciones"));
+        }
+        toolbar.replaceChildren(...toolbarButtons);
       };
 
       const createHeaderControlSelect = (columnKey) => {
@@ -5211,6 +5253,11 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           disponibilidad: disponibilidadCanon,
           disponibilidadCanon,
           qtyAvailable,
+          tnMatch: safeString(data.tnMatch).trim() || "N/A",
+          tnSku: safeString(data.tnSku).trim() || null,
+          tnVariantId: safeString(data.tnVariantId).trim() || null,
+          tnProductId: safeString(data.tnProductId).trim() || null,
+          tnNotes: safeString(data.tnNotes).trim() || null,
           isActive,
           precio,
           pVenta,
@@ -5825,6 +5872,151 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         refreshList();
       };
 
+      const parseCorrectionsBoolean = (raw) => {
+        const value = normalizeText(raw);
+        if (["true", "1", "si", "sí", "yes"].includes(value)) return true;
+        if (["false", "0", "no"].includes(value)) return false;
+        return null;
+      };
+
+      const parseCsvRow = (line = "") => {
+        const out = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i += 1) {
+          const char = line[i];
+          const next = line[i + 1];
+          if (char === '"') {
+            if (inQuotes && next === '"') {
+              current += '"';
+              i += 1;
+            } else {
+              inQuotes = !inQuotes;
+            }
+            continue;
+          }
+          if (char === "," && !inQuotes) {
+            out.push(current.trim());
+            current = "";
+            continue;
+          }
+          current += char;
+        }
+        out.push(current.trim());
+        return out;
+      };
+
+      const parseCorrectionsFile = async (file) => {
+        const ext = safeString(file?.name).toLowerCase();
+        if (ext.endsWith(".csv")) {
+          const text = await file.text();
+          const lines = text.split(/\r?\n/).filter((line) => line.trim());
+          if (!lines.length) return [];
+          const headers = parseCsvRow(lines[0]).map((h) => safeString(h).trim());
+          return lines.slice(1).map((line) => {
+            const cols = parseCsvRow(line);
+            return headers.reduce((acc, header, index) => {
+              acc[header] = safeString(cols[index]).trim();
+              return acc;
+            }, {});
+          });
+        }
+
+        if (ext.endsWith(".xlsx")) {
+          if (!window.XLSX) {
+            throw new Error("No se pudo cargar parser XLSX");
+          }
+          const bytes = await file.arrayBuffer();
+          const wb = window.XLSX.read(bytes, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          return window.XLSX.utils.sheet_to_json(ws, { defval: "" });
+        }
+
+        throw new Error("Formato no soportado. Usa CSV o XLSX.");
+      };
+
+      const formatCorrectionsSummary = (summary) => `Total filas: ${summary.total}
+Encontrados: ${summary.found}
+No encontrados: ${summary.notFound}
+Actualizados: ${summary.updated}
+Errores: ${summary.errors}`;
+
+      const setCorrectionsSummary = (summary) => {
+        if (correctionsResults) correctionsResults.textContent = formatCorrectionsSummary(summary);
+      };
+
+      const closeCorrectionsModal = () => {
+        if (!correctionsModal) return;
+        correctionsModal.classList.add("hidden");
+        correctionsModal.setAttribute("aria-hidden", "true");
+      };
+
+      const openCorrectionsModal = () => {
+        if (!isAdminViewEnabled() || !correctionsModal) return;
+        correctionsModal.classList.remove("hidden");
+        correctionsModal.setAttribute("aria-hidden", "false");
+      };
+
+      const processCorrectionsFile = async () => {
+        if (!isAdminViewEnabled()) return;
+        const file = correctionsFileInput?.files?.[0];
+        if (!file) {
+          alert("Selecciona un archivo CSV o XLSX.");
+          return;
+        }
+
+        const dryRun = Boolean(correctionsDryRunInput?.checked);
+        const rows = await parseCorrectionsFile(file);
+        const summary = { total: rows.length, found: 0, notFound: 0, updated: 0, errors: 0 };
+        const updates = [];
+
+        for (const row of rows) {
+          const codigo = safeString(row.codigo).trim();
+          if (!codigo) {
+            summary.errors += 1;
+            continue;
+          }
+
+          const docRef = doc(db, PRENDAS_ADMIN_COLLECTION, codigo);
+          const docSnap = await getDoc(docRef);
+          if (!docSnap.exists()) {
+            summary.notFound += 1;
+            continue;
+          }
+
+          summary.found += 1;
+          const payload = {};
+          if (safeString(row.tnMatch).trim()) payload.tnMatch = safeString(row.tnMatch).trim();
+          if (safeString(row.tnSku).trim()) payload.tnSku = safeString(row.tnSku).trim();
+          if (safeString(row.tnVariantId).trim()) payload.tnVariantId = safeString(row.tnVariantId).trim();
+          if (safeString(row.tnProductId).trim()) payload.tnProductId = safeString(row.tnProductId).trim();
+          if (safeString(row.statusManual).trim()) payload.statusManual = safeString(row.statusManual).trim();
+          if (safeString(row.disponibilidadManual).trim()) payload.disponibilidadManual = safeString(row.disponibilidadManual).trim();
+          if (safeString(row.tnNotes).trim()) payload.tnNotes = safeString(row.tnNotes).trim();
+          const manualOverride = parseCorrectionsBoolean(row.manualOverride);
+          if (manualOverride !== null) payload.manualOverride = manualOverride;
+
+          if (!Object.keys(payload).length) continue;
+          payload.updatedAt = serverTimestamp();
+          updates.push({ ref: docRef, payload });
+        }
+
+        if (!dryRun) {
+          const chunks = chunkArray(updates, 400);
+          for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            chunk.forEach((item) => batch.set(item.ref, item.payload, { merge: true }));
+            await batch.commit();
+          }
+        }
+
+        summary.updated = updates.length;
+        setCorrectionsSummary(summary);
+        if (!dryRun) {
+          await loadPrendasPage({ reset: false, reason: "corrections-upload" });
+        }
+      };
+
       const chunkArray = (items, size) => {
         const chunks = [];
         for (let i = 0; i < items.length; i += size) {
@@ -5885,6 +6077,11 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
               manualOverride: Boolean(data.manualOverride),
               statusManual: safeString(data.statusManual).trim(),
               disponibilidadManual: safeString(data.disponibilidadManual).trim(),
+              tnMatch: safeString(data.tnMatch).trim(),
+              tnSku: safeString(data.tnSku).trim(),
+              tnVariantId: safeString(data.tnVariantId).trim(),
+              tnProductId: safeString(data.tnProductId).trim(),
+              tnNotes: safeString(data.tnNotes).trim(),
             });
           });
         }
@@ -5928,6 +6125,11 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           row.manualOverride = Boolean(adminExtra.manualOverride);
           row.statusManual = adminExtra.statusManual || null;
           row.disponibilidadManual = adminExtra.disponibilidadManual || null;
+          row.tnMatch = adminExtra.tnMatch || row.tnMatch || "N/A";
+          row.tnSku = adminExtra.tnSku || row.tnSku || null;
+          row.tnVariantId = adminExtra.tnVariantId || row.tnVariantId || null;
+          row.tnProductId = adminExtra.tnProductId || row.tnProductId || null;
+          row.tnNotes = adminExtra.tnNotes || row.tnNotes || null;
         });
 
         return rows;
@@ -6214,6 +6416,8 @@ const createPrendaRow = (item) => {
         const rowDisp = item.manualOverride
           ? (item.disponibilidadManual || item.disponibilidadCanon || item.disponibilidad)
           : (item.disponibilidadCanon || item.disponibilidad);
+        const tnValue = safeString(item.tnMatch).trim() || "N/A";
+        const tnBadgeClass = tnValue === "OK" ? "badge-success" : "badge-danger";
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
@@ -6225,6 +6429,11 @@ const createPrendaRow = (item) => {
           status: renderStatusCell(rowStatus),
           disponibilidad: renderDisponibilidadCell(rowDisp, rowStatus),
           qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "—"),
+          tn: (() => {
+            const cell = document.createElement("td");
+            cell.appendChild(buildBadge(tnValue, tnBadgeClass));
+            return cell;
+          })(),
           fecha: formatDateCell(item),
           pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
           costo: moneyFmt(item.costo),
@@ -7742,6 +7951,11 @@ const createPrendaRow = (item) => {
           return;
         }
 
+        if (event.target.closest("#btn-upload-corrections")) {
+          openCorrectionsModal();
+          return;
+        }
+
         if (event.target.closest("#ordenSortBtn")) {
           const current = normalizeSortConfig(prendasState.sort);
           const nextDir = current.dir === "asc" ? "desc" : "asc";
@@ -7852,9 +8066,31 @@ const createPrendaRow = (item) => {
       if (editModalSaveButton) {
         editModalSaveButton.addEventListener("click", saveEdit);
       }
+      if (correctionsCloseBtn) {
+        correctionsCloseBtn.addEventListener("click", closeCorrectionsModal);
+      }
+      if (correctionsModalOverlay) {
+        correctionsModalOverlay.addEventListener("click", closeCorrectionsModal);
+      }
+      if (correctionsProcessBtn) {
+        correctionsProcessBtn.addEventListener("click", async () => {
+          correctionsProcessBtn.disabled = true;
+          try {
+            await processCorrectionsFile();
+          } catch (error) {
+            console.error(error);
+            alert(`Error al procesar correcciones: ${error?.message || error}`);
+          } finally {
+            correctionsProcessBtn.disabled = false;
+          }
+        });
+      }
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && editModal && !editModal.classList.contains("hidden")) {
           closeEditModal();
+        }
+        if (event.key === "Escape" && correctionsModal && !correctionsModal.classList.contains("hidden")) {
+          closeCorrectionsModal();
         }
       });
 
