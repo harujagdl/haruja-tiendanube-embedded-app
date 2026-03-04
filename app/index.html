@@ -2640,6 +2640,28 @@ body.haruja-col-resizing{
         <input id="editQtyAvailable" type="number" min="0" step="1" />
       </div>
       <div>
+        <label for="editManualOverride">Override manual</label>
+        <select id="editManualOverride">
+          <option value="false">Automático (por existencias)</option>
+          <option value="true">Manual</option>
+        </select>
+      </div>
+      <div>
+        <label for="editStatusManual">Status (manual)</label>
+        <select id="editStatusManual">
+          <option value="Disponible">Disponible</option>
+          <option value="Vendido">Vendido</option>
+          <option value="Apartado">Apartado</option>
+        </select>
+      </div>
+      <div>
+        <label for="editDisponibilidadManual">Disponibilidad (manual)</label>
+        <select id="editDisponibilidadManual">
+          <option value="Disponible">Disponible</option>
+          <option value="No disponible">No disponible</option>
+        </select>
+      </div>
+      <div>
         <label for="editColor">Color</label>
         <select id="editColor" aria-label="Editar color"></select>
       </div>
@@ -2991,6 +3013,9 @@ const auth = getAuth(app);
       const editPVentaInput = document.getElementById("editPVenta");
       const editCostoInput = document.getElementById("editCosto");
       const editQtyAvailableInput = document.getElementById("editQtyAvailable");
+      const editManualOverride = document.getElementById("editManualOverride");
+      const editStatusManual = document.getElementById("editStatusManual");
+      const editDisponibilidadManual = document.getElementById("editDisponibilidadManual");
       const editColorInput = document.getElementById("editColor");
       const editTallaInput = document.getElementById("editTalla");
       const editCodigoPreview = document.getElementById("editCodigoPreview");
@@ -5857,6 +5882,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
               pVentaOverride: toNumberOrNull(data.pVentaOverride ?? data.pVenta),
               margen: toNumberOrNull(data.margen),
               utilidad: toNumberOrNull(data.utilidad),
+              manualOverride: Boolean(data.manualOverride),
+              statusManual: safeString(data.statusManual).trim(),
+              disponibilidadManual: safeString(data.disponibilidadManual).trim(),
             });
           });
         }
@@ -5897,6 +5925,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
             ? Number(margenFromAdmin.toFixed(1))
             : margenCalculado;
+          row.manualOverride = Boolean(adminExtra.manualOverride);
+          row.statusManual = adminExtra.statusManual || null;
+          row.disponibilidadManual = adminExtra.disponibilidadManual || null;
         });
 
         return rows;
@@ -6177,6 +6208,12 @@ const createPrendaRow = (item) => {
         const adminEnabled = isAdminViewEnabled();
         const docId = safeString(item.docId || item.id).trim();
         const ordenValue = Number(item.orden);
+        const rowStatus = item.manualOverride
+          ? (item.statusManual || item.statusCanon || item.status)
+          : (item.statusCanon || item.status);
+        const rowDisp = item.manualOverride
+          ? (item.disponibilidadManual || item.disponibilidadCanon || item.disponibilidad)
+          : (item.disponibilidadCanon || item.disponibilidad);
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
@@ -6185,8 +6222,8 @@ const createPrendaRow = (item) => {
           color: safeString(item.colorName) || formatLabel(safeString(item.color)) || "--",
           talla: formatLabel(safeString(item.talla)) || "--",
           proveedor: formatLabel(safeString(item.proveedor)) || "--",
-          status: renderStatusCell(item.statusCanon || item.status),
-          disponibilidad: renderDisponibilidadCell(item.disponibilidadCanon || item.disponibilidad, item.statusCanon || item.status),
+          status: renderStatusCell(rowStatus),
+          disponibilidad: renderDisponibilidadCell(rowDisp, rowStatus),
           qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "—"),
           fecha: formatDateCell(item),
           pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
@@ -6291,6 +6328,11 @@ const createPrendaRow = (item) => {
         }
       };
 
+      const setManualControlsEnabled = (enabled) => {
+        if (editStatusManual) editStatusManual.disabled = !enabled;
+        if (editDisponibilidadManual) editDisponibilidadManual.disabled = !enabled;
+      };
+
       const closeEditModal = () => {
         prendasState.editing = null;
         if (editModal) {
@@ -6309,6 +6351,9 @@ const createPrendaRow = (item) => {
         const pVentaOverride = toNumber(rowData.pVentaOverride);
         const colorCode = safeString(rowData.colorCode || rowData.color).trim().toUpperCase();
         const tallaCode = safeString(rowData.tallaCode || rowData.talla).trim().toUpperCase();
+        const manualOverride = Boolean(rowData.manualOverride);
+        const statusManual = (rowData.statusManual || "Disponible").trim();
+        const disponibilidadManual = (rowData.disponibilidadManual || "Disponible").trim();
         prendasState.editing = {
           docId: safeString(rowData.docId || rowData.id).trim(),
           codigo: safeString(rowData.codigo).trim(),
@@ -6324,6 +6369,10 @@ const createPrendaRow = (item) => {
         if (editDescripcionInput) editDescripcionInput.value = safeString(rowData.descripcion).trim();
         if (editColorInput) editColorInput.value = colorCode;
         if (editTallaInput) editTallaInput.value = tallaCode;
+        if (editManualOverride) editManualOverride.value = manualOverride ? "true" : "false";
+        if (editStatusManual) editStatusManual.value = statusManual;
+        if (editDisponibilidadManual) editDisponibilidadManual.value = disponibilidadManual;
+        setManualControlsEnabled(manualOverride);
         if (editModalError) {
           editModalError.textContent = "";
           editModalError.classList.add("hidden");
@@ -6388,11 +6437,20 @@ const createPrendaRow = (item) => {
           const ajusteOverride = Number.isFinite(pVentaOverrideIngresado)
             ? ajustarDesdePrecioConIVA(pVentaOverrideIngresado)
             : null;
-          const availability = qtyAvailable === null
+          const useManual = (editManualOverride?.value === "true");
+          const pickedStatus = (editStatusManual?.value || "").trim();
+          const pickedDisp = (editDisponibilidadManual?.value || "").trim();
+          const autoAvailability = qtyAvailable === null
             ? { status: "No definido", disponibilidad: "No definido" }
             : qtyAvailable > 0
               ? { status: "Disponible", disponibilidad: "Disponible" }
               : { status: "Vendido", disponibilidad: "No disponible" };
+          const finalAvailability = useManual
+            ? {
+                status: pickedStatus || autoAvailability.status,
+                disponibilidad: pickedDisp || autoAvailability.disponibilidad
+              }
+            : autoAvailability;
           if (Number.isFinite(pVentaOverrideIngresado) && pVentaOverrideIngresado < 0) {
             throw new Error("P.Venta debe ser mayor o igual a 0.");
           }
@@ -6420,8 +6478,11 @@ const createPrendaRow = (item) => {
             tallaName,
             descripcion,
             qtyAvailable,
-            status: availability.status,
-            disponibilidad: availability.disponibilidad,
+            manualOverride: useManual,
+            statusManual: useManual ? finalAvailability.status : deleteField(),
+            disponibilidadManual: useManual ? finalAvailability.disponibilidad : deleteField(),
+            status: finalAvailability.status,
+            disponibilidad: finalAvailability.disponibilidad,
             updatedAt: serverTimestamp(),
             updatedBy: userEmail
           };
@@ -6478,8 +6539,11 @@ const createPrendaRow = (item) => {
             utilidad: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? utilidad : deleteField(),
             margen: (Number.isFinite(pVentaVisible) && Number.isFinite(costo)) ? margenPct : deleteField(),
             qtyAvailable,
-            status: availability.status,
-            disponibilidad: availability.disponibilidad,
+            manualOverride: useManual,
+            statusManual: useManual ? finalAvailability.status : deleteField(),
+            disponibilidadManual: useManual ? finalAvailability.disponibilidad : deleteField(),
+            status: finalAvailability.status,
+            disponibilidad: finalAvailability.disponibilidad,
             updatedAt: serverTimestamp(),
             updatedBy: userEmail
           }, { merge: true });
@@ -6520,10 +6584,13 @@ const createPrendaRow = (item) => {
             tallaName,
             descripcion,
             qtyAvailable,
-            status: availability.status,
-            statusCanon: availability.status,
-            disponibilidad: availability.disponibilidad,
-            disponibilidadCanon: availability.disponibilidad,
+            manualOverride: useManual,
+            statusManual: useManual ? finalAvailability.status : null,
+            disponibilidadManual: useManual ? finalAvailability.disponibilidad : null,
+            status: finalAvailability.status,
+            statusCanon: finalAvailability.status,
+            disponibilidad: finalAvailability.disponibilidad,
+            disponibilidadCanon: finalAvailability.disponibilidad,
             costo: Number.isFinite(costo) ? costo : null,
             pVentaOverride: ajusteOverride ? ajusteOverride.precioConIVA : null,
             pVentaDisplay: Number.isFinite(nextPVenta) ? nextPVenta : null,
@@ -7770,6 +7837,11 @@ const createPrendaRow = (item) => {
       }
       if (editTallaInput) {
         editTallaInput.addEventListener("change", updateEditPreview);
+      }
+      if (editManualOverride) {
+        editManualOverride.addEventListener("change", () => {
+          setManualControlsEnabled(editManualOverride.value === "true");
+        });
       }
       if (editModalCancelButton) {
         editModalCancelButton.addEventListener("click", closeEditModal);
