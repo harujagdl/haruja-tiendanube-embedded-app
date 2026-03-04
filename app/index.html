@@ -26,6 +26,7 @@
         --col-color: 110px;
         --col-talla: 90px;
         --col-proveedor: 140px;
+        --col-tn: 90px;
         --col-status: 120px;
         --col-disponibilidad: 140px;
         --col-qtyAvailable: 120px;
@@ -685,6 +686,22 @@
       .badge-danger {
         background: #fee2e2;
         color: #b91c1c;
+      }
+
+      .badge-ok {
+        background: #16a34a;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+      }
+
+      .badge-na {
+        background: #ef4444;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
       }
 
       .row-new {
@@ -1570,6 +1587,8 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table td.col-talla { width: 90px; }
 #dbCodigosSection table.haruja-table th.col-prov,
 #dbCodigosSection table.haruja-table td.col-prov { width: 140px; }
+#dbCodigosSection table.haruja-table th.col-tn,
+#dbCodigosSection table.haruja-table td.col-tn { width: 90px; }
 #dbCodigosSection table.haruja-table th.col-status,
 #dbCodigosSection table.haruja-table td.col-status { width: 110px; }
 #dbCodigosSection table.haruja-table th.col-disp,
@@ -1593,6 +1612,7 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table th[data-col="color"], #dbCodigosSection table.haruja-table td[data-col="color"] { width:var(--col-color); min-width:var(--col-color); max-width:var(--col-color); }
 #dbCodigosSection table.haruja-table th[data-col="talla"], #dbCodigosSection table.haruja-table td[data-col="talla"] { width:var(--col-talla); min-width:var(--col-talla); max-width:var(--col-talla); }
 #dbCodigosSection table.haruja-table th[data-col="proveedor"], #dbCodigosSection table.haruja-table td[data-col="proveedor"] { width:var(--col-proveedor); min-width:var(--col-proveedor); max-width:var(--col-proveedor); }
+#dbCodigosSection table.haruja-table th[data-col="tn"], #dbCodigosSection table.haruja-table td[data-col="tn"] { width:var(--col-tn); min-width:var(--col-tn); max-width:var(--col-tn); }
 #dbCodigosSection table.haruja-table th[data-col="status"], #dbCodigosSection table.haruja-table td[data-col="status"] { width:var(--col-status); min-width:var(--col-status); max-width:var(--col-status); }
 #dbCodigosSection table.haruja-table th[data-col="disponibilidad"], #dbCodigosSection table.haruja-table td[data-col="disponibilidad"] { width:var(--col-disponibilidad); min-width:var(--col-disponibilidad); max-width:var(--col-disponibilidad); }
 #dbCodigosSection table.haruja-table th[data-col="qtyAvailable"], #dbCodigosSection table.haruja-table td[data-col="qtyAvailable"] { width:var(--col-qtyAvailable); min-width:var(--col-qtyAvailable); max-width:var(--col-qtyAvailable); }
@@ -4497,10 +4517,10 @@ const auth = getAuth(app);
         { id: "color", label: "Color", admin: true, public: true, filter: true },
         { id: "talla", label: "Talla", admin: true, public: true, filter: true },
         { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true },
+        { id: "tn", label: "TN", admin: true, public: true, filter: false },
         { id: "status", label: "Status", admin: true, public: true, filter: true },
         { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
         { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: false },
-        { id: "tn", label: "TN", admin: true, public: true, filter: false },
         { id: "fecha", label: "Fecha", admin: true, public: true, filter: false },
         { id: "pventa", label: "Precio", admin: true, public: true, filter: false },
         { id: "costo", label: "Costo", admin: true, public: false, filter: false },
@@ -5986,8 +6006,12 @@ Errores: ${summary.errors}`;
 
           summary.found += 1;
           const payload = {};
-          if (safeString(row.tnMatch).trim()) payload.tnMatch = safeString(row.tnMatch).trim();
-          if (safeString(row.tnSku).trim()) payload.tnSku = safeString(row.tnSku).trim();
+          if (Object.hasOwn(row, "tnMatch")) {
+            payload.tnMatch = safeString(row.tnMatch).trim() || "N/A";
+          }
+          if (Object.hasOwn(row, "tnSku")) {
+            payload.tnSku = safeString(row.tnSku).trim() || null;
+          }
           if (safeString(row.tnVariantId).trim()) payload.tnVariantId = safeString(row.tnVariantId).trim();
           if (safeString(row.tnProductId).trim()) payload.tnProductId = safeString(row.tnProductId).trim();
           if (safeString(row.statusManual).trim()) payload.statusManual = safeString(row.statusManual).trim();
@@ -6417,7 +6441,7 @@ const createPrendaRow = (item) => {
           ? (item.disponibilidadManual || item.disponibilidadCanon || item.disponibilidad)
           : (item.disponibilidadCanon || item.disponibilidad);
         const tnValue = safeString(item.tnMatch).trim() || "N/A";
-        const tnBadgeClass = tnValue === "OK" ? "badge-success" : "badge-danger";
+        const tnBadgeClass = tnValue === "OK" ? "badge-ok" : "badge-na";
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
