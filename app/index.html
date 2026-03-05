@@ -3928,6 +3928,7 @@ const auth = getAuth(app);
       const HEADER_FILTER_KEYS = [
         "status",
         "proveedor",
+        "tn",
         "tipo",
         "color",
         "talla",
@@ -3939,6 +3940,7 @@ const auth = getAuth(app);
       const createEmptyHeaderFilters = () => ({
         status: new Set(),
         proveedor: new Set(),
+        tn: new Set(),
         tipo: new Set(),
         color: new Set(),
         talla: new Set(),
@@ -4015,31 +4017,27 @@ const auth = getAuth(app);
         const embedded = isEmbedded();
         const authEmail = safeString(auth?.currentUser?.email).trim().toLowerCase();
         const hasRuntimeAdminAuth = Boolean(prendasState?.adminByAuth) && isAllowlistedAdmin(authEmail);
-        const canUseMaster = !embedded && isAdmin && hasRuntimeAdminAuth;
-        const collectionName = canUseMaster
-          ? PRENDAS_MASTER_COLLECTION
-          : PRENDAS_PUBLIC_COLLECTION;
 
-        if (embedded && isAdmin) {
-          console.warn("[Prendas] Modo embed detectado: se fuerza colección pública y no se intentará master/admin.");
-        } else if (!embedded && isAdmin && !hasRuntimeAdminAuth) {
-          console.warn("[Prendas] Sin auth admin válida: se fuerza colección pública y no se intentará master/admin.");
+        if (isAdmin && hasRuntimeAdminAuth) {
+          console.log("[Panel] Embedded:", embedded);
+          console.log("[Panel] Colección activa:", PRENDAS_ADMIN_COLLECTION);
+          return PRENDAS_ADMIN_COLLECTION;
         }
 
         console.log("[Panel] Embedded:", embedded);
-        console.log("[Panel] Colección activa:", collectionName);
-        return collectionName;
+        console.log("[Panel] Colección activa:", PRENDAS_PUBLIC_COLLECTION);
+        return PRENDAS_PUBLIC_COLLECTION;
       };
 
       const setPrendasCollections = ({ publicCollection }) => {
         const isAdmin = Boolean(prendasState?.isAdmin);
         const requestedCollection = publicCollection || resolveActivePrendasCollection({ isAdmin });
         const embedded = isEmbedded();
-        activePrendasPublicCollection = embedded
-          ? PRENDAS_PUBLIC_COLLECTION
-          : requestedCollection;
-        if (embedded && requestedCollection !== PRENDAS_PUBLIC_COLLECTION) {
-          console.warn("[Prendas] Embed bloqueó colección no pública:", requestedCollection);
+        activePrendasPublicCollection = requestedCollection;
+
+        if (embedded && requestedCollection !== PRENDAS_PUBLIC_COLLECTION && !prendasState.adminByAuth) {
+          console.warn("[Prendas] Embed sin auth admin: se fuerza pública.");
+          activePrendasPublicCollection = PRENDAS_PUBLIC_COLLECTION;
         }
         prendasRef = collection(db, activePrendasPublicCollection);
         prendasPublicRef = collection(db, activePrendasPublicCollection);
@@ -4517,7 +4515,7 @@ const auth = getAuth(app);
         { id: "color", label: "Color", admin: true, public: true, filter: true },
         { id: "talla", label: "Talla", admin: true, public: true, filter: true },
         { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true },
-        { id: "tn", label: "TN", admin: true, public: true, filter: false },
+        { id: "tn", label: "TN", admin: true, public: true, filter: true },
         { id: "status", label: "Status", admin: true, public: true, filter: true },
         { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
         { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: false },
@@ -5274,6 +5272,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           disponibilidadCanon,
           qtyAvailable,
           tnMatch: safeString(data.tnMatch).trim() || "N/A",
+          tn: safeString(data.tnMatch).trim() || "N/A",
           tnSku: safeString(data.tnSku).trim() || null,
           tnVariantId: safeString(data.tnVariantId).trim() || null,
           tnProductId: safeString(data.tnProductId).trim() || null,
@@ -6168,7 +6167,7 @@ Errores: ${summary.errors}`;
       };
 
       const loadBaseRows = async () => {
-        const cacheKey = "public";
+        const cacheKey = activePrendasPublicCollection || "public";
         if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
           return prendasState.baseRows;
         }
@@ -6187,9 +6186,9 @@ Errores: ${summary.errors}`;
             }
 
             const baseQuery = queryWithoutIsActiveFilter
-              ? query(prendasPublicRef, ...fallbackConstraints)
-              : query(prendasPublicRef, ...primaryConstraints);
-            const fallbackQuery = query(prendasPublicRef, ...fallbackConstraints);
+              ? query(prendasRef, ...fallbackConstraints)
+              : query(prendasRef, ...primaryConstraints);
+            const fallbackQuery = query(prendasRef, ...fallbackConstraints);
             const { snapshot: snap, usedFallback } = await getDocsWithIndexFallback(
               baseQuery,
               queryWithoutIsActiveFilter ? null : fallbackQuery,
