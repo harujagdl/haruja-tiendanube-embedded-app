@@ -6448,7 +6448,16 @@ const createPrendaRow = (item) => {
         const rowDisp = item.manualOverride
           ? (item.disponibilidadManual || item.disponibilidadCanon || item.disponibilidad)
           : (item.disponibilidadCanon || item.disponibilidad);
-        const tnValue = safeString(item.tnMatch).trim() || "N/A";
+        const hasTiendanube =
+          String(item.inventorySource || "").toLowerCase() === "tiendanube"
+          || !!item.lastInventorySyncAt
+          || !!item.lastInventorySyncAtText
+          || !!item.lastInventorySyncAt?.seconds
+          || (!!item.updatedAt && String(item.updatedAt).includes("UTC"))
+          || (item.qtyAvailable !== null
+            && item.qtyAvailable !== undefined
+            && String(item.inventorySource || "").toLowerCase() === "tiendanube");
+        const tnValue = safeString(item.tnMatch).trim() || (hasTiendanube ? "OK" : "N/A");
         const tnBadgeClass = tnValue === "OK" ? "badge-ok" : "badge-na";
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
