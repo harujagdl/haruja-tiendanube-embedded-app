@@ -5246,6 +5246,20 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
         ).trim();
         const fechaTexto = safeString(data.fechaTexto ?? data.FechaTexto ?? "").trim();
+        const inventorySource = safeString(data.inventorySource).trim();
+        const lastInventorySyncAt = data.lastInventorySyncAt ?? null;
+        const lastInventorySyncAtText = safeString(data.lastInventorySyncAtText).trim();
+        const updatedAt = data.updatedAt ?? null;
+        const tnFromDoc = safeString(data.tnMatch).trim();
+        const hasSyncSignal =
+          String(inventorySource || "").toLowerCase() === "tiendanube"
+          || !!lastInventorySyncAt
+          || !!lastInventorySyncAtText
+          || (!!updatedAt && String(updatedAt).includes("UTC"))
+          || (qtyAvailable !== null
+            && qtyAvailable !== undefined
+            && String(inventorySource || "").toLowerCase() === "tiendanube");
+        const tn = tnFromDoc && tnFromDoc !== "N/A" ? tnFromDoc : (hasSyncSignal ? "OK" : "N/A");
         const descripcionLower = descripcion.toLowerCase();
         const codigoUpper = codigo.toUpperCase();
         const _searchKey = `${codigo} ${descripcion}`.toLowerCase().trim();
@@ -5271,8 +5285,12 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           disponibilidad: disponibilidadCanon,
           disponibilidadCanon,
           qtyAvailable,
-          tnMatch: safeString(data.tnMatch).trim() || "N/A",
-          tn: safeString(data.tnMatch).trim() || "N/A",
+          inventorySource,
+          lastInventorySyncAt,
+          lastInventorySyncAtText,
+          updatedAt,
+          tn,
+          tnMatch: tnFromDoc || "N/A",
           tnSku: safeString(data.tnSku).trim() || null,
           tnVariantId: safeString(data.tnVariantId).trim() || null,
           tnProductId: safeString(data.tnProductId).trim() || null,
@@ -6456,7 +6474,7 @@ const createPrendaRow = (item) => {
           || (item.qtyAvailable !== null
             && item.qtyAvailable !== undefined
             && String(item.inventorySource || "").toLowerCase() === "tiendanube");
-        const tnValue = safeString(item.tnMatch).trim() || (hasTiendanube ? "OK" : "N/A");
+        const tnValue = safeString(item.tn).trim() || safeString(item.tnMatch).trim() || (hasTiendanube ? "OK" : "N/A");
         const tnBadgeClass = tnValue === "OK" ? "badge-ok" : "badge-na";
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
