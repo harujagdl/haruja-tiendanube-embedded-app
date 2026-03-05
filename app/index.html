@@ -5991,14 +5991,18 @@ Errores: ${summary.errors}`;
         const updates = [];
 
         for (const row of rows) {
-          const codigo = safeString(row.codigo).trim();
+          const codigo =
+            safeString(row.codigo).trim() ||
+            safeString(row.Codigo).trim() ||
+            safeString(row["CÓDIGO"]).trim();
           if (!codigo) {
             summary.errors += 1;
             continue;
           }
 
-          const docRef = doc(db, PRENDAS_ADMIN_COLLECTION, codigo);
-          const docSnap = await getDoc(docRef);
+          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, codigo);
+          const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, codigo);
+          const docSnap = await getDoc(adminRef);
           if (!docSnap.exists()) {
             summary.notFound += 1;
             continue;
@@ -6022,14 +6026,18 @@ Errores: ${summary.errors}`;
 
           if (!Object.keys(payload).length) continue;
           payload.updatedAt = serverTimestamp();
-          updates.push({ ref: docRef, payload });
+          payload.tnLastSyncAt = new Date().toISOString();
+          updates.push({ adminRef, publicRef, payload });
         }
 
         if (!dryRun) {
           const chunks = chunkArray(updates, 400);
           for (const chunk of chunks) {
             const batch = writeBatch(db);
-            chunk.forEach((item) => batch.set(item.ref, item.payload, { merge: true }));
+            chunk.forEach((item) => {
+              batch.set(item.adminRef, item.payload, { merge: true });
+              batch.set(item.publicRef, item.payload, { merge: true });
+            });
             await batch.commit();
           }
         }
