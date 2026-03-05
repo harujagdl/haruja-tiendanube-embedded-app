@@ -4527,6 +4527,31 @@ const auth = getAuth(app);
         { id: "acciones", label: "Acciones", admin: true, public: false, filter: false }
       ];
 
+      const CSV_COLUMNS_PUBLIC = [
+        { key: "orden", label: "Orden" },
+        { key: "codigo", label: "Código" },
+        { key: "descripcion", label: "Descripción" },
+        { key: "tipo", label: "Tipo" },
+        { key: "color", label: "Color" },
+        { key: "talla", label: "Talla" },
+        { key: "proveedor", label: "Proveedor" },
+        { key: "tn", label: "TN" },
+        { key: "statusCanon", label: "Status" },
+        { key: "disponibilidadCanon", label: "Disponibilidad" },
+        { key: "qtyAvailable", label: "Existencia" },
+        { key: "fechaTexto", label: "Fecha" },
+        { key: "precioConIva", label: "Precio" }
+      ];
+
+      const CSV_COLUMNS_ADMIN = [
+        ...CSV_COLUMNS_PUBLIC,
+        { key: "costo", label: "Costo" },
+        { key: "margen", label: "Margen" },
+        { key: "utilidad", label: "Utilidad" },
+        { key: "inventorySource", label: "InventorySource" },
+        { key: "lastInventorySyncAtText", label: "LastInventorySyncAt" }
+      ];
+
       const getActiveColumns = () => {
         const adminMode = isAdminViewEnabled();
         return PRENDAS_COLUMNS.filter((column) => (adminMode ? column.admin : column.public));
@@ -4551,6 +4576,9 @@ const auth = getAuth(app);
           mkBtn("btn-etiquetas", "Etiquetas"),
           mkBtn("btn-export-csv", "Exportar CSV")
         ];
+        if (adminEnabled) {
+          toolbarButtons.push(mkBtn("btn-export-csv-admin", "Exportar CSV Admin"));
+        }
         if (adminEnabled) {
           toolbarButtons.push(mkBtn("btn-upload-corrections", "Subir correcciones"));
         }
@@ -4654,46 +4682,34 @@ const auth = getAuth(app);
         return `${year}-${month}-${day}`;
       };
 
-      const escapeCsvValue = (value) => {
-        if (value === null || value === undefined) return "";
-        const normalized = String(value).replace(/"/g, '""');
-        if (/[",\n\r]/.test(normalized)) return `"${normalized}"`;
-        return normalized;
+      const toCsvValue = (value) => {
+        const stringValue = value === null || value === undefined ? "" : String(value);
+        const escaped = stringValue.replace(/"/g, '""');
+        return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
       };
 
-      const buildCsv = (rows = []) => {
-        const csvColumns = getActiveColumns().filter((column) => !["select", "acciones"].includes(column.id));
-        const lines = [csvColumns.map((column) => escapeCsvValue(column.label)).join(",")];
-
-        rows.forEach((row) => {
-          const fecha = formatDateCell(row);
-          const precio = getLabelPriceNumber(row);
-          const costo = toNumberOrNull(row?.costo);
-          const valuesByColumn = {
-            orden: Number.isFinite(Number(row?.orden)) ? Number(row.orden) : "",
-            codigo: safeString(row?.codigo).trim().toUpperCase(),
-            descripcion: safeString(row?.descripcion).trim(),
-            tipo: safeString(row?.tipo).trim(),
+      const buildCsv = (rows = [], columns = CSV_COLUMNS_PUBLIC) => {
+        const header = columns.map((column) => toCsvValue(column.label)).join(",");
+        const lines = rows.map((row) => {
+          const resolvedPrice = getLabelPriceNumber(row);
+          const normalizedRow = {
+            ...row,
             color: safeString(row?.colorName || row?.color).trim(),
             talla: safeString(row?.tallaName || row?.talla).trim(),
-            proveedor: safeString(row?.proveedor).trim(),
-            status: safeString(row?.status).trim(),
-            disponibilidad: safeString(row?.disponibilidad).trim(),
-            qtyAvailable: toNumberOrNull(row?.qtyAvailable) ?? "",
-            fecha: fecha === "--" ? "" : fecha,
-            pventa: Number.isFinite(precio) ? precio : "",
-            costo: Number.isFinite(costo) ? costo : "",
-            margen: toNumberOrNull(row?.margen) ?? "",
-            utilidad: toNumberOrNull(row?.utilidad) ?? ""
+            statusCanon: safeString(row?.statusCanon || row?.status).trim(),
+            disponibilidadCanon: safeString(row?.disponibilidadCanon || row?.disponibilidad).trim(),
+            fechaTexto: safeString(row?.fechaTexto).trim() || formatDateCell(row),
+            precioConIva: Number.isFinite(resolvedPrice) ? resolvedPrice : "",
+            lastInventorySyncAtText: safeString(row?.lastInventorySyncAtText).trim(),
+            tn: safeString(row?.tn).trim().toUpperCase() === "OK" ? "OK" : "N/A"
           };
-          lines.push(csvColumns.map((column) => escapeCsvValue(valuesByColumn[column.id] ?? "")).join(","));
+          return columns.map((column) => toCsvValue(normalizedRow?.[column.key])).join(",");
         });
-
-        return lines.join("\r\n");
+        return [header, ...lines].join("\n");
       };
 
       const downloadFile = (content, filename, mime) => {
-        const blob = new Blob([content], { type: mime });
+        const blob = new Blob(["\uFEFF" + content], { type: mime });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;
@@ -4704,54 +4720,25 @@ const auth = getAuth(app);
         URL.revokeObjectURL(url);
       };
 
-      const exportRowsToCsv = (rows, { filtered = false } = {}) => {
+      const exportRowsToCsv = (rows, { mode = "public" } = {}) => {
         if (!Array.isArray(rows) || !rows.length) {
           setPrendasAlert("No hay filas para exportar.");
           return;
         }
-        const csv = buildCsv(rows);
-        const suffix = filtered ? "_filtrados" : "";
-        const filename = `haruja_codigos${suffix}_${getTodayIso()}.csv`;
+        const columns = mode === "admin" ? CSV_COLUMNS_ADMIN : CSV_COLUMNS_PUBLIC;
+        const csv = buildCsv(rows, columns);
+        const filename = mode === "admin"
+          ? `haruja_prendas_admin_${getTodayIso()}.csv`
+          : `haruja_prendas_public_${getTodayIso()}.csv`;
         downloadFile(csv, filename, "text/csv;charset=utf-8;");
         setPrendasAlert(`Exportación completada: ${rows.length} registros.`);
       };
 
-      const handleExportCsv = async () => {
-        const mode = window.prompt(
-          `Exportar CSV:
-1 = solo resultados filtrados
-2 = toda la base (sin filtros)`,
-          "1"
-        );
-        if (mode === null) return;
-        const normalizedMode = safeString(mode).trim();
-
-        if (normalizedMode === "2") {
-          try {
-            setLoading(true, "Exportando toda la base...");
-            setPrendasAlert("Exportando toda la base, espera un momento...");
-            const allRows = await loadBaseRows();
-            const rowsToExport = allRows.map((row) => ({ ...row }));
-            if (isAdminViewEnabled() && rowsToExport.length) {
-              await mergeAdminFields(rowsToExport);
-            }
-            exportRowsToCsv(rowsToExport, { filtered: false });
-          } catch (error) {
-            console.error(error);
-            setPrendasAlert("No se pudo exportar toda la base de datos.");
-          } finally {
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (normalizedMode !== "1") {
-          setPrendasAlert("Opción inválida. Escribe 1 o 2 para exportar.");
-          return;
-        }
-
-        const rows = getRowsForScope("filtered");
-        exportRowsToCsv(rows, { filtered: true });
+      const exportCsv = ({ mode = "public" } = {}) => {
+        const rows = prendasState?.rowsAfterAll?.length
+          ? prendasState.rowsAfterAll
+          : (prendasState?.baseRows || []);
+        exportRowsToCsv(rows, { mode });
       };
 
       const getLabelLogoSrc = () => {
@@ -5250,7 +5237,6 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const lastInventorySyncAt = data.lastInventorySyncAt ?? null;
         const lastInventorySyncAtText = safeString(data.lastInventorySyncAtText).trim();
         const updatedAt = data.updatedAt ?? null;
-        const tnFromDoc = safeString(data.tnMatch).trim();
         const tn = safeString(data.tnMatch).trim().toUpperCase() === "OK" ? "OK" : "N/A";
         const descripcionLower = descripcion.toLowerCase();
         const codigoUpper = codigo.toUpperCase();
@@ -7988,7 +7974,12 @@ const createPrendaRow = (item) => {
         }
 
         if (event.target.closest("#btn-export-csv")) {
-          handleExportCsv();
+          exportCsv({ mode: "public" });
+          return;
+        }
+
+        if (event.target.closest("#btn-export-csv-admin")) {
+          exportCsv({ mode: "admin" });
           return;
         }
 
