@@ -263,6 +263,51 @@ const main = async () => {
 
   const col = db.collection(ADMIN_COLLECTION);
 
+  const resetTnMatches = async () => {
+    console.log("Reseteando tnMatch='N/A' en admin antes de sync...");
+
+    const snap = await col.where("tnMatch", "==", "OK").get();
+    console.log("Docs a resetear:", snap.size);
+
+    if (dryRun) {
+      console.log("DRY_RUN=true → no se aplicará reset tnMatch.");
+      return;
+    }
+
+    const batchSize = 400;
+    let batch = db.batch();
+    let count = 0;
+    let written = 0;
+
+    for (const doc of snap.docs) {
+      batch.update(doc.ref, {
+        tnMatch: "N/A",
+        tnSku: null,
+        tnVariantId: null,
+        tnProductId: null,
+        tnNotes: "reset-before-sync",
+        updatedAt: new Date().toISOString(),
+      });
+      count += 1;
+
+      if (count % batchSize === 0) {
+        await batch.commit();
+        written += batchSize;
+        console.log("Reseteados:", written);
+        batch = db.batch();
+      }
+    }
+
+    if (count % batchSize !== 0) {
+      await batch.commit();
+      written += count % batchSize;
+    }
+
+    console.log("Reset completo. Total reseteados:", written);
+  };
+
+  await resetTnMatches();
+
   const updates = [];
   let totalSkusTiendanube = 0;
   let totalSyncedWithTiendanube = 0;
