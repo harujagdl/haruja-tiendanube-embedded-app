@@ -226,17 +226,27 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
 };
 
 const findAdminDocBySku = async (col, sku) => {
-  const skuNorm = normalizeCodigo(sku);
+  const skuRaw = String(sku ?? "").trim().toUpperCase();
+  const skuNorm = normalizeCodigo(skuRaw); // convierte / -> -
+  const skuFirstDashToSlash = skuNorm.replace("-", "/"); // SOLO el primer "-" -> "/"
+  const skuNoSpaces = skuRaw.replace(/\s+/g, "");
 
-  let snap = await col.where("codigo", "==", skuNorm).limit(1).get();
+  const candidates = [
+    skuRaw,
+    skuNoSpaces,
+    skuNorm,
+    skuFirstDashToSlash,
+  ].filter(Boolean);
 
-  if (snap.empty) {
-    const alt = skuNorm.replace(/-/g, "/");
-    snap = await col.where("codigo", "==", alt).limit(1).get();
+  for (const c of candidates) {
+    let snap = await col.where("codigo", "==", c).limit(1).get();
+    if (!snap.empty) return snap.docs[0].ref;
+
+    snap = await col.where("code", "==", c).limit(1).get();
+    if (!snap.empty) return snap.docs[0].ref;
   }
 
-  if (snap.empty) return null;
-  return snap.docs[0].ref;
+  return null;
 };
 
 const main = async () => {
@@ -264,7 +274,11 @@ const main = async () => {
     const docRef = await findAdminDocBySku(col, sku);
     if (!docRef) {
       totalNotFound += 1;
-      console.log("SKU no encontrado:", sku);
+      console.log("SKU no encontrado:", sku, "candidates:", [
+        String(sku ?? "").trim().toUpperCase(),
+        normalizeCodigo(sku),
+        normalizeCodigo(sku).replace("-", "/"),
+      ]);
       continue;
     }
 
