@@ -2,6 +2,7 @@ import process from "process";
 import admin from "firebase-admin";
 
 const ADMIN_COLLECTION = "HarujaPrendas_2025_admin";
+const PUBLIC_COLLECTION = "HarujaPrendas_2025_public";
 const BATCH_LIMIT = 450;
 
 const parseBoolean = (value, defaultValue = false) => {
@@ -281,7 +282,8 @@ const main = async () => {
         statusCanon,
         inventorySource: "tiendanube",
         tnMatch: "OK",
-        tnSku: tnInfo?.tnSku || sku,
+        tnSku: sku,
+        tnStoreId: String(storeId),
         tnVariantId: tnInfo?.tnVariantId || null,
         tnProductId: tnInfo?.tnProductId || null,
         tnLastSyncAt: new Date().toISOString(),
@@ -313,6 +315,8 @@ const main = async () => {
 
     chunk.forEach((item) => {
       batch.set(item.ref, item.payload, { merge: true });
+      const publicRef = db.collection(PUBLIC_COLLECTION).doc(item.ref.id);
+      batch.set(publicRef, item.payload, { merge: true });
     });
 
     await batch.commit();
