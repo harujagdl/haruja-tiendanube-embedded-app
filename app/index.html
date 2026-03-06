@@ -6120,6 +6120,23 @@ const createPrendaRow = (item) => {
         editModal.setAttribute("aria-hidden", "false");
       };
 
+      window.closeCorrectionsModal = function closeCorrectionsModal() {
+        const modal = document.getElementById("correctionsModal");
+        if (!modal) return;
+
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+      };
+
+      window.openCorrectionsModal = function openCorrectionsModal() {
+        const modal = document.getElementById("correctionsModal");
+        if (!modal) return;
+        if (typeof isAdminViewEnabled === "function" && !isAdminViewEnabled()) return;
+
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+      };
+
       const updateRowInMemory = (docId, updates) => {
         const applyTo = (rows = []) => {
           rows.forEach((row) => {
@@ -7486,7 +7503,7 @@ const createPrendaRow = (item) => {
         }
 
         if (event.target.closest("#btn-upload-corrections")) {
-          openCorrectionsModal();
+          window.openCorrectionsModal();
           return;
         }
 
@@ -7600,6 +7617,13 @@ const createPrendaRow = (item) => {
           setManualControlsEnabled(editManualOverride.value === "true");
         });
       }
+      if (typeof window.closeCorrectionsModal !== "function") {
+        window.closeCorrectionsModal = function () {};
+      }
+      if (typeof window.openCorrectionsModal !== "function") {
+        window.openCorrectionsModal = function () {};
+      }
+
       if (editModalCancelButton) {
         editModalCancelButton.addEventListener("click", closeEditModal);
       }
@@ -7610,10 +7634,10 @@ const createPrendaRow = (item) => {
         editModalSaveButton.addEventListener("click", saveEdit);
       }
       if (correctionsCloseBtn) {
-        correctionsCloseBtn.addEventListener("click", closeCorrectionsModal);
+        correctionsCloseBtn.addEventListener("click", window.closeCorrectionsModal);
       }
       if (correctionsModalOverlay) {
-        correctionsModalOverlay.addEventListener("click", closeCorrectionsModal);
+        correctionsModalOverlay.addEventListener("click", window.closeCorrectionsModal);
       }
       if (correctionsProcessBtn) {
         correctionsProcessBtn.addEventListener("click", async () => {
@@ -7633,7 +7657,7 @@ const createPrendaRow = (item) => {
           closeEditModal();
         }
         if (event.key === "Escape" && correctionsModal && !correctionsModal.classList.contains("hidden")) {
-          closeCorrectionsModal();
+          window.closeCorrectionsModal();
         }
       });
 
