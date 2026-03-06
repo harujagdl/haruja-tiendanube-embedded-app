@@ -6458,8 +6458,8 @@ const createPrendaRow = (item) => {
         const supplierCode = safeString(registroSupplierCodeInput?.value).trim();
 
         if (isSupplier) {
-          if (!tipo || !proveedor || !color || !talla || !supplierCode) {
-            mostrarErrorRegistro("Completa Proveedor, Producto, Código original, Color y Talla");
+          if (!supplierCode || !color || !talla) {
+            mostrarErrorRegistro("Completa Código original, Color y Talla");
             return false;
           }
           return true;
@@ -6583,8 +6583,8 @@ const createPrendaRow = (item) => {
         const lock = Boolean(isSupplier);
         setLocked(registroProducto, lock);
         setLocked(registroProveedor, lock);
-        setLocked(registroCreatedBy, lock);
-        if (registroDetalles) setLocked(registroDetalles, lock);
+        setLocked(registroCreatedBy, false);
+        if (registroDetalles) setLocked(registroDetalles, false);
       };
 
       const getFormPayload = () => {
@@ -6760,8 +6760,8 @@ const createPrendaRow = (item) => {
               codigoBase: baseCode,
               baseCode,
               variantKey,
-              proveedor: preview.providerCode,
-              tipo: preview.typeCode,
+              proveedor: preview.providerCode || null,
+              tipo: preview.typeCode || null,
               color: preview.colorClave,
               colorCode: preview.colorClave,
               colorName: getSelectedName(registroColor).trim() || preview.colorClave,
