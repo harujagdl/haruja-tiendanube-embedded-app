@@ -504,7 +504,8 @@
       }
 
       .filter-popover input[type="text"],
-      .filter-popover input[type="number"] {
+      .filter-popover input[type="number"],
+      .filter-popover select {
         width: 100%;
         border: 1px solid #d0d5dd;
         border-radius: 10px;
@@ -1616,8 +1617,8 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table th[data-col="status"], #dbCodigosSection table.haruja-table td[data-col="status"] { width:var(--col-status); min-width:var(--col-status); max-width:var(--col-status); }
 #dbCodigosSection table.haruja-table th[data-col="disponibilidad"], #dbCodigosSection table.haruja-table td[data-col="disponibilidad"] { width:var(--col-disponibilidad); min-width:var(--col-disponibilidad); max-width:var(--col-disponibilidad); }
 #dbCodigosSection table.haruja-table th[data-col="qtyAvailable"], #dbCodigosSection table.haruja-table td[data-col="qtyAvailable"] { width:var(--col-qtyAvailable); min-width:var(--col-qtyAvailable); max-width:var(--col-qtyAvailable); }
-#dbCodigosSection table.haruja-table th[data-col="fechaTexto"], #dbCodigosSection table.haruja-table td[data-col="fechaTexto"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
-#dbCodigosSection table.haruja-table th[data-col="precioConIva"], #dbCodigosSection table.haruja-table td[data-col="precioConIva"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
+#dbCodigosSection table.haruja-table th[data-col="fecha"], #dbCodigosSection table.haruja-table td[data-col="fecha"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
+#dbCodigosSection table.haruja-table th[data-col="pventa"], #dbCodigosSection table.haruja-table td[data-col="pventa"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
 #dbCodigosSection table.haruja-table th[data-col="costo"], #dbCodigosSection table.haruja-table td[data-col="costo"] { width:var(--col-costo); min-width:var(--col-costo); max-width:var(--col-costo); }
 #dbCodigosSection table.haruja-table th[data-col="margen"], #dbCodigosSection table.haruja-table td[data-col="margen"] { width:var(--col-margen); min-width:var(--col-margen); max-width:var(--col-margen); }
 #dbCodigosSection table.haruja-table th[data-col="utilidad"], #dbCodigosSection table.haruja-table td[data-col="utilidad"] { width:var(--col-utilidad); min-width:var(--col-utilidad); max-width:var(--col-utilidad); }
@@ -2022,10 +2023,12 @@ th.col-drag-over {
       #dbCodigosSection .th-control{width:100%;display:flex;}
       #dbCodigosSection .th-control select{width:100%;height:30px;padding:0 10px;font-size:12px;border-radius:10px;border:1px solid rgba(255,255,255,.30);background:rgba(255,255,255,.10);color:#fff;}
       #dbCodigosSection .th-control select option{color:#111;background:#fff;}
-      #dbCodigosSection .th-range-filter{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
-      #dbCodigosSection .th-range-filter input{width:100%;min-width:72px;height:30px;border-radius:10px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);color:#fff;padding:0 10px;font-size:12px;outline:none;}
-      #dbCodigosSection .th-range-filter input::placeholder{color:rgba(255,255,255,.75);}
-      #dbCodigosSection .th-range-filter input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.85;cursor:pointer;}
+      #dbCodigosSection .th-control-button{display:flex;align-items:center;justify-content:flex-start;margin-top:8px;}
+      #dbCodigosSection .th-filter-btn{appearance:none;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.08);color:#fff;border-radius:999px;min-height:34px;padding:0 12px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:.18s ease;font-size:13px;font-weight:600;}
+      #dbCodigosSection .th-filter-btn:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.34);}
+      #dbCodigosSection .th-filter-btn.is-active{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.55);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);}
+      #dbCodigosSection .th-filter-icon{font-size:13px;line-height:1;opacity:.95;}
+      #dbCodigosSection .th-filter-text{white-space:nowrap;}
       #dbCodigosSection table.haruja-table tbody td{padding:10px;border-right:1px solid rgba(0,0,0,.12);border-bottom:1px solid rgba(0,0,0,.06);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;}
       #dbCodigosSection table.haruja-table tbody tr:hover td{background:rgba(30,94,255,.05);}
       #dbCodigosSection table.haruja-table tbody td:last-child{border-right:none;}
@@ -2033,6 +2036,10 @@ th.col-drag-over {
         #dbCodigosSection table.haruja-table thead th{padding:8px;}
         #dbCodigosSection .th-inner{min-height:56px;gap:6px;}
         #dbCodigosSection .th-control select{height:28px;border-radius:9px;}
+      }
+      @media (max-width:980px){
+        #dbCodigosSection .th-filter-text{display:none;}
+        #dbCodigosSection .th-filter-btn{width:34px;min-width:34px;justify-content:center;padding:0;}
       }
 
       #meta-vs-venta .meta-topbar {
@@ -3938,15 +3945,47 @@ const auth = getAuth(app);
         "talla",
         "disponibilidad"
       ];
-      const HEADER_RANGE_FILTERS = {
-        qtyAvailable: { min: "existenciasMin", max: "existenciasMax" },
-        precioConIva: { min: "precioMin", max: "precioMax" },
-        costo: { min: "costoMin", max: "costoMax" },
-        margen: { min: "margenMin", max: "margenMax" },
-        utilidad: { min: "utilidadMin", max: "utilidadMax" }
-      };
-      const HEADER_DATE_FILTERS = {
-        fechaTexto: { from: "fechaDesde", to: "fechaHasta" }
+      const RANGE_FILTER_CONFIG = {
+        pventa: {
+          title: "Filtrar Precio",
+          minKey: "pventaMin",
+          maxKey: "pventaMax",
+          minLabel: "Mínimo",
+          maxLabel: "Máximo",
+          step: "0.01"
+        },
+        qtyAvailable: {
+          title: "Filtrar Existencias",
+          minKey: "qtyAvailableMin",
+          maxKey: "qtyAvailableMax",
+          minLabel: "Mínimo",
+          maxLabel: "Máximo",
+          step: "1"
+        },
+        costo: {
+          title: "Filtrar Costo",
+          minKey: "costoMin",
+          maxKey: "costoMax",
+          minLabel: "Mínimo",
+          maxLabel: "Máximo",
+          step: "0.01"
+        },
+        margen: {
+          title: "Filtrar Margen",
+          minKey: "margenMin",
+          maxKey: "margenMax",
+          minLabel: "Mínimo",
+          maxLabel: "Máximo",
+          step: "0.01"
+        },
+        utilidad: {
+          title: "Filtrar Utilidad",
+          minKey: "utilidadMin",
+          maxKey: "utilidadMax",
+          minLabel: "Mínimo",
+          maxLabel: "Máximo",
+          step: "0.01"
+        }
       };
       const HEADER_POPOVER_MARGIN = 12;
       const HEADER_POPOVER_OFFSET = 8;
@@ -3959,23 +3998,20 @@ const auth = getAuth(app);
         talla: new Set(),
         disponibilidad: new Set(),
 
-        existenciasMin: "",
-        existenciasMax: "",
+        pventaMin: null,
+        pventaMax: null,
 
-        precioMin: "",
-        precioMax: "",
+        qtyAvailableMin: null,
+        qtyAvailableMax: null,
 
-        costoMin: "",
-        costoMax: "",
+        costoMin: null,
+        costoMax: null,
 
-        margenMin: "",
-        margenMax: "",
+        margenMin: null,
+        margenMax: null,
 
-        utilidadMin: "",
-        utilidadMax: "",
-
-        fechaDesde: "",
-        fechaHasta: "",
+        utilidadMin: null,
+        utilidadMax: null,
 
         fechaYear: "",
         fechaMonth: ""
@@ -4541,19 +4577,23 @@ const auth = getAuth(app);
         { id: "orden", label: "Orden", admin: true, public: true, filter: false },
         { id: "codigo", label: "Código", admin: true, public: true, filter: false },
         { id: "descripcion", label: "Descripción", admin: true, public: true, filter: false },
-        { id: "tipo", label: "Tipo", admin: true, public: true, filter: true },
-        { id: "color", label: "Color", admin: true, public: true, filter: true },
-        { id: "talla", label: "Talla", admin: true, public: true, filter: true },
-        { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true },
-        { id: "tn", label: "TN", admin: true, public: true, filter: true },
-        { id: "status", label: "Status", admin: true, public: true, filter: true },
-        { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
-        { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: true, filterType: "range-number" },
-        { id: "fechaTexto", label: "Fecha", admin: true, public: true, filter: true, filterType: "range-date" },
-        { id: "precioConIva", label: "Precio", admin: true, public: true, filter: true, filterType: "range-number" },
-        { id: "costo", label: "Costo", admin: true, public: false, filter: true, filterType: "range-number" },
-        { id: "margen", label: "Margen", admin: true, public: false, filter: true, filterType: "range-number" },
-        { id: "utilidad", label: "Utilidad", admin: true, public: false, filter: true, filterType: "range-number" },
+
+        { id: "tipo", label: "Tipo", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "color", label: "Color", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "talla", label: "Talla", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "proveedor", label: "Proveedor", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "tn", label: "TN", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "status", label: "Status", admin: true, public: true, filter: true, filterUi: "select" },
+        { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true, filterUi: "select" },
+
+        { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: true, filterUi: "popover-range" },
+        { id: "fecha", label: "Fecha", admin: true, public: true, filter: true, filterUi: "popover-date" },
+        { id: "pventa", label: "Precio", admin: true, public: true, filter: true, filterUi: "popover-range" },
+
+        { id: "costo", label: "Costo", admin: true, public: false, filter: true, filterUi: "popover-range" },
+        { id: "margen", label: "Margen", admin: true, public: false, filter: true, filterUi: "popover-range" },
+        { id: "utilidad", label: "Utilidad", admin: true, public: false, filter: true, filterUi: "popover-range" },
+
         { id: "acciones", label: "Acciones", admin: true, public: false, filter: false }
       ];
 
@@ -4615,51 +4655,7 @@ const auth = getAuth(app);
         toolbar.replaceChildren(...toolbarButtons);
       };
 
-      const createHeaderControl = (column) => {
-        if (!column?.filter) return null;
-
-        if (column.filterType === "range-number") {
-          const keys = HEADER_RANGE_FILTERS[column.id];
-          if (!keys) return null;
-          const controlWrap = document.createElement("div");
-          controlWrap.className = "th-range-filter";
-
-          const minInput = document.createElement("input");
-          minInput.type = "number";
-          minInput.placeholder = "Min";
-          minInput.dataset.filterKey = keys.min;
-          minInput.value = safeString(prendasState.filters.header[keys.min] ?? "");
-
-          const maxInput = document.createElement("input");
-          maxInput.type = "number";
-          maxInput.placeholder = "Max";
-          maxInput.dataset.filterKey = keys.max;
-          maxInput.value = safeString(prendasState.filters.header[keys.max] ?? "");
-
-          controlWrap.append(minInput, maxInput);
-          return controlWrap;
-        }
-
-        if (column.filterType === "range-date") {
-          const keys = HEADER_DATE_FILTERS[column.id];
-          if (!keys) return null;
-          const controlWrap = document.createElement("div");
-          controlWrap.className = "th-range-filter";
-
-          const fromInput = document.createElement("input");
-          fromInput.type = "date";
-          fromInput.dataset.filterKey = keys.from;
-          fromInput.value = safeString(prendasState.filters.header[keys.from] ?? "");
-
-          const toInput = document.createElement("input");
-          toInput.type = "date";
-          toInput.dataset.filterKey = keys.to;
-          toInput.value = safeString(prendasState.filters.header[keys.to] ?? "");
-
-          controlWrap.append(fromInput, toInput);
-          return controlWrap;
-        }
-
+      const createHeaderControlSelect = (column) => {
         const controlWrap = document.createElement("div");
         controlWrap.className = "th-control";
         const select = document.createElement("select");
@@ -4682,6 +4678,44 @@ const auth = getAuth(app);
         select.value = selected[0] || "";
         controlWrap.appendChild(select);
         return controlWrap;
+      };
+
+      const createHeaderControlButton = (columnKey, label = "Filtrar") => {
+        const wrap = document.createElement("div");
+        wrap.className = "th-control th-control-button";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "th-filter-btn";
+        btn.dataset.headerPopover = columnKey;
+        btn.setAttribute("aria-label", `Filtrar ${label}`);
+        btn.innerHTML = `
+          <span class="th-filter-icon">⌕</span>
+          <span class="th-filter-text">Filtrar</span>
+        `;
+
+        if (isHeaderFilterActive(columnKey)) {
+          btn.classList.add("is-active");
+        }
+
+        btn.addEventListener("click", (event) => {
+          event.stopPropagation();
+          renderHeaderFilterPopover(columnKey, btn);
+        });
+
+        wrap.appendChild(btn);
+        return wrap;
+      };
+
+      const createHeaderControl = (column) => {
+        if (!column?.filter) return null;
+        if (column.filterUi === "select") {
+          return createHeaderControlSelect(column);
+        }
+        if (column.filterUi === "popover-range" || column.filterUi === "popover-date") {
+          return createHeaderControlButton(column.id, column.label);
+        }
+        return null;
       };
 
       const renderTableHeader = () => {
@@ -5472,23 +5506,37 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       });
 
       const isHeaderFilterActive = (key) => {
-        const numberRange = HEADER_RANGE_FILTERS[key];
-        if (numberRange) {
-          return Boolean(prendasState.filters.header[numberRange.min] || prendasState.filters.header[numberRange.max]);
+        const hf = prendasState.filters.header || {};
+
+        if (key === "pventa") {
+          return hf.pventaMin !== null || hf.pventaMax !== null;
         }
-        const dateRange = HEADER_DATE_FILTERS[key];
-        if (dateRange) {
-          return Boolean(
-            prendasState.filters.header[dateRange.from] ||
-            prendasState.filters.header[dateRange.to] ||
-            prendasState.filters.header.fechaYear ||
-            prendasState.filters.header.fechaMonth
-          );
+
+        if (key === "qtyAvailable") {
+          return hf.qtyAvailableMin !== null || hf.qtyAvailableMax !== null;
         }
+
+        if (key === "costo") {
+          return hf.costoMin !== null || hf.costoMax !== null;
+        }
+
+        if (key === "margen") {
+          return hf.margenMin !== null || hf.margenMax !== null;
+        }
+
+        if (key === "utilidad") {
+          return hf.utilidadMin !== null || hf.utilidadMax !== null;
+        }
+
         if (key === "orden") {
           return (prendasState.sort?.dir || DEFAULT_PRENDAS_SORT.dir) !== DEFAULT_PRENDAS_SORT.dir;
         }
-        return (prendasState.filters.header[key]?.size || 0) > 0;
+
+        if (key === "fecha") {
+          return Boolean(hf.fechaYear || hf.fechaMonth);
+        }
+
+        return (hf[key]?.size || 0) > 0;
       };
 
       const applyGlobalFilters = (rows, globalFilters) => {
@@ -5548,27 +5596,50 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           if (!hasChecklistMatch) return false;
 
           const hf = headerFilters || {};
-          if (!inNumberRange(item.qtyAvailable, hf.existenciasMin, hf.existenciasMax)) return false;
-          if (!inNumberRange(item.precioConIva, hf.precioMin, hf.precioMax)) return false;
-          if (!inNumberRange(item.costo, hf.costoMin, hf.costoMax)) return false;
-          if (!inNumberRange(item.margen, hf.margenMin, hf.margenMax)) return false;
-          if (!inNumberRange(item.utilidad, hf.utilidadMin, hf.utilidadMax)) return false;
 
-          const itemDate = toComparableDate(item.fechaTexto);
-          const fromDate = hf.fechaDesde ? new Date(`${hf.fechaDesde}T00:00:00`) : null;
-          const toDate = hf.fechaHasta ? new Date(`${hf.fechaHasta}T23:59:59`) : null;
+          const pventa = toNum(resolvePVenta(item));
+          if (hf.pventaMin != null || hf.pventaMax != null) {
+            if (pventa === null) return false;
+            if (hf.pventaMin != null && pventa < hf.pventaMin) return false;
+            if (hf.pventaMax != null && pventa > hf.pventaMax) return false;
+          }
+
+          const qty = toNum(item.qtyAvailable);
+          if (hf.qtyAvailableMin != null || hf.qtyAvailableMax != null) {
+            if (qty === null) return false;
+            if (hf.qtyAvailableMin != null && qty < hf.qtyAvailableMin) return false;
+            if (hf.qtyAvailableMax != null && qty > hf.qtyAvailableMax) return false;
+          }
+
+          const costo = toNum(item.costo);
+          if (hf.costoMin != null || hf.costoMax != null) {
+            if (costo === null) return false;
+            if (hf.costoMin != null && costo < hf.costoMin) return false;
+            if (hf.costoMax != null && costo > hf.costoMax) return false;
+          }
+
+          const margen = toNum(item.margen);
+          if (hf.margenMin != null || hf.margenMax != null) {
+            if (margen === null) return false;
+            if (hf.margenMin != null && margen < hf.margenMin) return false;
+            if (hf.margenMax != null && margen > hf.margenMax) return false;
+          }
+
+          const utilidad = toNum(item.utilidad);
+          if (hf.utilidadMin != null || hf.utilidadMax != null) {
+            if (utilidad === null) return false;
+            if (hf.utilidadMin != null && utilidad < hf.utilidadMin) return false;
+            if (hf.utilidadMax != null && utilidad > hf.utilidadMax) return false;
+          }
 
           if (hf.fechaYear || hf.fechaMonth) {
-            const d = itemDate || resolveComparableDate(item);
+            const d = resolveComparableDate(item);
             if (!d) return false;
             const year = String(d.getFullYear());
             const month = String(d.getMonth() + 1).padStart(2, "0");
             if (hf.fechaYear && year !== String(hf.fechaYear)) return false;
             if (hf.fechaMonth && month !== String(hf.fechaMonth)) return false;
           }
-
-          if (fromDate && (!itemDate || itemDate < fromDate)) return false;
-          if (toDate && (!itemDate || itemDate > toDate)) return false;
 
           return true;
         });
@@ -5694,13 +5765,13 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const excludeNoPrice = globalFilters.includeNoPrice === false;
         const hasHeaderFilters = HEADER_FILTER_KEYS.some((key) => (headerFilters[key]?.size || 0) > 0);
         const hasHeaderRanges = [
-          "existenciasMin", "existenciasMax",
-          "precioMin", "precioMax",
+          "qtyAvailableMin", "qtyAvailableMax",
+          "pventaMin", "pventaMax",
           "costoMin", "costoMax",
           "margenMin", "margenMax",
           "utilidadMin", "utilidadMax",
-          "fechaDesde", "fechaHasta"
-        ].some((key) => Boolean(headerFilters[key]));
+          "fechaYear", "fechaMonth"
+        ].some((key) => headerFilters[key] !== null && headerFilters[key] !== "");
         return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters || hasHeaderRanges;
       };
 
@@ -5729,6 +5800,11 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
 
       const updateHeaderFilterButtonsState = () => {
         updateOrdenSortToggleUi();
+        document.querySelectorAll("button[data-header-popover]").forEach((button) => {
+          const key = safeString(button.dataset.headerPopover).trim();
+          if (!key) return;
+          button.classList.toggle("is-active", isHeaderFilterActive(key));
+        });
       };
 
       const closeHeaderPopover = () => {
@@ -5797,8 +5873,202 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         requestAnimationFrame(positionHeaderPopover);
       };
 
-      const renderHeaderFilterPopover = () => {
-        // Los filtros de header ahora se renderizan inline (sin popover).
+      const renderHeaderFilterPopover = (key, anchorButton) => {
+        if (!key || !anchorButton) return;
+        if (prendasState.headerPopover?.key === key && prendasState.headerPopover?.anchorButton === anchorButton) {
+          closeHeaderPopover();
+          return;
+        }
+        closeHeaderPopover();
+
+        const container = document.createElement("div");
+        container.className = "filter-popover";
+
+        const rangeCfg = RANGE_FILTER_CONFIG[key];
+        if (rangeCfg) {
+          container.classList.add("range-popover");
+
+          const currentMin = prendasState.filters.header[rangeCfg.minKey];
+          const currentMax = prendasState.filters.header[rangeCfg.maxKey];
+
+          container.innerHTML = `
+            <div class="popover-head"><p class="popover-title">${rangeCfg.title}</p></div>
+            <div class="range-fields">
+              <div class="range-field">
+                <label for="range-min">${rangeCfg.minLabel}</label>
+                <input id="range-min" type="number" min="0" step="${rangeCfg.step}" placeholder="0" value="" data-range-min />
+              </div>
+              <div class="range-field">
+                <label for="range-max">${rangeCfg.maxLabel}</label>
+                <input id="range-max" type="number" min="0" step="${rangeCfg.step}" placeholder="0" value="" data-range-max />
+              </div>
+            </div>
+            <div class="hint" data-range-hint></div>
+            <div class="actions">
+              <button type="button" data-apply>Aplicar</button>
+              <button type="button" class="secondary" data-clear>Limpiar</button>
+            </div>
+          `;
+          document.body.appendChild(container);
+
+          const minInput = container.querySelector("[data-range-min]");
+          const maxInput = container.querySelector("[data-range-max]");
+          const hintEl = container.querySelector("[data-range-hint]");
+
+          minInput.value = (typeof currentMin !== "undefined" && currentMin !== null) ? String(currentMin) : "";
+          maxInput.value = (typeof currentMax !== "undefined" && currentMax !== null) ? String(currentMax) : "";
+
+          container.querySelector("[data-clear]").addEventListener("click", async () => {
+            prendasState.filters.header[rangeCfg.minKey] = null;
+            prendasState.filters.header[rangeCfg.maxKey] = null;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          container.querySelector("[data-apply]").addEventListener("click", async () => {
+            let minValue = toNumberOrNull(minInput.value);
+            let maxValue = toNumberOrNull(maxInput.value);
+
+            if (minValue !== null && maxValue !== null && minValue > maxValue) {
+              [minValue, maxValue] = [maxValue, minValue];
+              hintEl.textContent = "Se ajustó el rango automáticamente (mín ↔ máx).";
+            }
+
+            prendasState.filters.header[rangeCfg.minKey] = minValue;
+            prendasState.filters.header[rangeCfg.maxKey] = maxValue;
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          bindHeaderPopoverPositioning(container, anchorButton, key);
+          return;
+        }
+
+        if (key === "fecha") {
+          const selectedYear = safeString(prendasState.filters.header.fechaYear).trim();
+          const selectedMonth = safeString(prendasState.filters.header.fechaMonth).trim();
+          const currentYear = new Date().getFullYear();
+          const yearOptions = [];
+          for (let year = currentYear + 1; year >= PRENDAS_YEAR_MIN; year -= 1) {
+            yearOptions.push(`<option value="${year}" ${String(year) === selectedYear ? "selected" : ""}>${year}</option>`);
+          }
+          const monthOptions = MONTH_OPTIONS.map((month) => {
+            const value = String(month.value).padStart(2, "0");
+            return `<option value="${value}" ${value === selectedMonth ? "selected" : ""}>${month.label}</option>`;
+          }).join("");
+
+          container.innerHTML = `
+            <div class="popover-head"><p class="popover-title">Filtrar Fecha</p></div>
+            <div class="range-fields">
+              <div class="range-field">
+                <label for="fecha-year">Año</label>
+                <select id="fecha-year" data-fecha-year>
+                  <option value="">Todos</option>
+                  ${yearOptions.join("")}
+                </select>
+              </div>
+              <div class="range-field">
+                <label for="fecha-month">Mes</label>
+                <select id="fecha-month" data-fecha-month>
+                  <option value="">Todos</option>
+                  ${monthOptions}
+                </select>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" data-apply>Aplicar</button>
+              <button type="button" class="secondary" data-clear>Limpiar</button>
+            </div>
+          `;
+
+          document.body.appendChild(container);
+          container.querySelector("[data-clear]").addEventListener("click", async () => {
+            prendasState.filters.header.fechaYear = "";
+            prendasState.filters.header.fechaMonth = "";
+            closeHeaderPopover();
+            await applyFilters();
+          });
+          container.querySelector("[data-apply]").addEventListener("click", async () => {
+            prendasState.filters.header.fechaYear = safeString(container.querySelector("[data-fecha-year]").value).trim();
+            prendasState.filters.header.fechaMonth = safeString(container.querySelector("[data-fecha-month]").value).trim();
+            closeHeaderPopover();
+            await applyFilters();
+          });
+
+          bindHeaderPopoverPositioning(container, anchorButton, key);
+          return;
+        }
+
+        const options = prendasState.uniqueOptions[key] || [];
+        const selectedSet = new Set(prendasState.filters.header[key] || []);
+
+        container.innerHTML = `
+          <div class="popover-head"><p class="popover-title">Filtrar ${PRENDAS_COLUMNS.find((column) => column.id === key)?.label || key}</p></div>
+          <label class="search-wrap">
+            <input type="text" placeholder="Buscar opción" data-search />
+          </label>
+          <div class="meta" data-meta></div>
+          <label class="option-all"><input type="checkbox" data-all /> Seleccionar todo</label>
+          <div class="options" data-options></div>
+          <div class="actions">
+            <button type="button" data-apply>Aplicar</button>
+            <button type="button" class="secondary" data-clear>Limpiar</button>
+          </div>
+        `;
+        document.body.appendChild(container);
+
+        const searchInput = container.querySelector("[data-search]");
+        const allCheckbox = container.querySelector("[data-all]");
+        const metaEl = container.querySelector("[data-meta]");
+        const optionsWrap = container.querySelector("[data-options]");
+        let workingSet = new Set(selectedSet);
+
+        const renderOptions = () => {
+          const q = normalizeFilterValue(searchInput.value);
+          const visible = options.filter((value) => normalizeFilterValue(value).includes(q));
+          optionsWrap.innerHTML = "";
+          visible.forEach((value) => {
+            const row = document.createElement("label");
+            row.className = "option-row";
+            row.innerHTML = `<input type="checkbox" value="${escapeHtml(value)}" ${workingSet.has(normalizeFilterValue(value)) ? "checked" : ""} /> <span>${escapeHtml(value)}</span>`;
+            const checkbox = row.querySelector("input");
+            checkbox.addEventListener("change", () => {
+              const normalizedValue = normalizeFilterValue(value);
+              if (checkbox.checked) workingSet.add(normalizedValue);
+              else workingSet.delete(normalizedValue);
+              allCheckbox.checked = options.length > 0 && options.every((opt) => workingSet.has(normalizeFilterValue(opt)));
+              metaEl.textContent = `${workingSet.size} seleccionados`;
+            });
+            optionsWrap.appendChild(row);
+          });
+          allCheckbox.checked = options.length > 0 && options.every((opt) => workingSet.has(normalizeFilterValue(opt)));
+          metaEl.textContent = `${workingSet.size} seleccionados`;
+        };
+
+        searchInput.addEventListener("input", renderOptions);
+        allCheckbox.addEventListener("change", () => {
+          if (allCheckbox.checked) {
+            workingSet = new Set(options.map((opt) => normalizeFilterValue(opt)));
+          } else {
+            workingSet = new Set();
+          }
+          renderOptions();
+        });
+
+        container.querySelector("[data-clear]").addEventListener("click", async () => {
+          prendasState.filters.header[key] = new Set();
+          closeHeaderPopover();
+          await applyFilters();
+        });
+
+        container.querySelector("[data-apply]").addEventListener("click", async () => {
+          prendasState.filters.header[key] = new Set(workingSet);
+          closeHeaderPopover();
+          await applyFilters();
+        });
+
+        renderOptions();
+        bindHeaderPopoverPositioning(container, anchorButton, key);
       };
 
       const refreshExactCounts = (rowsAfterAll) => {
@@ -5964,8 +6234,8 @@ const createPrendaRow = (item) => {
             cell.appendChild(buildBadge(tnValue, tnBadgeClass));
             return cell;
           })(),
-          fechaTexto: formatDateCell(item),
-          precioConIva: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.precioConIva)) : toNumber(item.precioConIva)),
+          fecha: formatDateCell(item),
+          pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.precioConIva)) : toNumber(item.precioConIva)),
           costo: moneyFmt(item.costo),
           margen: pctFmt(item.margen),
           utilidad: moneyFmt(item.utilidad)
