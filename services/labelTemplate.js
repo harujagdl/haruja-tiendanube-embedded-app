@@ -19,8 +19,8 @@ export function buildLabelZPL({ sku, price }) {
 ^A0N,52,52
 ^FD${sku}^FS
 
-^FX --- PRECIO (debajo del SKU, centrado en bloque izquierdo) ---
-^FO0,82
+^FX --- PRECIO (centrado en la zona libre debajo del SKU, manteniendo bloque izquierdo) ---
+^FO0,104
 ^A0N,124,124
 ^FB250,1,0,C,0
 ^FD${price}^FS
