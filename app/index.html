@@ -1616,8 +1616,8 @@ body.admin-on .admin-only{ display:table-cell; }
 #dbCodigosSection table.haruja-table th[data-col="status"], #dbCodigosSection table.haruja-table td[data-col="status"] { width:var(--col-status); min-width:var(--col-status); max-width:var(--col-status); }
 #dbCodigosSection table.haruja-table th[data-col="disponibilidad"], #dbCodigosSection table.haruja-table td[data-col="disponibilidad"] { width:var(--col-disponibilidad); min-width:var(--col-disponibilidad); max-width:var(--col-disponibilidad); }
 #dbCodigosSection table.haruja-table th[data-col="qtyAvailable"], #dbCodigosSection table.haruja-table td[data-col="qtyAvailable"] { width:var(--col-qtyAvailable); min-width:var(--col-qtyAvailable); max-width:var(--col-qtyAvailable); }
-#dbCodigosSection table.haruja-table th[data-col="fecha"], #dbCodigosSection table.haruja-table td[data-col="fecha"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
-#dbCodigosSection table.haruja-table th[data-col="pventa"], #dbCodigosSection table.haruja-table td[data-col="pventa"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
+#dbCodigosSection table.haruja-table th[data-col="fechaTexto"], #dbCodigosSection table.haruja-table td[data-col="fechaTexto"] { width:var(--col-fecha); min-width:var(--col-fecha); max-width:var(--col-fecha); }
+#dbCodigosSection table.haruja-table th[data-col="precioConIva"], #dbCodigosSection table.haruja-table td[data-col="precioConIva"] { width:var(--col-pventa); min-width:var(--col-pventa); max-width:var(--col-pventa); }
 #dbCodigosSection table.haruja-table th[data-col="costo"], #dbCodigosSection table.haruja-table td[data-col="costo"] { width:var(--col-costo); min-width:var(--col-costo); max-width:var(--col-costo); }
 #dbCodigosSection table.haruja-table th[data-col="margen"], #dbCodigosSection table.haruja-table td[data-col="margen"] { width:var(--col-margen); min-width:var(--col-margen); max-width:var(--col-margen); }
 #dbCodigosSection table.haruja-table th[data-col="utilidad"], #dbCodigosSection table.haruja-table td[data-col="utilidad"] { width:var(--col-utilidad); min-width:var(--col-utilidad); max-width:var(--col-utilidad); }
@@ -2022,6 +2022,10 @@ th.col-drag-over {
       #dbCodigosSection .th-control{width:100%;display:flex;}
       #dbCodigosSection .th-control select{width:100%;height:30px;padding:0 10px;font-size:12px;border-radius:10px;border:1px solid rgba(255,255,255,.30);background:rgba(255,255,255,.10);color:#fff;}
       #dbCodigosSection .th-control select option{color:#111;background:#fff;}
+      #dbCodigosSection .th-range-filter{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;}
+      #dbCodigosSection .th-range-filter input{width:100%;min-width:72px;height:30px;border-radius:10px;border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.10);color:#fff;padding:0 10px;font-size:12px;outline:none;}
+      #dbCodigosSection .th-range-filter input::placeholder{color:rgba(255,255,255,.75);}
+      #dbCodigosSection .th-range-filter input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.85;cursor:pointer;}
       #dbCodigosSection table.haruja-table tbody td{padding:10px;border-right:1px solid rgba(0,0,0,.12);border-bottom:1px solid rgba(0,0,0,.06);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;}
       #dbCodigosSection table.haruja-table tbody tr:hover td{background:rgba(30,94,255,.05);}
       #dbCodigosSection table.haruja-table tbody td:last-child{border-right:none;}
@@ -3934,7 +3938,16 @@ const auth = getAuth(app);
         "talla",
         "disponibilidad"
       ];
-      const HEADER_RANGE_KEY = "pventa";
+      const HEADER_RANGE_FILTERS = {
+        qtyAvailable: { min: "existenciasMin", max: "existenciasMax" },
+        precioConIva: { min: "precioMin", max: "precioMax" },
+        costo: { min: "costoMin", max: "costoMax" },
+        margen: { min: "margenMin", max: "margenMax" },
+        utilidad: { min: "utilidadMin", max: "utilidadMax" }
+      };
+      const HEADER_DATE_FILTERS = {
+        fechaTexto: { from: "fechaDesde", to: "fechaHasta" }
+      };
       const HEADER_POPOVER_MARGIN = 12;
       const HEADER_POPOVER_OFFSET = 8;
       const createEmptyHeaderFilters = () => ({
@@ -3945,8 +3958,25 @@ const auth = getAuth(app);
         color: new Set(),
         talla: new Set(),
         disponibilidad: new Set(),
-        pventaMin: null,
-        pventaMax: null,
+
+        existenciasMin: "",
+        existenciasMax: "",
+
+        precioMin: "",
+        precioMax: "",
+
+        costoMin: "",
+        costoMax: "",
+
+        margenMin: "",
+        margenMax: "",
+
+        utilidadMin: "",
+        utilidadMax: "",
+
+        fechaDesde: "",
+        fechaHasta: "",
+
         fechaYear: "",
         fechaMonth: ""
       });
@@ -4518,12 +4548,12 @@ const auth = getAuth(app);
         { id: "tn", label: "TN", admin: true, public: true, filter: true },
         { id: "status", label: "Status", admin: true, public: true, filter: true },
         { id: "disponibilidad", label: "Disponibilidad", admin: true, public: true, filter: true },
-        { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: false },
-        { id: "fecha", label: "Fecha", admin: true, public: true, filter: false },
-        { id: "pventa", label: "Precio", admin: true, public: true, filter: false },
-        { id: "costo", label: "Costo", admin: true, public: false, filter: false },
-        { id: "margen", label: "Margen", admin: true, public: false, filter: false },
-        { id: "utilidad", label: "Utilidad", admin: true, public: false, filter: false },
+        { id: "qtyAvailable", label: "Existencias", admin: true, public: true, filter: true, filterType: "range-number" },
+        { id: "fechaTexto", label: "Fecha", admin: true, public: true, filter: true, filterType: "range-date" },
+        { id: "precioConIva", label: "Precio", admin: true, public: true, filter: true, filterType: "range-number" },
+        { id: "costo", label: "Costo", admin: true, public: false, filter: true, filterType: "range-number" },
+        { id: "margen", label: "Margen", admin: true, public: false, filter: true, filterType: "range-number" },
+        { id: "utilidad", label: "Utilidad", admin: true, public: false, filter: true, filterType: "range-number" },
         { id: "acciones", label: "Acciones", admin: true, public: false, filter: false }
       ];
 
@@ -4585,18 +4615,62 @@ const auth = getAuth(app);
         toolbar.replaceChildren(...toolbarButtons);
       };
 
-      const createHeaderControlSelect = (columnKey) => {
+      const createHeaderControl = (column) => {
+        if (!column?.filter) return null;
+
+        if (column.filterType === "range-number") {
+          const keys = HEADER_RANGE_FILTERS[column.id];
+          if (!keys) return null;
+          const controlWrap = document.createElement("div");
+          controlWrap.className = "th-range-filter";
+
+          const minInput = document.createElement("input");
+          minInput.type = "number";
+          minInput.placeholder = "Min";
+          minInput.dataset.filterKey = keys.min;
+          minInput.value = safeString(prendasState.filters.header[keys.min] ?? "");
+
+          const maxInput = document.createElement("input");
+          maxInput.type = "number";
+          maxInput.placeholder = "Max";
+          maxInput.dataset.filterKey = keys.max;
+          maxInput.value = safeString(prendasState.filters.header[keys.max] ?? "");
+
+          controlWrap.append(minInput, maxInput);
+          return controlWrap;
+        }
+
+        if (column.filterType === "range-date") {
+          const keys = HEADER_DATE_FILTERS[column.id];
+          if (!keys) return null;
+          const controlWrap = document.createElement("div");
+          controlWrap.className = "th-range-filter";
+
+          const fromInput = document.createElement("input");
+          fromInput.type = "date";
+          fromInput.dataset.filterKey = keys.from;
+          fromInput.value = safeString(prendasState.filters.header[keys.from] ?? "");
+
+          const toInput = document.createElement("input");
+          toInput.type = "date";
+          toInput.dataset.filterKey = keys.to;
+          toInput.value = safeString(prendasState.filters.header[keys.to] ?? "");
+
+          controlWrap.append(fromInput, toInput);
+          return controlWrap;
+        }
+
         const controlWrap = document.createElement("div");
         controlWrap.className = "th-control";
         const select = document.createElement("select");
-        select.dataset.headerSelect = columnKey;
+        select.dataset.headerSelect = column.id;
 
         const defaultOption = document.createElement("option");
         defaultOption.value = "";
         defaultOption.textContent = "Todos";
         select.appendChild(defaultOption);
 
-        const options = prendasState.uniqueOptions[columnKey] || [];
+        const options = prendasState.uniqueOptions[column.id] || [];
         options.forEach((optionValue) => {
           const option = document.createElement("option");
           option.value = optionValue;
@@ -4604,7 +4678,7 @@ const auth = getAuth(app);
           select.appendChild(option);
         });
 
-        const selected = Array.from(prendasState.filters.header[columnKey] || []);
+        const selected = Array.from(prendasState.filters.header[column.id] || []);
         select.value = selected[0] || "";
         controlWrap.appendChild(select);
         return controlWrap;
@@ -4649,7 +4723,8 @@ const auth = getAuth(app);
           inner.appendChild(label);
 
           if (column.filter) {
-            inner.appendChild(createHeaderControlSelect(column.id));
+            const headerControl = createHeaderControl(column);
+            if (headerControl) inner.appendChild(headerControl);
           }
 
           th.appendChild(inner);
@@ -5184,7 +5259,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
         const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || resolveColorName(colorCode);
         const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || resolveTallaName(tallaCode);
-        const qtyAvailable = toNumberOrNull(data.qtyAvailable ?? data.qty_available ?? data.cantidad);
+        const qtyAvailable = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 0) || 0;
         let statusCanon = normalizeStatus(
           safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim()
         );
@@ -5206,7 +5281,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         );
         const iva = toNumberOrNull(data.iva ?? data.IVA);
         const pVenta = toNumberOrNull(data.pVenta ?? data.precioConIva ?? data.precio);
-        const costo = toNumberOrNull(data.costo);
+        const costo = Number(data.costo ?? 0) || 0;
         const precioConIvaFinal = Number.isFinite(precioConIva)
           ? precioConIva
           : (Number.isFinite(pVenta) ? pVenta : null);
@@ -5232,7 +5307,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
         ).trim();
-        const fechaTexto = safeString(data.fechaTexto ?? data.FechaTexto ?? "").trim();
+        const fechaTexto = safeString(data.fechaTexto || data.FechaTexto || data.fecha || data.Fecha || "").trim();
         const inventorySource = safeString(data.inventorySource).trim();
         const lastInventorySyncAt = data.lastInventorySyncAt ?? null;
         const lastInventorySyncAtText = safeString(data.lastInventorySyncAtText).trim();
@@ -5276,11 +5351,11 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           isActive,
           precio,
           pVenta,
-          precioConIva: precioConIvaFinal,
+          precioConIva: Number(data.precioConIva ?? data.pVenta ?? data.precio ?? precioConIvaFinal ?? 0) || 0,
           iva,
-          costo,
-          margen: Number.isFinite(margen) ? margen : margenCalculado,
-          utilidad: Number.isFinite(utilidad) ? utilidad : utilidadCalculada,
+          costo: Number(data.costo ?? 0) || 0,
+          margen: Number(data.margen ?? margen ?? margenCalculado ?? 0) || 0,
+          utilidad: Number(data.utilidad ?? utilidad ?? utilidadCalculada ?? 0) || 0,
           createdAt,
           fechaAlta,
           fecha,
@@ -5396,17 +5471,21 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       });
 
       const isHeaderFilterActive = (key) => {
-        if (key === "pventa") {
-          return (
-            prendasState.filters.header.pventaMin !== null ||
-            prendasState.filters.header.pventaMax !== null
+        const numberRange = HEADER_RANGE_FILTERS[key];
+        if (numberRange) {
+          return Boolean(prendasState.filters.header[numberRange.min] || prendasState.filters.header[numberRange.max]);
+        }
+        const dateRange = HEADER_DATE_FILTERS[key];
+        if (dateRange) {
+          return Boolean(
+            prendasState.filters.header[dateRange.from] ||
+            prendasState.filters.header[dateRange.to] ||
+            prendasState.filters.header.fechaYear ||
+            prendasState.filters.header.fechaMonth
           );
         }
         if (key === "orden") {
           return (prendasState.sort?.dir || DEFAULT_PRENDAS_SORT.dir) !== DEFAULT_PRENDAS_SORT.dir;
-        }
-        if (key === "fecha") {
-          return Boolean(prendasState.filters.header.fechaYear || prendasState.filters.header.fechaMonth);
         }
         return (prendasState.filters.header[key]?.size || 0) > 0;
       };
@@ -5434,6 +5513,29 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         });
       };
 
+      const inNumberRange = (value, min, max) => {
+        const n = Number(value ?? 0);
+        const hasMin = min !== "" && min !== null && min !== undefined;
+        const hasMax = max !== "" && max !== null && max !== undefined;
+
+        if (hasMin && n < Number(min)) return false;
+        if (hasMax && n > Number(max)) return false;
+        return true;
+      };
+
+      const toComparableDate = (value) => {
+        if (!value) return null;
+
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+          const [dd, mm, yyyy] = value.split("/");
+          const d = new Date(`${yyyy}-${mm}-${dd}T00:00:00`);
+          return Number.isNaN(d.getTime()) ? null : d;
+        }
+
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? null : d;
+      };
+
       const applyHeaderFilters = (rows, headerFilters) =>
         rows.filter((item) => {
           const hasChecklistMatch = HEADER_FILTER_KEYS.every((key) => {
@@ -5444,25 +5546,28 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           });
           if (!hasChecklistMatch) return false;
 
-          // Fecha (año/mes)
-          const hasFechaFilter = Boolean(headerFilters.fechaYear || headerFilters.fechaMonth);
-          if (hasFechaFilter) {
-            const d = resolveComparableDate(item);
+          const hf = headerFilters || {};
+          if (!inNumberRange(item.qtyAvailable, hf.existenciasMin, hf.existenciasMax)) return false;
+          if (!inNumberRange(item.precioConIva, hf.precioMin, hf.precioMax)) return false;
+          if (!inNumberRange(item.costo, hf.costoMin, hf.costoMax)) return false;
+          if (!inNumberRange(item.margen, hf.margenMin, hf.margenMax)) return false;
+          if (!inNumberRange(item.utilidad, hf.utilidadMin, hf.utilidadMax)) return false;
+
+          const itemDate = toComparableDate(item.fechaTexto);
+          const fromDate = hf.fechaDesde ? new Date(`${hf.fechaDesde}T00:00:00`) : null;
+          const toDate = hf.fechaHasta ? new Date(`${hf.fechaHasta}T23:59:59`) : null;
+
+          if (hf.fechaYear || hf.fechaMonth) {
+            const d = itemDate || resolveComparableDate(item);
             if (!d) return false;
             const year = String(d.getFullYear());
             const month = String(d.getMonth() + 1).padStart(2, "0");
-            if (headerFilters.fechaYear && year !== String(headerFilters.fechaYear)) return false;
-            if (headerFilters.fechaMonth && month !== String(headerFilters.fechaMonth)) return false;
+            if (hf.fechaYear && year !== String(hf.fechaYear)) return false;
+            if (hf.fechaMonth && month !== String(hf.fechaMonth)) return false;
           }
 
-          // P. Venta (rango)
-          const hasPriceRange = headerFilters.pventaMin != null || headerFilters.pventaMax != null;
-          if (hasPriceRange) {
-            const price = toNum(item.pVenta);
-            if (price === null) return false;
-            if (headerFilters.pventaMin != null && price < headerFilters.pventaMin) return false;
-            if (headerFilters.pventaMax != null && price > headerFilters.pventaMax) return false;
-          }
+          if (fromDate && (!itemDate || itemDate < fromDate)) return false;
+          if (toDate && (!itemDate || itemDate > toDate)) return false;
 
           return true;
         });
@@ -5587,8 +5692,15 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const hasPriceRange = globalFilters.priceMin !== null || globalFilters.priceMax !== null;
         const excludeNoPrice = globalFilters.includeNoPrice === false;
         const hasHeaderFilters = HEADER_FILTER_KEYS.some((key) => (headerFilters[key]?.size || 0) > 0);
-        const hasHeaderPrice = headerFilters.pventaMin !== null || headerFilters.pventaMax !== null;
-        return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters || hasHeaderPrice;
+        const hasHeaderRanges = [
+          "existenciasMin", "existenciasMax",
+          "precioMin", "precioMax",
+          "costoMin", "costoMax",
+          "margenMin", "margenMax",
+          "utilidadMin", "utilidadMax",
+          "fechaDesde", "fechaHasta"
+        ].some((key) => Boolean(headerFilters[key]));
+        return hasSearch || hasDate || hasPriceRange || excludeNoPrice || hasHeaderFilters || hasHeaderRanges;
       };
 
       const getUniqueOptions = (rows, key) => {
@@ -5684,618 +5796,8 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         requestAnimationFrame(positionHeaderPopover);
       };
 
-      const renderHeaderFilterPopover = (key, anchorButton) => {
-        closeHeaderPopover();
-        const container = document.createElement("div");
-        container.className = "filter-popover";
-
-        if (key === HEADER_RANGE_KEY) {
-          container.classList.add("range-popover");
-          const currentMin = prendasState.filters.header.pventaMin;
-          const currentMax = prendasState.filters.header.pventaMax;
-          container.innerHTML = `
-            <div class="popover-head"><p class="popover-title">Filtrar P. Venta</p></div>
-            <div class="range-fields">
-              <div class="range-field">
-                <label for="range-min">Mínimo</label>
-                <input id="range-min" type="number" min="0" step="0.01" placeholder="0.00" value="" data-range-min />
-              </div>
-              <div class="range-field">
-                <label for="range-max">Máximo</label>
-                <input id="range-max" type="number" min="0" step="0.01" placeholder="0.00" value="" data-range-max />
-              </div>
-            </div>
-            <div class="hint" data-range-hint></div>
-            <div class="actions">
-              <button type="button" data-apply>Aplicar</button>
-              <button type="button" class="secondary" data-clear>Limpiar</button>
-            </div>
-          `;
-          document.body.appendChild(container);
-          const minInput = container.querySelector("[data-range-min]");
-          const maxInput = container.querySelector("[data-range-max]");
-          const hintEl = container.querySelector("[data-range-hint]");
-      // ✅ FIX: no metas ${...} literal en HTML. Seteamos el valor por JS.
-      try {
-        minInput.value = (typeof currentMin !== "undefined" && currentMin !== null) ? String(currentMin) : "";
-        maxInput.value = (typeof currentMax !== "undefined" && currentMax !== null) ? String(currentMax) : "";
-      } catch (e) {}
-
-
-          container.querySelector("[data-clear]").addEventListener("click", async () => {
-            prendasState.filters.header.pventaMin = null;
-            prendasState.filters.header.pventaMax = null;
-            closeHeaderPopover();
-            await applyFilters();
-          });
-
-          container.querySelector("[data-apply]").addEventListener("click", async () => {
-            let minValue = toNumberOrNull(minInput.value);
-            let maxValue = toNumberOrNull(maxInput.value);
-            if (minValue !== null && maxValue !== null && minValue > maxValue) {
-              [minValue, maxValue] = [maxValue, minValue];
-              hintEl.textContent = "Se ajustó el rango automáticamente (mín ↔ máx).";
-            }
-            prendasState.filters.header.pventaMin = minValue;
-            prendasState.filters.header.pventaMax = maxValue;
-            closeHeaderPopover();
-            await applyFilters();
-          });
-
-          bindHeaderPopoverPositioning(container, anchorButton, key);
-          return;
-
-        }
-
-        if (key === "fecha") {
-          const monthNames = [
-            "enero","febrero","marzo","abril","mayo","junio",
-            "julio","agosto","septiembre","octubre","noviembre","diciembre"
-          ];
-          const availableYears = Array.from(new Set((prendasState.baseRows || [])
-            .map((it) => resolveComparableDate(it))
-            .filter(Boolean)
-            .map((d) => d.getFullYear())))
-            .sort((a,b) => b - a);
-
-          const currentYear = safeString(prendasState.filters.header.fechaYear).trim();
-          const currentMonth = safeString(prendasState.filters.header.fechaMonth).trim();
-
-          const yearOptions = ['<option value="">Todos</option>']
-            .concat(availableYears.map((y) => `<option value="${y}" ${String(y)===currentYear ? "selected" : ""}>${y}</option>`))
-            .join("");
-
-          const monthOptions = ['<option value="">Todos</option>']
-            .concat(monthNames.map((name, i) => {
-              const v = String(i + 1).padStart(2, "0");
-              return `<option value="${v}" ${v===currentMonth ? "selected" : ""}>${name}</option>`;
-            }))
-            .join("");
-
-          container.innerHTML = `
-            <div class="popover-head"><p class="popover-title">Filtrar Fecha</p></div>
-            <div class="range-fields">
-              <div class="range-field">
-                <label for="fecha-year">Año</label>
-                <select id="fecha-year" data-fecha-year>${yearOptions}</select>
-              </div>
-              <div class="range-field">
-                <label for="fecha-month">Mes</label>
-                <select id="fecha-month" data-fecha-month>${monthOptions}</select>
-              </div>
-            </div>
-            <div class="actions">
-              <button type="button" data-apply>Aplicar</button>
-              <button type="button" class="secondary" data-clear>Limpiar</button>
-            </div>
-          `;
-          document.body.appendChild(container);
-
-          const yearSelect = container.querySelector("[data-fecha-year]");
-          const monthSelect = container.querySelector("[data-fecha-month]");
-
-          container.querySelector("[data-clear]").addEventListener("click", async () => {
-            prendasState.filters.header.fechaYear = "";
-            prendasState.filters.header.fechaMonth = "";
-            closeHeaderPopover();
-            await applyFilters();
-          });
-
-          container.querySelector("[data-apply]").addEventListener("click", async () => {
-            prendasState.filters.header.fechaYear = safeString(yearSelect.value).trim();
-            prendasState.filters.header.fechaMonth = safeString(monthSelect.value).trim();
-            closeHeaderPopover();
-            await applyFilters();
-          });
-
-          bindHeaderPopoverPositioning(container, anchorButton, key);
-          return;
-        }
-
-        const options = prendasState.uniqueOptions[key] || [];
-        const selected = new Set(prendasState.filters.header[key] || []);
-        container.innerHTML = `
-          <div class="popover-head"><p class="popover-title">Filtrar ${key}</p></div>
-          <div class="search-wrap"><input type="text" placeholder="Buscar..." data-filter-search /></div>
-          <div class="meta" data-filter-count></div>
-          <label class="option-all"><input type="checkbox" data-select-all /> Seleccionar todo</label>
-          <div class="options" data-options></div>
-          <div class="actions">
-            <button type="button" data-apply>Aplicar</button>
-            <button type="button" class="secondary" data-clear>Limpiar</button>
-          </div>
-        `;
-        document.body.appendChild(container);
-
-        const optionsEl = container.querySelector("[data-options]");
-        const searchEl = container.querySelector("[data-filter-search]");
-        const selectAllEl = container.querySelector("[data-select-all]");
-        const countEl = container.querySelector("[data-filter-count]");
-
-        const updateCounters = () => {
-          const total = options.length;
-          const selectedCount = selected.size;
-          countEl.textContent = `(${selectedCount} seleccionados / ${total} total)`;
-          selectAllEl.checked = total > 0 && selectedCount === total;
-        };
-
-        const refreshList = () => {
-          const q = normalizeText(searchEl.value);
-          const visible = options.filter((value) => normalizeText(value).includes(q));
-          optionsEl.textContent = "";
-          visible.forEach((value) => {
-            const row = document.createElement("label");
-            row.className = "option-row";
-            const checked = selected.has(normalizeFilterValue(value));
-            row.innerHTML = `<input type="checkbox" value="${value}" ${checked ? "checked" : ""} /> ${value}`;
-            const checkbox = row.querySelector("input");
-            checkbox.addEventListener("change", () => {
-              const normalized = normalizeFilterValue(value);
-              if (checkbox.checked) selected.add(normalized);
-              else selected.delete(normalized);
-              updateCounters();
-            });
-            optionsEl.appendChild(row);
-          });
-          updateCounters();
-        };
-
-        selectAllEl.addEventListener("change", () => {
-          if (selectAllEl.checked) {
-            options.forEach((value) => selected.add(normalizeFilterValue(value)));
-          } else {
-            selected.clear();
-          }
-          refreshList();
-        });
-
-        searchEl.addEventListener("input", refreshList);
-
-        container.querySelector("[data-clear]").addEventListener("click", async () => {
-          prendasState.filters.header[key] = new Set();
-          closeHeaderPopover();
-          await applyFilters();
-        });
-
-        container.querySelector("[data-apply]").addEventListener("click", async () => {
-          prendasState.filters.header[key] = selected;
-          closeHeaderPopover();
-          await applyFilters();
-        });
-
-        bindHeaderPopoverPositioning(container, anchorButton, key);
-        refreshList();
-      };
-
-      const parseCorrectionsBoolean = (raw) => {
-        const value = normalizeText(raw);
-        if (["true", "1", "si", "sí", "yes"].includes(value)) return true;
-        if (["false", "0", "no"].includes(value)) return false;
-        return null;
-      };
-
-      const parseCsvRow = (line = "") => {
-        const out = [];
-        let current = "";
-        let inQuotes = false;
-        for (let i = 0; i < line.length; i += 1) {
-          const char = line[i];
-          const next = line[i + 1];
-          if (char === '"') {
-            if (inQuotes && next === '"') {
-              current += '"';
-              i += 1;
-            } else {
-              inQuotes = !inQuotes;
-            }
-            continue;
-          }
-          if (char === "," && !inQuotes) {
-            out.push(current.trim());
-            current = "";
-            continue;
-          }
-          current += char;
-        }
-        out.push(current.trim());
-        return out;
-      };
-
-      const parseCorrectionsFile = async (file) => {
-        const ext = safeString(file?.name).toLowerCase();
-        if (ext.endsWith(".csv")) {
-          const text = await file.text();
-          const lines = text.split(/\r?\n/).filter((line) => line.trim());
-          if (!lines.length) return [];
-          const headers = parseCsvRow(lines[0]).map((h) => safeString(h).trim());
-          return lines.slice(1).map((line) => {
-            const cols = parseCsvRow(line);
-            return headers.reduce((acc, header, index) => {
-              acc[header] = safeString(cols[index]).trim();
-              return acc;
-            }, {});
-          });
-        }
-
-        if (ext.endsWith(".xlsx")) {
-          if (!window.XLSX) {
-            throw new Error("No se pudo cargar parser XLSX");
-          }
-          const bytes = await file.arrayBuffer();
-          const wb = window.XLSX.read(bytes, { type: "array" });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          return window.XLSX.utils.sheet_to_json(ws, { defval: "" });
-        }
-
-        throw new Error("Formato no soportado. Usa CSV o XLSX.");
-      };
-
-      const formatCorrectionsSummary = (summary) => `Total filas: ${summary.total}
-Encontrados: ${summary.found}
-No encontrados: ${summary.notFound}
-Actualizados: ${summary.updated}
-Errores: ${summary.errors}`;
-
-      const setCorrectionsSummary = (summary) => {
-        if (correctionsResults) correctionsResults.textContent = formatCorrectionsSummary(summary);
-      };
-
-      const closeCorrectionsModal = () => {
-        if (!correctionsModal) return;
-        correctionsModal.classList.add("hidden");
-        correctionsModal.setAttribute("aria-hidden", "true");
-      };
-
-      const openCorrectionsModal = () => {
-        if (!isAdminViewEnabled() || !correctionsModal) return;
-        correctionsModal.classList.remove("hidden");
-        correctionsModal.setAttribute("aria-hidden", "false");
-      };
-
-      const processCorrectionsFile = async () => {
-        if (!isAdminViewEnabled()) return;
-        const file = correctionsFileInput?.files?.[0];
-        if (!file) {
-          alert("Selecciona un archivo CSV o XLSX.");
-          return;
-        }
-
-        const dryRun = Boolean(correctionsDryRunInput?.checked);
-        const rows = await parseCorrectionsFile(file);
-        const summary = { total: rows.length, found: 0, notFound: 0, updated: 0, errors: 0 };
-        const updates = [];
-
-        for (const row of rows) {
-          const codigo =
-            safeString(row.codigo).trim() ||
-            safeString(row.Codigo).trim() ||
-            safeString(row["CÓDIGO"]).trim();
-          if (!codigo) {
-            summary.errors += 1;
-            continue;
-          }
-
-          const adminRef = doc(db, PRENDAS_ADMIN_COLLECTION, codigo);
-          const publicRef = doc(db, PRENDAS_PUBLIC_COLLECTION, codigo);
-          const docSnap = await getDoc(adminRef);
-          if (!docSnap.exists()) {
-            summary.notFound += 1;
-            continue;
-          }
-
-          summary.found += 1;
-          const payload = {};
-          if (Object.hasOwn(row, "tnMatch")) {
-            payload.tnMatch = safeString(row.tnMatch).trim() || "N/A";
-          }
-          if (Object.hasOwn(row, "tnSku")) {
-            payload.tnSku = safeString(row.tnSku).trim() || null;
-          }
-          if (safeString(row.tnVariantId).trim()) payload.tnVariantId = safeString(row.tnVariantId).trim();
-          if (safeString(row.tnProductId).trim()) payload.tnProductId = safeString(row.tnProductId).trim();
-          if (safeString(row.statusManual).trim()) payload.statusManual = safeString(row.statusManual).trim();
-          if (safeString(row.disponibilidadManual).trim()) payload.disponibilidadManual = safeString(row.disponibilidadManual).trim();
-          if (safeString(row.tnNotes).trim()) payload.tnNotes = safeString(row.tnNotes).trim();
-          const manualOverride = parseCorrectionsBoolean(row.manualOverride);
-          if (manualOverride !== null) payload.manualOverride = manualOverride;
-
-          if (!Object.keys(payload).length) continue;
-          payload.updatedAt = serverTimestamp();
-          payload.tnLastSyncAt = new Date().toISOString();
-          updates.push({ adminRef, publicRef, payload });
-        }
-
-        if (!dryRun) {
-          const chunks = chunkArray(updates, 400);
-          for (const chunk of chunks) {
-            const batch = writeBatch(db);
-            chunk.forEach((item) => {
-              batch.set(item.adminRef, item.payload, { merge: true });
-              batch.set(item.publicRef, item.payload, { merge: true });
-            });
-            await batch.commit();
-          }
-        }
-
-        summary.updated = updates.length;
-        setCorrectionsSummary(summary);
-        if (!dryRun) {
-          await loadPrendasPage({ reset: false, reason: "corrections-upload" });
-        }
-      };
-
-      const chunkArray = (items, size) => {
-        const chunks = [];
-        for (let i = 0; i < items.length; i += size) {
-          chunks.push(items.slice(i, i + size));
-        }
-        return chunks;
-      };
-
-      const isMissingIndexError = (error) => {
-        const message = (error && (error.message || error.toString())) || "";
-        return message.includes("requires an index") || message.includes("FAILED_PRECONDITION");
-      };
-
-      const getDocsWithIndexFallback = async (primaryQuery, fallbackQuery, tag = "Query") => {
-        try {
-          return {
-            snapshot: await getDocs(primaryQuery),
-            usedFallback: false,
-          };
-        } catch (error) {
-          if (isMissingIndexError(error) && fallbackQuery) {
-            console.warn(`[${tag}] Missing index -> fallback`, error);
-            return {
-              snapshot: await getDocs(fallbackQuery),
-              usedFallback: true,
-            };
-          }
-          throw error;
-        }
-      };
-
-      const loadAdminCostMap = async (rows = []) => {
-        const map = new Map();
-        const rowDocIds = rows
-          .map((row) => safeString(row.docId || row.id).trim())
-          .filter(Boolean);
-
-        if (!rowDocIds.length) {
-          return map;
-        }
-
-        const ids = [...new Set(rowDocIds)];
-        const chunks = chunkArray(ids, 30);
-
-        for (const chunk of chunks) {
-          const snap = await getDocs(
-            query(collection(db, PRENDAS_ADMIN_COLLECTION), where(documentId(), "in", chunk))
-          );
-          snap.docs.forEach((docSnap) => {
-            const data = docSnap.data() || {};
-            const lookupId = safeString(docSnap.id).trim();
-            if (!lookupId) return;
-            map.set(lookupId, {
-              costo: toNumberOrNull(data.costo),
-              pVentaOverride: toNumberOrNull(data.pVentaOverride ?? data.pVenta),
-              margen: toNumberOrNull(data.margen),
-              utilidad: toNumberOrNull(data.utilidad),
-              manualOverride: Boolean(data.manualOverride),
-              statusManual: safeString(data.statusManual).trim(),
-              disponibilidadManual: safeString(data.disponibilidadManual).trim(),
-              tnMatch: safeString(data.tnMatch).trim(),
-              tnSku: safeString(data.tnSku).trim(),
-              tnVariantId: safeString(data.tnVariantId).trim(),
-              tnProductId: safeString(data.tnProductId).trim(),
-              tnNotes: safeString(data.tnNotes).trim(),
-            });
-          });
-        }
-
-        prendasState.adminMap = map;
-        return map;
-      };
-
-      const mergeAdminFields = async (rows = []) => {
-        if (!(isAdminViewEnabled() && rows.length)) {
-          prendasState.adminMap.clear();
-          return rows;
-        }
-
-        const adminCostMap = await loadAdminCostMap(rows);
-        rows.forEach((row) => {
-          const lookupId = safeString(row.docId || row.id).trim();
-          const adminExtra = adminCostMap.get(lookupId);
-          if (!adminExtra) return;
-
-          const costo = toNumberOrNull(adminExtra.costo);
-          const utilidadFromAdmin = toNumberOrNull(adminExtra.utilidad);
-          const margenFromAdmin = toNumberOrNull(adminExtra.margen);
-          const pVentaOverride = toNumberOrNull(adminExtra.pVentaOverride);
-
-          row.costo = Number.isFinite(costo) ? costo : null;
-          row.pVentaOverride = Number.isFinite(pVentaOverride) ? pVentaOverride : null;
-          const precioVisible = Number.isFinite(row.pVentaOverride)
-            ? row.pVentaOverride
-            : (Number.isFinite(row.pVenta) ? row.pVenta : null);
-          row.pVentaDisplay = precioVisible;
-          const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
-            computeMarginUtility(precioVisible, row.costo);
-
-          row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
-            ? utilidadFromAdmin
-            : utilidadCalculada;
-          row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
-            ? Number(margenFromAdmin.toFixed(1))
-            : margenCalculado;
-          row.manualOverride = Boolean(adminExtra.manualOverride);
-          row.statusManual = adminExtra.statusManual || null;
-          row.disponibilidadManual = adminExtra.disponibilidadManual || null;
-          row.tnMatch = adminExtra.tnMatch || row.tnMatch || "N/A";
-          row.tnSku = adminExtra.tnSku || row.tnSku || null;
-          row.tnVariantId = adminExtra.tnVariantId || row.tnVariantId || null;
-          row.tnProductId = adminExtra.tnProductId || row.tnProductId || null;
-          row.tnNotes = adminExtra.tnNotes || row.tnNotes || null;
-        });
-
-        return rows;
-      };
-
-      const loadBaseRows = async () => {
-        const cacheKey = activePrendasPublicCollection || "public";
-        if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
-          return prendasState.baseRows;
-        }
-        let cursor = null;
-        let hasMore = true;
-        let queryWithoutIsActiveFilter = false;
-        const rows = [];
-
-        try {
-          while (hasMore) {
-            const primaryConstraints = [where("isActive", "==", true), orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-            const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
-            if (cursor) {
-              primaryConstraints.splice(primaryConstraints.length - 1, 0, startAfter(cursor));
-              fallbackConstraints.splice(fallbackConstraints.length - 1, 0, startAfter(cursor));
-            }
-
-            const baseQuery = queryWithoutIsActiveFilter
-              ? query(prendasRef, ...fallbackConstraints)
-              : query(prendasRef, ...primaryConstraints);
-            const fallbackQuery = query(prendasRef, ...fallbackConstraints);
-            const { snapshot: snap, usedFallback } = await getDocsWithIndexFallback(
-              baseQuery,
-              queryWithoutIsActiveFilter ? null : fallbackQuery,
-              "Prendas"
-            );
-
-            if (usedFallback && !queryWithoutIsActiveFilter) {
-              queryWithoutIsActiveFilter = true;
-              cursor = null;
-              rows.length = 0;
-              console.warn("[Prendas] isActive filter no disponible, usando fallback sin filtro de query");
-              continue;
-            }
-
-            console.log("[Panel] snapshot size:", snap.size);
-            if (!snap.empty && !debugState.sampleLogged) {
-              console.log("[Prendas] sample doc data:", snap.docs[0].data());
-              debugState.sampleLogged = true;
-            }
-            debugState.snapshotSizes.baseQuery = snap.size;
-            updateDebugPanel();
-            if (snap.empty) {
-              if (!cursor && !queryWithoutIsActiveFilter) {
-                queryWithoutIsActiveFilter = true;
-                cursor = null;
-                rows.length = 0;
-                console.warn("[Prendas] Query con isActive devolvió vacío. Reintentando sin filtro isActive.");
-                continue;
-              }
-              hasMore = false;
-              break;
-            }
-
-            snap.docs.forEach((docSnap) => rows.push(normalizeDoc(docSnap)));
-            cursor = snap.docs[snap.docs.length - 1];
-            if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
-              hasMore = false;
-            }
-          }
-        } catch (error) {
-          console.error("[Panel] Error Firestore:", error);
-          if (isEmbedded()) {
-            console.warn("[Prendas] Public falló en embed, no se intentará master.", error);
-            setPrendasAlert("No se pudieron cargar prendas en modo embebido. Mostrando lista vacía.", { isHtml: false });
-          } else {
-            setPrendasAlert("No se pudo cargar la base pública. Verifica permisos o conexión.", { isHtml: false });
-          }
-          return [];
-        }
-
-        let rowsToRender = rows.filter((row) => row.isActive !== false);
-        if (!rowsToRender.length && rows.length) {
-          console.warn("[Prendas] Todas las filas quedaron inactivas por isActive. Mostrando todo por tolerancia.");
-          rowsToRender = rows;
-        }
-
-        rowsToRender.forEach((row) => {
-          row.costo = null;
-          row.utilidad = null;
-          row.margen = null;
-        });
-
-        const orderedRows = rowsToRender.sort(compareItemsByOrdenAsc);
-        orderedRows.forEach((row, index) => {
-          const generatedOrder = index + 1;
-          row.__order = generatedOrder;
-          row._rowNumber = generatedOrder;
-          if (!Number.isFinite(toNumberOrNull(row.orden))) {
-            row.orden = generatedOrder;
-          }
-        });
-
-        prendasState.baseRows = orderedRows;
-        window.__ROWS__ = orderedRows;
-        prendasState.baseRowsCacheKey = cacheKey;
-        return prendasState.baseRows;
-      };
-
-      const resetPrendasState = () => {
-        prendasState.filtered = [];
-        prendasState.baseRows = [];
-        window.__ROWS__ = [];
-        prendasState.baseRowsCacheKey = prendasState.isAdmin ? "admin" : "public";
-        prendasState.rowsAfterGlobal = [];
-        prendasState.rowsAfterAll = [];
-        prendasState.isDone = false;
-        prendasState.filtersActive = false;
-        prendasState.showingTotal = null;
-        prendasState.queryKey = "";
-        prendasState.pageIndex = 0;
-        prendasState.hasNextPage = false;
-        prendasState.filters.global = getCurrentGlobalFilters();
-        prendasState.filters.header = createEmptyHeaderFilters();
-        prendasState.sort = restorePersistedSort();
-        prendasState.uniqueOptions = {};
-        prendasState.adminMap.clear();
-        prendasState.selected.clear();
-        closeHeaderPopover();
-        resetCounters();
-      };
-
-      const renderLoadingPlaceholder = () => {
-        if (!prendasTbody) return;
-        prendasTbody.textContent = "";
-        const row = document.createElement("tr");
-        const cell = document.createElement("td");
-        cell.colSpan = 17;
-        cell.textContent = "Cargando base de datos...";
-        row.appendChild(cell);
-        prendasTbody.appendChild(row);
-        setCounter(0, prendasState.showingTotal);
+      const renderHeaderFilterPopover = () => {
+        // Los filtros de header ahora se renderizan inline (sin popover).
       };
 
       const refreshExactCounts = (rowsAfterAll) => {
@@ -6461,8 +5963,8 @@ const createPrendaRow = (item) => {
             cell.appendChild(buildBadge(tnValue, tnBadgeClass));
             return cell;
           })(),
-          fecha: formatDateCell(item),
-          pventa: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.pVenta)) : toNumber(item.pVenta)),
+          fechaTexto: formatDateCell(item),
+          precioConIva: moneyFmt(adminEnabled ? (toNumber(item.pVentaDisplay) ?? toNumber(item.precioConIva)) : toNumber(item.precioConIva)),
           costo: moneyFmt(item.costo),
           margen: pctFmt(item.margen),
           utilidad: moneyFmt(item.utilidad)
@@ -8018,6 +7520,15 @@ const createPrendaRow = (item) => {
           });
           updateSelectAllCheckbox();
         }
+      });
+
+      document.addEventListener("input", async (event) => {
+        const filterInput = event.target.closest("input[data-filter-key]");
+        if (!filterInput) return;
+        const key = safeString(filterInput.dataset.filterKey).trim();
+        if (!key) return;
+        prendasState.filters.header[key] = safeString(filterInput.value);
+        await applyFilters();
       });
 
       if (prendasTable) {
