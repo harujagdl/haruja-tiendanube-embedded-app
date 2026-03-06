@@ -5018,8 +5018,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
 ^A0N,30,30
 ^FD${codigo}^FS
 
-^FO25,100
-^A0N,55,55
+^FO0,82
+^A0N,72,72
+^FB250,1,0,C,0
 ^FD${precio}^FS
 
 ^FO260,17
@@ -5062,7 +5063,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
   .print-actions { position: fixed; top: 8px; left: 8px; z-index: 10; }
   .page { width:51mm; height:25mm; page-break-after:always; position:relative; overflow:hidden; }
   .codigo { position:absolute; left:3.13mm; top:5.0mm; font-size:3.3mm; font-weight:600; font-family: Arial, sans-serif; }
-  .precio { position:absolute; left:3.13mm; top:12.5mm; font-size:6.2mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
+  .precio { position:absolute; left:3.13mm; top:9.3mm; width:28.5mm; text-align:center; font-size:8.2mm; line-height:1; font-weight:700; font-family: Arial, sans-serif; }
   .qr { position:absolute; left:32.53mm; top:2.13mm; width:15.5mm; height:15.5mm; }
   .qr canvas, .qr img { width:100% !important; height:100% !important; display:block; }
   
