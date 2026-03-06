@@ -3199,6 +3199,228 @@ const auth = getAuth(app);
         updateDebugPanel();
       });
 
+      const chunkArray = (items, size) => {
+        const chunks = [];
+        for (let i = 0; i < items.length; i += size) {
+          chunks.push(items.slice(i, i + size));
+        }
+        return chunks;
+      };
+
+      const loadAdminCostMap = async (rows = []) => {
+        const map = new Map();
+        const rowDocIds = rows
+          .map((row) => safeString(row.docId || row.id).trim())
+          .filter(Boolean);
+
+        if (!rowDocIds.length) {
+          return map;
+        }
+
+        const ids = [...new Set(rowDocIds)];
+        const chunks = chunkArray(ids, 30);
+
+        for (const chunk of chunks) {
+          const snap = await getDocs(
+            query(collection(db, PRENDAS_ADMIN_COLLECTION), where("docId", "in", chunk))
+          );
+
+          snap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            const lookupId = safeString(data.docId || docSnap.id).trim();
+            if (!lookupId) return;
+
+            map.set(lookupId, {
+              costo: toNumberOrNull(data.costo),
+              pVentaOverride: toNumberOrNull(data.pVentaOverride ?? data.pVenta),
+              margen: toNumberOrNull(data.margen),
+              utilidad: toNumberOrNull(data.utilidad),
+            });
+          });
+        }
+
+        return map;
+      };
+
+      const mergeAdminFields = async (rows = []) => {
+        if (!(isAdminViewEnabled() && rows.length)) {
+          return rows;
+        }
+
+        const adminCostMap = await loadAdminCostMap(rows);
+
+        rows.forEach((row) => {
+          const lookupId = safeString(row.docId || row.id).trim();
+          const adminExtra = adminCostMap.get(lookupId);
+          if (!adminExtra) return;
+
+          const costo = toNumberOrNull(adminExtra.costo);
+          const utilidadFromAdmin = toNumberOrNull(adminExtra.utilidad);
+          const margenFromAdmin = toNumberOrNull(adminExtra.margen);
+          const pVentaOverride = toNumberOrNull(adminExtra.pVentaOverride);
+
+          row.costo = Number.isFinite(costo) ? costo : null;
+          row.pVentaOverride = Number.isFinite(pVentaOverride) ? pVentaOverride : null;
+
+          const precioVisible = Number.isFinite(row.pVentaOverride)
+            ? row.pVentaOverride
+            : (Number.isFinite(row.pVenta) ? row.pVenta : null);
+
+          row.pVentaDisplay = precioVisible;
+
+          const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
+            computeMarginUtility(precioVisible, row.costo);
+
+          row.utilidad = (Number.isFinite(utilidadFromAdmin) && utilidadFromAdmin !== 0)
+            ? utilidadFromAdmin
+            : utilidadCalculada;
+
+          row.margen = (Number.isFinite(margenFromAdmin) && margenFromAdmin !== 0)
+            ? Number(margenFromAdmin.toFixed(1))
+            : margenCalculado;
+        });
+
+        return rows;
+      };
+
+      const loadBaseRows = async () => {
+        const cacheKey = activePrendasPublicCollection || "public";
+
+        if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
+          return prendasState.baseRows;
+        }
+
+        let cursor = null;
+        let hasMore = true;
+        const rows = [];
+
+        while (hasMore) {
+          const constraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+          if (cursor) constraints.splice(1, 0, startAfter(cursor));
+
+          const snap = await getDocs(query(prendasRef, ...constraints));
+          console.log("[Prendas] snapshot size:", snap.size);
+
+          if (snap.empty) {
+            hasMore = false;
+            break;
+          }
+
+          snap.docs.forEach((docSnap) => rows.push(normalizeDoc(docSnap)));
+          cursor = snap.docs[snap.docs.length - 1];
+
+          if (snap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
+            hasMore = false;
+          }
+        }
+
+        if (!rows.length) {
+          try {
+            const fallbackProbe = await getDocs(
+              query(collection(db, PRENDAS_MASTER_COLLECTION), limit(1))
+            );
+
+            if (!fallbackProbe.empty) {
+              setPrendasAlert("Colección activa vacía: cargando respaldo temporal desde master.", "warning");
+              console.warn("[Prendas] fallback temporal activado desde master.");
+
+              cursor = null;
+              hasMore = true;
+
+              while (hasMore) {
+                const fallbackConstraints = [orderBy("orden", "asc"), limit(PRENDAS_COUNT_BATCH_SIZE)];
+                if (cursor) fallbackConstraints.splice(1, 0, startAfter(cursor));
+
+                const fallbackSnap = await getDocs(
+                  query(collection(db, PRENDAS_MASTER_COLLECTION), ...fallbackConstraints)
+                );
+
+                if (fallbackSnap.empty) {
+                  hasMore = false;
+                  break;
+                }
+
+                fallbackSnap.docs.forEach((docSnap) => {
+                  const row = normalizeDoc(docSnap);
+                  row.costo = null;
+                  row.iva = null;
+                  row.margen = null;
+                  row.utilidad = null;
+                  rows.push(row);
+                });
+
+                cursor = fallbackSnap.docs[fallbackSnap.docs.length - 1];
+
+                if (fallbackSnap.docs.length < PRENDAS_COUNT_BATCH_SIZE) {
+                  hasMore = false;
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("[Prendas] fallback a master no disponible", error);
+          }
+        }
+
+        rows.forEach((row) => {
+          row.costo = Number.isFinite(toNumberOrNull(row.costo)) ? toNumberOrNull(row.costo) : null;
+          row.utilidad = Number.isFinite(toNumberOrNull(row.utilidad)) ? toNumberOrNull(row.utilidad) : null;
+          row.margen = Number.isFinite(toNumberOrNull(row.margen)) ? toNumberOrNull(row.margen) : null;
+        });
+
+        const orderedRows = rows.sort(compareItemsByOrdenAsc);
+
+        orderedRows.forEach((row, index) => {
+          const generatedOrder = index + 1;
+          row.__order = generatedOrder;
+          row._rowNumber = generatedOrder;
+
+          if (!Number.isFinite(toNumberOrNull(row.orden))) {
+            row.orden = generatedOrder;
+          }
+        });
+
+        prendasState.baseRows = orderedRows;
+        prendasState.baseRowsCacheKey = cacheKey;
+        return prendasState.baseRows;
+      };
+
+      const resetPrendasState = () => {
+        prendasState.filtered = [];
+        prendasState.baseRows = [];
+        prendasState.baseRowsCacheKey = activePrendasPublicCollection || (prendasState.isAdmin ? "admin" : "public");
+        prendasState.rowsAfterGlobal = [];
+        prendasState.rowsAfterAll = [];
+        prendasState.isDone = false;
+        prendasState.filtersActive = false;
+        prendasState.showingTotal = null;
+        prendasState.queryKey = "";
+        prendasState.pageIndex = 0;
+        prendasState.hasNextPage = false;
+        prendasState.filters.global = getCurrentGlobalFilters();
+        prendasState.filters.header = createEmptyHeaderFilters();
+        prendasState.sort = restorePersistedSort();
+        prendasState.uniqueOptions = {};
+        closeHeaderPopover();
+        resetCounters();
+      };
+
+      const renderLoadingPlaceholder = () => {
+        if (!prendasTbody) return;
+
+        prendasTbody.textContent = "";
+
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+
+        cell.colSpan = 20;
+        cell.textContent = "Cargando base de datos...";
+
+        row.appendChild(cell);
+        prendasTbody.appendChild(row);
+
+        setCounter(0, prendasState.showingTotal);
+      };
+
       const btnOpenRegistro = document.getElementById("btnOpenRegistro");
       if (btnOpenRegistro) {
         btnOpenRegistro.addEventListener("click", () => navigateTo("registro"));
