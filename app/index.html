@@ -5646,6 +5646,23 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         return null;
       };
 
+      const parseNameFromOptionText = (text) => {
+        const rawText = safeString(text).trim();
+        if (!rawText) return "";
+        const parsed = rawText.split(" - ").slice(1).join(" - ").trim();
+        return parsed || rawText;
+      };
+
+      const buildDisplayLabel = (label, codigo, nombre, legacyValue) => {
+        const normalizedLabel = safeString(label).trim();
+        if (normalizedLabel) return normalizedLabel;
+        const normalizedCode = safeString(codigo).trim();
+        const normalizedName = safeString(nombre).trim();
+        if (normalizedCode && normalizedName) return `${normalizedCode} - ${normalizedName}`;
+        const normalizedLegacy = safeString(legacyValue).trim();
+        return normalizedLegacy || "-";
+      };
+
       const normalizeDoc = (docSnap) => {
         const data = docSnap.data() || {};
         const codigo = safeString(
@@ -5664,12 +5681,20 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             data.Detalles ??
             ""
         ).trim();
-        const proveedor = safeString(data.proveedor || data.Proveedor || "").trim();
-        const tipo = safeString(data.tipo || data.Tipo || "").trim();
+        const tipoCodigo = safeString(data.tipoCodigo ?? data.tipo ?? data.Tipo ?? "").trim();
+        const tipoNombre = safeString(data.tipoNombre ?? "").trim() || parseNameFromOptionText(data.tipoLabel);
+        const tipoLabel = safeString(data.tipoLabel ?? "").trim();
+        const tipo = safeString(data.tipo || data.Tipo || tipoCodigo || "").trim();
+        const proveedorCodigo = safeString(data.proveedorCodigo ?? data.proveedor ?? data.Proveedor ?? "").trim();
+        const proveedorNombre = safeString(data.proveedorNombre ?? "").trim() || parseNameFromOptionText(data.proveedorLabel);
+        const proveedorLabel = safeString(data.proveedorLabel ?? "").trim();
+        const proveedor = safeString(data.proveedor || data.Proveedor || proveedorCodigo || "").trim();
         const colorCode = safeString(data.colorCode ?? data.color ?? data.Color ?? "").trim().toUpperCase();
         const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
-        const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || resolveColorName(colorCode);
-        const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || resolveTallaName(tallaCode);
+        const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || parseNameFromOptionText(data.colorLabel) || resolveColorName(colorCode);
+        const colorLabel = safeString(data.colorLabel ?? "").trim();
+        const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || parseNameFromOptionText(data.tallaLabel) || resolveTallaName(tallaCode);
+        const tallaLabel = safeString(data.tallaLabel ?? "").trim();
         const qtyAvailable = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 0) || 0;
         let statusCanon = normalizeStatus(
           safeString(data.statusCanon ?? data.status ?? data.Status ?? "").trim()
@@ -5696,7 +5721,8 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const precioConIvaFinal = Number.isFinite(precioConIva)
           ? precioConIva
           : (Number.isFinite(pVenta) ? pVenta : null);
-        const isActive = data.isActive !== false;
+        const isDeleted = data.eliminado === true || data.deleted === true || data.isActive === false;
+        const isActive = !isDeleted;
 
         const { utilidad: utilidadCalculada, margenPct: margenCalculado } =
           computeMarginUtility(precioConIvaFinal, costo);
@@ -5739,11 +5765,19 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           talla: tallaName || tallaCode,
           colorCode,
           colorName: colorName || colorCode,
+          colorLabel: colorLabel || buildDisplayLabel("", colorCode, colorName || colorCode, colorCode),
           tallaCode,
           tallaName: tallaName || tallaCode,
+          tallaLabel: tallaLabel || buildDisplayLabel("", tallaCode, tallaName || tallaCode, tallaCode),
           codigoBase: safeString(data.codigoBase ?? data.baseCode ?? parseBaseCode(codigo)).trim() || parseBaseCode(codigo),
           proveedor,
+          proveedorCodigo,
+          proveedorNombre,
+          proveedorLabel,
           tipo,
+          tipoCodigo,
+          tipoNombre,
+          tipoLabel,
           status: statusCanon,
           statusCanon,
           disponibilidad: disponibilidadCanon,
@@ -5760,6 +5794,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           tnProductId: safeString(data.tnProductId).trim() || null,
           tnNotes: safeString(data.tnNotes).trim() || null,
           isActive,
+          eliminado: isDeleted,
           precio,
           pVenta,
           precioConIva: Number(data.precioConIva ?? data.pVenta ?? data.precio ?? precioConIvaFinal ?? 0) || 0,
@@ -5919,6 +5954,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const searchText = normalizeText(globalFilters.searchText);
         const dateRange = getDateRangeFromFilters(globalFilters.year, globalFilters.month);
         return rows.filter((item) => {
+          if (item?.eliminado === true || item?.isActive === false) return false;
           const precio = toNum(item.pVenta);
           if (globalFilters.priceMin != null || globalFilters.priceMax != null) {
             if (!Number.isFinite(precio)) return false;
@@ -6598,10 +6634,10 @@ const createPrendaRow = (item) => {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
           descripcion: safeString(item.descripcion) || "--",
-          tipo: formatLabel(safeString(item.tipo)) || "--",
-          color: safeString(item.colorName) || formatLabel(safeString(item.color)) || "--",
-          talla: formatLabel(safeString(item.talla)) || "--",
-          proveedor: formatLabel(safeString(item.proveedor)) || "--",
+          tipo: buildDisplayLabel(item.tipoLabel, item.tipoCodigo, item.tipoNombre, item.tipo),
+          color: buildDisplayLabel(item.colorLabel, item.colorCode, item.colorName, item.color),
+          talla: buildDisplayLabel(item.tallaLabel, item.tallaCode, item.tallaName, item.talla),
+          proveedor: buildDisplayLabel(item.proveedorLabel, item.proveedorCodigo, item.proveedorNombre, item.proveedor),
           status: renderStatusCell(rowStatus),
           disponibilidad: renderDisponibilidadCell(rowDisp, rowStatus),
           qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "—"),
@@ -7025,9 +7061,13 @@ const createPrendaRow = (item) => {
         if (!confirmed) return;
         const user = await ensureAdminSession();
         const userEmail = safeString(user?.email).trim().toLowerCase() || "public";
+        console.log("[delete] intentando borrar", docId);
         await updateDoc(doc(db, activePrendasPublicCollection, docId), {
           isActive: false,
           status: "ELIMINADO",
+          eliminado: true,
+          eliminadoAt: serverTimestamp(),
+          eliminadoBy: userEmail,
           deleted: true,
           deletedAt: serverTimestamp(),
           deletedBy: userEmail,
@@ -7512,6 +7552,27 @@ const createPrendaRow = (item) => {
             ? ajustarDesdePrecioConIVA(precioConIVAIngresado)
             : null;
           const buildPublicPayload = ({ codigo, baseCode, variantKey, orden = null, seqNumber = null }) => {
+            const tipoOption = registroProducto?.options?.[registroProducto.selectedIndex];
+            const proveedorOption = registroProveedor?.options?.[registroProveedor.selectedIndex];
+            const colorOption = registroColor?.options?.[registroColor.selectedIndex];
+            const tallaOption = registroTalla?.options?.[registroTalla.selectedIndex];
+
+            const tipoCodigo = safeString(preview.typeCode || registroProducto?.value).trim().toUpperCase();
+            const tipoLabel = safeString(tipoOption?.textContent).trim();
+            const tipoNombre = safeString(tipoOption?.dataset?.nombre || parseNameFromOptionText(tipoLabel)).trim() || tipoCodigo;
+
+            const proveedorCodigo = safeString(preview.providerCode || registroProveedor?.value).trim().toUpperCase();
+            const proveedorLabel = safeString(proveedorOption?.textContent).trim();
+            const proveedorNombre = safeString(proveedorOption?.dataset?.nombre || parseNameFromOptionText(proveedorLabel)).trim() || proveedorCodigo;
+
+            const colorCodigo = safeString(preview.colorClave || registroColor?.value).trim().toUpperCase();
+            const colorLabel = safeString(colorOption?.textContent).trim();
+            const colorNombre = safeString(colorOption?.dataset?.nombre || parseNameFromOptionText(colorLabel)).trim() || colorCodigo;
+
+            const tallaCodigo = safeString(preview.tallaClave || registroTalla?.value).trim().toUpperCase();
+            const tallaLabel = safeString(tallaOption?.textContent).trim();
+            const tallaNombre = safeString(tallaOption?.dataset?.nombre || parseNameFromOptionText(tallaLabel)).trim() || tallaCodigo;
+
             const payload = {
               docId: safeDocId(codigo),
               codigo,
@@ -7519,14 +7580,24 @@ const createPrendaRow = (item) => {
               codigoBase: baseCode,
               baseCode,
               variantKey,
-              proveedor: preview.providerCode || null,
-              tipo: preview.typeCode || null,
-              color: preview.colorClave,
-              colorCode: preview.colorClave,
-              colorName: getSelectedName(registroColor).trim() || preview.colorClave,
-              talla: preview.tallaClave,
-              tallaCode: preview.tallaClave,
-              tallaName: getSelectedName(registroTalla).trim() || preview.tallaClave,
+              proveedor: proveedorCodigo || null,
+              proveedorCodigo: proveedorCodigo || null,
+              proveedorNombre: proveedorNombre || null,
+              proveedorLabel: proveedorLabel || (proveedorCodigo ? `${proveedorCodigo} - ${proveedorNombre}` : null),
+              tipo: tipoCodigo || null,
+              tipoCodigo: tipoCodigo || null,
+              tipoNombre: tipoNombre || null,
+              tipoLabel: tipoLabel || (tipoCodigo ? `${tipoCodigo} - ${tipoNombre}` : null),
+              color: colorCodigo,
+              colorCode: colorCodigo,
+              colorName: colorNombre,
+              colorNombre: colorNombre,
+              colorLabel: colorLabel || (colorCodigo ? `${colorCodigo} - ${colorNombre}` : null),
+              talla: tallaCodigo,
+              tallaCode: tallaCodigo,
+              tallaName: tallaNombre,
+              tallaNombre: tallaNombre,
+              tallaLabel: tallaLabel || (tallaCodigo ? `${tallaCodigo} - ${tallaNombre}` : null),
               descripcion: preview.descripcion || null,
               detalles: preview.detallesValue || null,
               orden: Number.isFinite(orden) ? orden : null,
@@ -7534,9 +7605,15 @@ const createPrendaRow = (item) => {
               status: "ACTIVO",
               disponibilidad: "DISPONIBLE",
               isActive: true,
-              creadoPor: preview.createdByValue || null,
+              eliminado: false,
               createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
+              updatedAt: serverTimestamp(),
+              eliminadoAt: deleteField(),
+              eliminadoBy: deleteField(),
+              deletedAt: deleteField(),
+              deletedBy: deleteField(),
+              deleted: false,
+              creadoPor: preview.createdByValue || null
             };
             if (ajustePrecio) {
               payload.pVenta = ajustePrecio.precioConIVA;
