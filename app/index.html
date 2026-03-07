@@ -2781,6 +2781,7 @@ Errores: 0</pre>
         getAuth,
         GoogleAuthProvider,
         onAuthStateChanged,
+        signInAnonymously,
         signInWithPopup,
         signInWithRedirect,
         getRedirectResult,
@@ -2817,6 +2818,44 @@ console.log("[Firebase] projectId:", firebaseConfig?.projectId);
 }
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+      let firebaseReadyPromise = null;
+      const ensureFirebaseSession = async () => {
+        if (auth.currentUser) {
+          return auth.currentUser;
+        }
+        if (firebaseReadyPromise) {
+          return firebaseReadyPromise;
+        }
+
+        firebaseReadyPromise = new Promise((resolve, reject) => {
+          let signInAttempted = false;
+          const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+              console.log("[auth] usuario listo:", user.uid);
+              unsubscribe();
+              resolve(user);
+              return;
+            }
+
+            if (signInAttempted) return;
+            signInAttempted = true;
+
+            try {
+              console.log("[auth] sin usuario, intentando signInAnonymously...");
+              await signInAnonymously(auth);
+            } catch (error) {
+              console.error("[auth] error en signInAnonymously:", error);
+              unsubscribe();
+              reject(error);
+            }
+          });
+        }).catch((error) => {
+          firebaseReadyPromise = null;
+          throw error;
+        });
+
+        return firebaseReadyPromise;
+      };
       const googleProvider = new GoogleAuthProvider();
       const debugMode = new URLSearchParams(window.location.search).get("debug") === "1";
       function isEmbedded() {
@@ -3832,6 +3871,7 @@ const auth = getAuth(app);
 
       const mostrarErrorRegistro = (message) => setRegistroStatus(message, "error");
       const mostrarInfoRegistro = (message) => setRegistroStatus(message, "info");
+      const mostrarWarningRegistro = (message) => setRegistroStatus(message, "warning");
 
       const setZplStatus = (message, type = "") => {
         if (!zplStatus) return;
@@ -3850,6 +3890,106 @@ const auth = getAuth(app);
           .trim()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
+
+      const waitForSelectOptions = (selectEl, timeout = 3000) =>
+        new Promise((resolve, reject) => {
+          const started = Date.now();
+          const check = () => {
+            if (selectEl?.options?.length > 1) {
+              resolve(true);
+              return;
+            }
+            if (Date.now() - started > timeout) {
+              reject(new Error("Timeout esperando opciones del select"));
+              return;
+            }
+            requestAnimationFrame(check);
+          };
+          check();
+        });
+
+      const findOptionValueByText = (selectEl, target) => {
+        const normalizedTarget = normalizeText(target);
+        if (!normalizedTarget || !selectEl) return "";
+        const found = Array.from(selectEl.options || []).find((option) => {
+          const valueNorm = normalizeText(option.value);
+          const textNorm = normalizeText(option.textContent);
+          const nameNorm = normalizeText(option.dataset?.nombre);
+          return valueNorm === normalizedTarget || textNorm === normalizedTarget || nameNorm === normalizedTarget;
+        });
+        return found?.value || "";
+      };
+
+      const setSelectValueSafely = (selectEl, rawValue) => {
+        if (!selectEl) return false;
+        const value = safeString(rawValue).trim();
+        if (!value) {
+          selectEl.value = "";
+          return false;
+        }
+        const exists = Array.from(selectEl.options || []).some((option) =>
+          safeString(option.value).trim() === value
+        );
+        if (!exists) {
+          selectEl.value = "";
+          return false;
+        }
+        selectEl.value = value;
+        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      };
+
+      const syncDerivedBaseSelects = async ({ tipoValue, proveedorValue }) => {
+        await waitForSelectOptions(registroProducto);
+        await waitForSelectOptions(registroProveedor);
+        const resolvedTipo = findOptionValueByText(registroProducto, tipoValue);
+        const resolvedProveedor = findOptionValueByText(registroProveedor, proveedorValue);
+        const okTipo = setSelectValueSafely(registroProducto, resolvedTipo);
+        const okProveedor = setSelectValueSafely(registroProveedor, resolvedProveedor);
+        console.log("[derivado] tipo:", tipoValue, "resolved:", resolvedTipo, "ok:", okTipo);
+        console.log("[derivado] proveedor:", proveedorValue, "resolved:", resolvedProveedor, "ok:", okProveedor);
+        return {
+          okTipo,
+          okProveedor,
+          resolvedTipo,
+          resolvedProveedor
+        };
+      };
+
+      const safeGetDoc = async (docRef, label = "") => {
+        try {
+          console.log(`[firestore] getDoc -> ${label}`, docRef.path);
+          const snap = await getDoc(docRef);
+          console.log(`[firestore] getDoc OK -> ${label}`, snap.exists());
+          return snap;
+        } catch (error) {
+          console.error(`[firestore] getDoc ERROR -> ${label}`, docRef.path, error);
+          throw error;
+        }
+      };
+
+      const safeGetDocs = async (queryRef, label = "") => {
+        try {
+          console.log(`[firestore] getDocs -> ${label}`);
+          const snap = await getDocs(queryRef);
+          console.log(`[firestore] getDocs OK -> ${label}`, snap.size);
+          return snap;
+        } catch (error) {
+          console.error(`[firestore] getDocs ERROR -> ${label}`, error);
+          throw error;
+        }
+      };
+
+      const safeSetDoc = async (docRef, payload, label = "", options) => {
+        try {
+          console.log(`[firestore] setDoc -> ${label}`, docRef.path, payload);
+          await setDoc(docRef, payload, options);
+          console.log(`[firestore] setDoc OK -> ${label}`);
+        } catch (error) {
+          console.error(`[firestore] setDoc ERROR -> ${label}`, docRef.path, error);
+          throw error;
+        }
+      };
 
       const normalizeDictionaryValue = (value) =>
         safeString(value).trim().replace(/\s+/g, " ");
@@ -4335,7 +4475,8 @@ const auth = getAuth(app);
       };
 
       const loadCategoryEntries = async (category, collectionName) => {
-        const snapshot = await getDocs(collection(db, collectionName));
+        await ensureFirebaseSession();
+        const snapshot = await safeGetDocs(collection(db, collectionName), `loadCategoryEntries:${collectionName}`);
         if (snapshot.empty) {
           return { category, entries: [], empty: true };
         }
@@ -4353,7 +4494,11 @@ const auth = getAuth(app);
       };
 
       const loadCategoryEntriesFromFallback = async (category) => {
-        const snapshot = await getDocs(collection(db, DICTIONARY_FALLBACK_COLLECTION));
+        await ensureFirebaseSession();
+        const snapshot = await safeGetDocs(
+          collection(db, DICTIONARY_FALLBACK_COLLECTION),
+          `loadCategoryEntriesFromFallback:${category}`
+        );
         if (snapshot.empty) return { category, entries: [], empty: true };
 
         const entries = snapshot.docs
@@ -4372,10 +4517,14 @@ const auth = getAuth(app);
       };
 
       const resolvePrendasCollection = async () => {
+        await ensureFirebaseSession();
         const probe = await Promise.all(
           PRENDAS_COLLECTION_CANDIDATES.map(async (collectionName) => {
             try {
-              const sample = await getDocs(query(collection(db, collectionName), limit(1)));
+              const sample = await safeGetDocs(
+                query(collection(db, collectionName), limit(1)),
+                `resolvePrendasCollection:${collectionName}`
+              );
               return { collectionName, ok: true, hasDocs: !sample.empty };
             } catch (error) {
               return { collectionName, ok: false, hasDocs: false, error };
@@ -4395,6 +4544,7 @@ const auth = getAuth(app);
       };
 
       const loadDictionary = async () => {
+        await ensureFirebaseSession();
         const categories = Object.keys(COLLECTIONS);
         let results = await Promise.all(
           categories.map((category) =>
@@ -4420,6 +4570,7 @@ const auth = getAuth(app);
       };
 
       const loadDictionariesOnce = async () => {
+        await ensureFirebaseSession();
         if (prendasState.dictsLoaded) {
           return prendasState.dicts;
         }
@@ -4445,7 +4596,7 @@ const auth = getAuth(app);
         const categories = Object.keys(COLLECTIONS);
         let results = await Promise.all(
           categories.map(async (category) => {
-            const snapshot = await getDocs(collection(db, COLLECTIONS[category]));
+            const snapshot = await safeGetDocs(collection(db, COLLECTIONS[category]), `loadDictionariesOnce:${category}`);
             const values = snapshot.docs
               .map((docSnap) => {
                 const data = docSnap.data() || {};
@@ -4466,7 +4617,10 @@ const auth = getAuth(app);
         );
         const totalValues = results.reduce((acc, result) => acc + result.values.length, 0);
         if (!totalValues) {
-          const fallbackSnapshot = await getDocs(collection(db, DICTIONARY_FALLBACK_COLLECTION));
+          const fallbackSnapshot = await safeGetDocs(
+            collection(db, DICTIONARY_FALLBACK_COLLECTION),
+            "loadDictionariesOnce:fallback"
+          );
           results = categories.map((category) => {
             const values = fallbackSnapshot.docs
               .map((docSnap) => {
@@ -7025,6 +7179,7 @@ const createPrendaRow = (item) => {
       };
 
       const findCodigoExistente = async (codigoValue) => {
+        await ensureFirebaseSession();
         const raw = safeString(codigoValue).trim().toUpperCase();
         if (!raw) return null;
         const docId = safeDocId(raw);
@@ -7032,7 +7187,8 @@ const createPrendaRow = (item) => {
           ? [PRENDAS_ADMIN_COLLECTION, activePrendasPublicCollection]
           : [activePrendasPublicCollection];
         for (const collectionName of candidates) {
-          const snap = await getDoc(doc(db, collectionName, docId));
+          const docRef = doc(db, collectionName, docId);
+          const snap = await safeGetDoc(docRef, `findCodigoExistente:${collectionName}`);
           if (snap.exists()) {
             const data = snap.data() || {};
             const codigo = safeString(data.codigo || raw).trim().toUpperCase();
@@ -7049,7 +7205,7 @@ const createPrendaRow = (item) => {
         el.setAttribute("aria-disabled", locked ? "true" : "false");
       };
 
-      const setBaseMode = ({ enabled, tipoValue, provValue, baseValue } = {}) => {
+      const setBaseMode = ({ enabled, tipoValue, provValue, baseValue, canLockDerived = true } = {}) => {
         baseMode = Boolean(enabled);
 
         if (baseMode) {
@@ -7070,15 +7226,17 @@ const createPrendaRow = (item) => {
           registroBaseCode = parseBaseCode(registroBaseCodeInput?.value || "");
         }
 
-        setLocked(registroProducto, baseMode);
-        setLocked(registroProveedor, baseMode);
+        setLocked(registroProducto, baseMode && canLockDerived);
+        setLocked(registroProveedor, baseMode && canLockDerived);
         setLocked(registroColor, false);
         setLocked(registroTalla, false);
         if (registroDetalles) setLocked(registroDetalles, false);
 
         if (registroBaseModeHint) {
           if (baseMode) {
-            registroBaseModeHint.textContent = "Modo código base activo: Tipo y Proveedor se derivan automáticamente";
+            registroBaseModeHint.textContent = canLockDerived
+              ? "Modo código base activo: Tipo y Proveedor se derivan automáticamente"
+              : "Código base activo: revisa Tipo/Proveedor manualmente antes de guardar.";
             registroBaseModeHint.classList.remove("hidden");
           } else {
             registroBaseModeHint.textContent = "";
@@ -7200,6 +7358,7 @@ const createPrendaRow = (item) => {
         }
         try {
           registroSearchExistingButton.disabled = true;
+          await ensureFirebaseSession();
           const found = await findCodigoExistente(raw);
           if (!found) {
             setBaseMode({ enabled: false, baseValue: "" });
@@ -7212,16 +7371,29 @@ const createPrendaRow = (item) => {
             setBaseMode({ enabled: false });
             throw new Error("El código encontrado no tiene tipo/proveedor para bloquear el formulario.");
           }
+
+          const derivedResult = await syncDerivedBaseSelects({
+            tipoValue: tipoBase,
+            proveedorValue: proveedorBase
+          });
+
           setBaseMode({
             enabled: true,
             baseValue: found.baseCode,
-            tipoValue: tipoBase,
-            provValue: proveedorBase
+            tipoValue: derivedResult.resolvedTipo || tipoBase,
+            provValue: derivedResult.resolvedProveedor || proveedorBase,
+            canLockDerived: derivedResult.okTipo && derivedResult.okProveedor
           });
+
+          if (!derivedResult.okTipo || !derivedResult.okProveedor) {
+            mostrarWarningRegistro("Se encontró el código base, pero revisa Tipo/Proveedor antes de guardar.");
+            return;
+          }
+
           setRegistroStatus(`Código encontrado en ${found.collectionName}. Base reutilizable: ${found.baseCode}`, "success");
         } catch (error) {
           console.error(error);
-          setRegistroStatus("No se pudo buscar el código existente.", "error");
+          setRegistroStatus("No se pudo consultar el código. Revisa permisos o sesión.", "error");
         } finally {
           registroSearchExistingButton.disabled = false;
         }
@@ -7232,6 +7404,7 @@ const createPrendaRow = (item) => {
         setRegistroStatus("");
 
         try {
+          await ensureFirebaseSession();
           registroSubmit.disabled = true;
           registroPreview = await buildRegistroPreview();
           if (!registroPreview) return;
@@ -7252,6 +7425,7 @@ const createPrendaRow = (item) => {
 
       const handleRegistroSave = async () => {
         try {
+          await ensureFirebaseSession();
           const preview = registroPreview || await buildRegistroPreview();
           if (!preview) return;
 
@@ -7303,8 +7477,9 @@ const createPrendaRow = (item) => {
 
           const reserveNextPublicCode = async (attempts = 5) => {
             for (let attempt = 0; attempt < attempts; attempt += 1) {
-              const highestSnap = await getDocs(
-                query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1))
+              const highestSnap = await safeGetDocs(
+                query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1)),
+                "registroSave:reserveNextPublicCode:highestOrden"
               );
               const highestOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
               const nextOrden = Number.isFinite(highestOrden) ? highestOrden + 1 : 1;
@@ -7316,7 +7491,7 @@ const createPrendaRow = (item) => {
                 tallaClave: preview.tallaClave
               });
               const nextDocRef = doc(db, activePrendasPublicCollection, safeDocId(nextCodeData.codigo));
-              const exists = await getDoc(nextDocRef);
+              const exists = await safeGetDoc(nextDocRef, "registroSave:reserveNextPublicCode:exists");
               if (exists.exists()) continue;
               return {
                 orden: nextOrden,
@@ -7331,13 +7506,14 @@ const createPrendaRow = (item) => {
             const codigoFinal = preview.codigo;
             const docId = safeDocId(codigoFinal);
             const publicRef = doc(db, activePrendasPublicCollection, docId);
-            const existingSnap = await getDoc(publicRef);
+            const existingSnap = await safeGetDoc(publicRef, "registroSave:supplier:existing");
             if (existingSnap.exists()) {
               throw new Error("Ese código ya existe en la base pública.");
             }
 
-            const highestSnap = await getDocs(
-              query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1))
+            const highestSnap = await safeGetDocs(
+              query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1)),
+              "registroSave:supplier:highestOrden"
             );
             const highestOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
             const nextOrden = Number.isFinite(highestOrden) ? highestOrden + 1 : 1;
@@ -7354,8 +7530,8 @@ const createPrendaRow = (item) => {
             publicPayload.modo_codigo = "supplier";
             publicPayload.codigo_origen = preview.codigoOrigen;
 
-            await setDoc(publicRef, publicPayload);
-            const savedSnap = await getDoc(publicRef);
+            await safeSetDoc(publicRef, publicPayload, "registroSave:supplier:write");
+            const savedSnap = await safeGetDoc(publicRef, "registroSave:supplier:verify");
             if (!savedSnap.exists()) {
               throw new Error("No se confirmó el guardado del documento en Firestore.");
             }
@@ -7375,7 +7551,7 @@ const createPrendaRow = (item) => {
           } else if (preview.usingExistingBase) {
             const docId = safeDocId(preview.codigo);
             const publicRef = doc(db, activePrendasPublicCollection, docId);
-            const existingSnap = await getDoc(publicRef);
+            const existingSnap = await safeGetDoc(publicRef, "registroSave:base:existing");
             if (existingSnap.exists()) {
               throw new Error("Ese código ya existe en la base pública.");
             }
@@ -7388,8 +7564,8 @@ const createPrendaRow = (item) => {
               orden,
               seqNumber: orden
             });
-            await setDoc(publicRef, publicPayload);
-            const savedSnap = await getDoc(publicRef);
+            await safeSetDoc(publicRef, publicPayload, "registroSave:base:write");
+            const savedSnap = await safeGetDoc(publicRef, "registroSave:base:verify");
             if (!savedSnap.exists()) {
               throw new Error("No se confirmó el guardado del documento en Firestore.");
             }
@@ -7403,8 +7579,8 @@ const createPrendaRow = (item) => {
               orden: txResult.orden,
               seqNumber: txResult.orden
             });
-            await setDoc(txResult.docRef, publicPayload);
-            const savedSnap = await getDoc(txResult.docRef);
+            await safeSetDoc(txResult.docRef, publicPayload, "registroSave:new:write");
+            const savedSnap = await safeGetDoc(txResult.docRef, "registroSave:new:verify");
             if (!savedSnap.exists()) {
               throw new Error("No se confirmó el guardado del documento en Firestore.");
             }
@@ -8317,6 +8493,8 @@ document.addEventListener("keydown", (event) => {
         populateMonthFilter();
         clearFiltersUi();
         try {
+          await ensureFirebaseSession();
+          console.log("[auth] currentUser:", auth.currentUser ? auth.currentUser.uid : null);
           if (isEmbeddedApp) {
             setAdminLoginStatus("Conectando...", "warning");
           }
@@ -8403,6 +8581,9 @@ document.addEventListener("keydown", (event) => {
           setRegistroStatus("No pudimos cargar el diccionario.", "error");
           registroSubmit.disabled = true;
           console.error(error);
+          if (/missing or insufficient permissions/i.test(String(error?.message || ""))) {
+            mostrarErrorRegistro("No fue posible conectar con la base de datos. Revisa sesión y permisos.");
+          }
           alert(`Error cargando diccionario: ${error?.message || error}`);
         } finally {
           // ADMIN DB MODE START
