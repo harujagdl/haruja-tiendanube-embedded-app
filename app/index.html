@@ -7325,12 +7325,14 @@ const createPrendaRow = (item) => {
 
         const baseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
         const usingExistingBase = Boolean(baseCode);
+        const previewSeqNumber = 1;
+        const previewConsecutivo = String(Number(previewSeqNumber) || 1).padStart(3, "0");
         const { variantKey, codigo } = usingExistingBase
           ? buildModelCode({ providerCode, typeCode, seqNumber: 1, colorClave, tallaClave, baseCodeOverride: baseCode })
           : {
               baseCode: "",
               variantKey: `${colorClave}_${tallaClave}`,
-              codigo: `HA${providerCode}${typeCode}XXX/${colorClave}-${tallaClave}`
+              codigo: `HA${providerCode}${typeCode}${previewConsecutivo}/${colorClave}-${tallaClave}`
             };
 
         return {
