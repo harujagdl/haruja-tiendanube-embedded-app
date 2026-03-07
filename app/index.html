@@ -7166,16 +7166,81 @@ const createPrendaRow = (item) => {
       };
 
       const parseOrdenFromBaseCode = (baseCode) => {
-        const match = /^HA\d+[A-Z](\d{3,})$/i.exec(safeString(baseCode).trim());
+        const match = /^HA[A-Z0-9]{2}(\d{3,})$/i.exec(safeString(baseCode).trim());
         if (!match) return null;
         const orden = Number(match[1]);
         return Number.isFinite(orden) ? orden : null;
+      };
+
+      const parseNumeroFromBaseCode = (baseCode, prefix = "") => {
+        const normalizedBase = safeString(baseCode).trim().toUpperCase();
+        const normalizedPrefix = safeString(prefix).trim().toUpperCase();
+        if (!normalizedBase) return null;
+        if (normalizedPrefix && !normalizedBase.startsWith(normalizedPrefix)) return null;
+        const match = normalizedBase.match(/(\d+)$/);
+        if (!match) return null;
+        const numero = Number(match[1]);
+        if (!Number.isFinite(numero)) return null;
+        return { numero, digitos: match[1].length };
       };
 
       const buildModelCode = ({ providerCode, typeCode, seqNumber, colorClave, tallaClave, baseCodeOverride = "" }) => {
         const baseCode = safeString(baseCodeOverride).trim().toUpperCase() || `HA${providerCode}${typeCode}${String(seqNumber).padStart(3, "0")}`;
         const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
         return { baseCode, variantKey: `${colorClave}_${tallaClave}`, codigo };
+      };
+
+      const obtenerPrendasDeFamilia = async ({ providerCode, typeCode }) => {
+        const provider = safeString(providerCode).trim().toUpperCase();
+        const type = safeString(typeCode).trim().toUpperCase();
+        if (!provider || !type) return [];
+
+        const familySnap = await safeGetDocs(
+          query(
+            collection(db, activePrendasPublicCollection),
+            where("proveedor", "==", provider),
+            where("tipo", "==", type)
+          ),
+          "registro:obtenerPrendasDeFamilia"
+        );
+
+        return familySnap.docs.map((snap) => ({ id: snap.id, ...(snap.data() || {}) }));
+      };
+
+      const obtenerSiguienteCodigoBasePorFamilia = async ({ providerCode, typeCode, minNumero = 0 }) => {
+        const family = `${safeString(providerCode).trim().toUpperCase()}${safeString(typeCode).trim().toUpperCase()}`;
+        const prefix = `HA${family}`;
+        const rows = await obtenerPrendasDeFamilia({ providerCode, typeCode });
+
+        let maxNumero = Number.isFinite(minNumero) ? minNumero : 0;
+        let maxDigitos = 3;
+
+        for (const row of rows) {
+          const rawBase = safeString(row.codigoBase || row.baseCode || row.base || parseBaseCode(row.codigo || row.code || row.id || "")).trim().toUpperCase();
+          const parsed = parseNumeroFromBaseCode(rawBase, prefix);
+          if (!parsed) continue;
+          if (parsed.numero > maxNumero) maxNumero = parsed.numero;
+          if (parsed.digitos > maxDigitos) maxDigitos = parsed.digitos;
+        }
+
+        const siguiente = maxNumero + 1;
+        const width = Math.max(3, maxDigitos, String(siguiente).length);
+        return `${prefix}${String(siguiente).padStart(width, "0")}`;
+      };
+
+      const resolveCodigoBase = async ({ providerCode, typeCode } = {}) => {
+        const existingBase = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
+
+        if (existingBase) {
+          console.log("[codigoBase] reutilizando base existente:", existingBase);
+          return existingBase;
+        }
+
+        const family = `${safeString(providerCode).trim().toUpperCase()}${safeString(typeCode).trim().toUpperCase()}`;
+        const nextBase = await obtenerSiguienteCodigoBasePorFamilia({ providerCode, typeCode });
+
+        console.log("[codigoBase] nueva base generada:", nextBase, "familia:", family);
+        return nextBase;
       };
 
       const findCodigoExistente = async (codigoValue) => {
@@ -7192,7 +7257,7 @@ const createPrendaRow = (item) => {
           if (snap.exists()) {
             const data = snap.data() || {};
             const codigo = safeString(data.codigo || raw).trim().toUpperCase();
-            return { codigo, baseCode: parseBaseCode(codigo), data, collectionName };
+            return { codigo, baseCode: parseBaseCode(data.codigoBase || data.baseCode || codigo), data, collectionName };
           }
         }
         return null;
@@ -7323,17 +7388,25 @@ const createPrendaRow = (item) => {
           };
         }
 
-        const baseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
-        const usingExistingBase = Boolean(baseCode);
-        const previewSeqNumber = 1;
-        const previewConsecutivo = String(Number(previewSeqNumber) || 1).padStart(3, "0");
-        const { variantKey, codigo } = usingExistingBase
-          ? buildModelCode({ providerCode, typeCode, seqNumber: 1, colorClave, tallaClave, baseCodeOverride: baseCode })
-          : {
-              baseCode: "",
-              variantKey: `${colorClave}_${tallaClave}`,
-              codigo: `HA${providerCode}${typeCode}${previewConsecutivo}/${colorClave}-${tallaClave}`
-            };
+        const existingBaseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode);
+        const usingExistingBase = Boolean(existingBaseCode);
+        const baseCode = await resolveCodigoBase({ providerCode, typeCode });
+        const { variantKey, codigo } = buildModelCode({
+          providerCode,
+          typeCode,
+          seqNumber: 1,
+          colorClave,
+          tallaClave,
+          baseCodeOverride: baseCode
+        });
+
+        console.log("[generar] tipo:", typeCode);
+        console.log("[generar] proveedor:", providerCode);
+        console.log("[generar] color:", colorClave);
+        console.log("[generar] talla:", tallaClave);
+        console.log("[generar] codigoBase input:", registroBaseCodeInput?.value || "");
+        console.log("[generar] reutiliza base?:", Boolean(existingBaseCode));
+        console.log("[generar] codigo final:", codigo);
 
         return {
           providerCode,
@@ -7477,31 +7550,38 @@ const createPrendaRow = (item) => {
             return payload;
           };
 
-          const reserveNextPublicCode = async (attempts = 5) => {
+          const reserveNextPublicCodeByFamilia = async (attempts = 5) => {
+            let minNumero = 0;
             for (let attempt = 0; attempt < attempts; attempt += 1) {
-              const highestSnap = await safeGetDocs(
-                query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1)),
-                "registroSave:reserveNextPublicCode:highestOrden"
-              );
-              const highestOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
-              const nextOrden = Number.isFinite(highestOrden) ? highestOrden + 1 : 1;
+              const baseCode = await obtenerSiguienteCodigoBasePorFamilia({
+                providerCode: preview.providerCode,
+                typeCode: preview.typeCode,
+                minNumero
+              });
               const nextCodeData = buildModelCode({
                 providerCode: preview.providerCode,
                 typeCode: preview.typeCode,
-                seqNumber: nextOrden,
+                seqNumber: 1,
                 colorClave: preview.colorClave,
-                tallaClave: preview.tallaClave
+                tallaClave: preview.tallaClave,
+                baseCodeOverride: baseCode
               });
               const nextDocRef = doc(db, activePrendasPublicCollection, safeDocId(nextCodeData.codigo));
-              const exists = await safeGetDoc(nextDocRef, "registroSave:reserveNextPublicCode:exists");
-              if (exists.exists()) continue;
-              return {
-                orden: nextOrden,
-                docRef: nextDocRef,
-                ...nextCodeData
-              };
+              const exists = await safeGetDoc(nextDocRef, "registroSave:reserveNextPublicCodeByFamilia:exists");
+              if (!exists.exists()) {
+                const orden = parseOrdenFromBaseCode(baseCode);
+                return {
+                  orden,
+                  docRef: nextDocRef,
+                  ...nextCodeData
+                };
+              }
+
+              const prefix = `HA${preview.providerCode}${preview.typeCode}`;
+              const parsed = parseNumeroFromBaseCode(baseCode, prefix);
+              minNumero = parsed?.numero || minNumero + 1;
             }
-            throw new Error("No se pudo reservar un código único. Intenta nuevamente.");
+            throw new Error("No se pudo reservar un código único por familia. Intenta nuevamente.");
           };
 
           if (preview.isSupplier) {
@@ -7573,7 +7653,7 @@ const createPrendaRow = (item) => {
             }
             console.log("[Registro] Documento guardado:", publicRef.id);
           } else {
-            const txResult = await reserveNextPublicCode();
+            const txResult = await reserveNextPublicCodeByFamilia();
             const publicPayload = buildPublicPayload({
               codigo: txResult.codigo,
               baseCode: txResult.baseCode,
