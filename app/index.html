@@ -4085,105 +4085,11 @@ const auth = getAuth(app);
         return `${base}/${colorClave}-${tallaClave}`;
       };
 
-      function getCatalogCounterName(collectionName) {
-        switch (collectionName) {
-          case "diccionario_proveedores":
-            return "proveedores";
-          case "diccionario_tipos":
-            return "tipos";
-          case "diccionario_colores":
-            return "colores";
-          case "diccionario_tallas":
-            return "tallas";
-          default:
-            throw new Error(`Colección de diccionario no soportada: ${collectionName}`);
-        }
-      }
-
-      async function getNextCatalogOrder(counterDocName) {
-        const counterRef = doc(db, "catalog_counters", counterDocName);
-
-        return await runTransaction(db, async (tx) => {
-          const snap = await tx.get(counterRef);
-          const data = snap.exists() ? (snap.data() || {}) : {};
-          const actual = Number(data.lastNumber ?? data.value ?? 0) || 0;
-          const siguiente = actual + 1;
-
-          tx.set(counterRef, {
-            lastNumber: siguiente,
-            value: siguiente,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-
-          return siguiente;
-        });
-      }
-
-      async function ensureCatalogOrder(collectionName, payload) {
-        const nextPayload = { ...(payload || {}) };
-
-        if (Number(nextPayload.orden) > 0) {
-          return nextPayload;
-        }
-
-        const counterDocName = getCatalogCounterName(collectionName);
-        const orden = await getNextCatalogOrder(counterDocName);
-
-        nextPayload.orden = orden;
-
-        if (!nextPayload.id) {
-          nextPayload.id = orden;
-        }
-
-        if (!nextPayload.label) {
-          const codigo = String(nextPayload.codigo || "").trim();
-          const nombre = String(nextPayload.nombre || "").trim();
-          nextPayload.label = codigo && nombre ? `${codigo} - ${nombre}` : (codigo || nombre || "");
-        }
-
-        return nextPayload;
-      }
-
-      const ensureCatalogOrderInDoc = async (collectionName, docSnap) => {
-        const current = docSnap.data() || {};
-        if (collectionName === "diccionario_proveedores") {
-          const codigo = String(current.codigo ?? current.clave ?? docSnap.id ?? "").trim();
-          const nombre = String(current.nombre ?? current.valor ?? "").trim().toLowerCase();
-          if (codigo === "C" && nombre === "molet" && !(Number(current.orden) > 0)) {
-            const patched = {
-              ...current,
-              codigo: "C",
-              nombre: "Molet",
-              label: current.label || "C - Molet",
-              orden: 6,
-              id: Number(current.id) > 0 ? current.id : 6
-            };
-            await safeSetDoc(
-              doc(db, collectionName, docSnap.id),
-              patched,
-              `ensureCatalogOrderInDoc:molet:${docSnap.id}`,
-              { merge: true }
-            );
-            return patched;
-          }
-        }
-
-        if (Number(current.orden) > 0) return current;
-
-        const payloadWithOrder = await ensureCatalogOrder(collectionName, {
-          ...current,
-          codigo: current.codigo ?? current.clave ?? docSnap.id,
-          nombre: current.nombre ?? current.valor ?? ""
-        });
-
-        await safeSetDoc(
-          doc(db, collectionName, docSnap.id),
-          payloadWithOrder,
-          `ensureCatalogOrderInDoc:${collectionName}:${docSnap.id}`,
-          { merge: true }
-        );
-
-        return payloadWithOrder;
+      const withLocalFallbackOrder = (entries = []) => {
+        return entries.map((item, index) => ({
+          ...item,
+          orden: Number(item?.orden ?? item?.id ?? index + 1)
+        }));
       };
 
       const normalizeSkuPrefix = (input) =>
@@ -4663,20 +4569,22 @@ const auth = getAuth(app);
           return { category, entries: [], empty: true };
         }
 
-        const entries = [];
-        for (const docSnap of snapshot.docs) {
-          const data = await ensureCatalogOrderInDoc(collectionName, docSnap);
-          const entry = {
-            id: data.id ?? null,
-            orden: data.orden ?? null,
-            codigo: data.codigo ?? data.clave ?? docSnap.id,
-            clave: data.clave || docSnap.id,
-            valor: data.valor || data.nombre || data.clave || docSnap.id
-          };
-          if (entry.clave && entry.valor) {
-            entries.push(entry);
-          }
-        }
+        const entries = withLocalFallbackOrder(
+          snapshot.docs
+            .map((docSnap) => {
+              const data = docSnap.data() || {};
+              const entry = {
+                id: data.id ?? null,
+                orden: data.orden ?? null,
+                codigo: data.codigo ?? data.clave ?? docSnap.id,
+                clave: data.clave || docSnap.id,
+                valor: data.valor || data.nombre || data.clave || docSnap.id
+              };
+              if (!entry.clave || !entry.valor) return null;
+              return entry;
+            })
+            .filter(Boolean)
+        );
 
         return { category, entries: sortDictionaryEntries(entries), empty: entries.length === 0 };
       };
@@ -4689,22 +4597,25 @@ const auth = getAuth(app);
         );
         if (snapshot.empty) return { category, entries: [], empty: true };
 
-        const entries = snapshot.docs
-          .map((docSnap) => {
-            const data = docSnap.data() || {};
-            const categoria = safeString(data.categoria || data.category || data.tipo).trim().toLowerCase();
-            if (categoria && categoria !== category) return null;
-            const clave = data.clave || docSnap.id;
-            const valor = data.valor || data.nombre || data.label || clave;
-            return {
-              id: data.id ?? null,
-              orden: data.orden ?? null,
-              codigo: data.codigo ?? data.clave ?? docSnap.id,
-              clave,
-              valor
-            };
-          })
-          .filter((entry) => entry.clave && entry.valor);
+        const entries = withLocalFallbackOrder(
+          snapshot.docs
+            .map((docSnap) => {
+              const data = docSnap.data() || {};
+              const categoria = safeString(data.categoria || data.category || data.tipo).trim().toLowerCase();
+              if (categoria && categoria !== category) return null;
+              const clave = data.clave || docSnap.id;
+              const valor = data.valor || data.nombre || data.label || clave;
+              if (!clave || !valor) return null;
+              return {
+                id: data.id ?? null,
+                orden: data.orden ?? null,
+                codigo: data.codigo ?? data.clave ?? docSnap.id,
+                clave,
+                valor
+              };
+            })
+            .filter(Boolean)
+        );
 
         return { category, entries: sortDictionaryEntries(entries), empty: entries.length === 0 };
       };
