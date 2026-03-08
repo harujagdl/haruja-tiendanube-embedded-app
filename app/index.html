@@ -2772,6 +2772,7 @@ Errores: 0</pre>
         startAfter,
         where,
         limit,
+        runTransaction,
         writeBatch,
         persistentLocalCache,
         persistentMultipleTabManager,
@@ -7227,20 +7228,21 @@ const createPrendaRow = (item) => {
         return { baseCode, variantKey: `${colorClave}_${tallaClave}`, codigo };
       };
 
-      async function obtenerSiguienteCodigoBasePorFamilia(collectionName, proveedorCodigo, tipoCodigo) {
+      function buildFamiliaCounterKey(proveedorCodigo, tipoCodigo) {
+        return `prov${proveedorCodigo}_tipo${tipoCodigo}`;
+      }
+
+      async function obtenerSiguienteCodigoBasePorFamilia(_collectionName, proveedorCodigo, tipoCodigo) {
         const prefijo = `HA${proveedorCodigo}${tipoCodigo}`;
-        const snap = await safeGetDocs(collection(db, collectionName), "registro:obtenerSiguienteCodigoBasePorFamilia");
+        const counterKey = buildFamiliaCounterKey(proveedorCodigo, tipoCodigo);
+        const counterRef = doc(db, "counters", counterKey);
 
-        let maximo = 0;
+        const snap = await safeGetDoc(counterRef, `registro:counterPreview:${counterKey}`);
+        const data = snap.exists() ? (snap.data() || {}) : {};
+        const actual = Number(data.value ?? data.lastNumber ?? 0) || 0;
+        const siguiente = actual + 1;
 
-        snap.forEach((docSnap) => {
-          const data = docSnap.data() || {};
-          const base = data.codigoBase || data.codigo_base || "";
-          const numero = extraerConsecutivo(base, prefijo);
-          if (numero > maximo) maximo = numero;
-        });
-
-        return `${prefijo}${String(maximo + 1).padStart(3, "0")}`;
+        return `${prefijo}${String(siguiente).padStart(3, "0")}`;
       }
 
       async function generarCodigo() {
@@ -7605,33 +7607,45 @@ const createPrendaRow = (item) => {
             return payload;
           };
 
-          const reserveNextPublicCodeByFamilia = async (attempts = 5) => {
-            for (let attempt = 0; attempt < attempts; attempt += 1) {
-              const baseCode = await obtenerSiguienteCodigoBasePorFamilia(
-                activePrendasPublicCollection,
-                preview.providerCode,
-                preview.typeCode
-              );
-              const nextCodeData = buildModelCode({
-                providerCode: preview.providerCode,
-                typeCode: preview.typeCode,
-                seqNumber: 1,
-                colorClave: preview.colorClave,
-                tallaClave: preview.tallaClave,
-                baseCodeOverride: baseCode
-              });
-              const nextDocRef = doc(db, activePrendasPublicCollection, safeDocId(nextCodeData.codigo));
-              const exists = await safeGetDoc(nextDocRef, "registroSave:reserveNextPublicCodeByFamilia:exists");
-              if (!exists.exists()) {
-                const orden = parseOrdenFromBaseCode(baseCode);
-                return {
-                  orden,
-                  docRef: nextDocRef,
-                  ...nextCodeData
-                };
+          const reserveNextPublicCodeByFamilia = async () => {
+            const providerCode = preview.providerCode;
+            const typeCode = preview.typeCode;
+            const colorClave = preview.colorClave;
+            const tallaClave = preview.tallaClave;
+
+            const prefijo = `HA${providerCode}${typeCode}`;
+            const counterKey = buildFamiliaCounterKey(providerCode, typeCode);
+            const counterRef = doc(db, "counters", counterKey);
+
+            return await runTransaction(db, async (tx) => {
+              const counterSnap = await tx.get(counterRef);
+              const counterData = counterSnap.exists() ? (counterSnap.data() || {}) : {};
+              const actual = Number(counterData.value ?? counterData.lastNumber ?? 0) || 0;
+              const siguiente = actual + 1;
+
+              const baseCode = `${prefijo}${String(siguiente).padStart(3, "0")}`;
+              const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
+              const docRef = doc(db, activePrendasPublicCollection, safeDocId(codigo));
+
+              const existingSnap = await tx.get(docRef);
+              if (existingSnap.exists()) {
+                throw new Error(`El código ${codigo} ya existe.`);
               }
-            }
-            throw new Error("No se pudo reservar un código único por familia. Intenta nuevamente.");
+
+              tx.set(counterRef, {
+                value: siguiente,
+                lastNumber: siguiente,
+                updatedAt: serverTimestamp()
+              }, { merge: true });
+
+              return {
+                orden: siguiente,
+                baseCode,
+                codigo,
+                variantKey: `${colorClave}_${tallaClave}`,
+                docRef
+              };
+            });
           };
 
           if (preview.isSupplier) {
