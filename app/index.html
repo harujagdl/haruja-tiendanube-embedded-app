@@ -7304,12 +7304,20 @@ const createPrendaRow = (item) => {
       };
 
       function buildFamiliaCounterKey(proveedorCodigo, tipoCodigo) {
-        return `prov${proveedorCodigo}_tipo${tipoCodigo}`;
+        const prov = String(proveedorCodigo || "").trim();
+        const tipo = String(tipoCodigo || "").trim();
+        return `prov${prov}_tipo${tipo}`;
       }
 
       async function obtenerSiguienteCodigoBasePorFamilia(_collectionName, proveedorCodigo, tipoCodigo) {
+        const providerCode = proveedorCodigo;
+        const typeCode = tipoCodigo;
         const prefijo = `HA${proveedorCodigo}${tipoCodigo}`;
         const counterKey = buildFamiliaCounterKey(proveedorCodigo, tipoCodigo);
+        console.log("[counterKey real]", counterKey);
+        console.log("[providerCode]", providerCode);
+        console.log("[typeCode]", typeCode);
+        console.log("[firebase projectId]", firebaseConfig.projectId);
         const counterRef = doc(db, "counters", counterKey);
 
         const snap = await safeGetDoc(counterRef, `registro:counterPreview:${counterKey}`);
@@ -7690,6 +7698,10 @@ const createPrendaRow = (item) => {
 
             const prefijo = `HA${providerCode}${typeCode}`;
             const counterKey = buildFamiliaCounterKey(providerCode, typeCode);
+            console.log("[counterKey real]", counterKey);
+            console.log("[providerCode]", providerCode);
+            console.log("[typeCode]", typeCode);
+            console.log("[firebase projectId]", firebaseConfig.projectId);
             const counterRef = doc(db, "counters", counterKey);
 
             return await runTransaction(db, async (tx) => {
