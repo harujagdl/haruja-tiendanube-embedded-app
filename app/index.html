@@ -3885,12 +3885,32 @@ const auth = getAuth(app);
         return String(value);
       };
 
-      const normalizeText = (value) =>
+      const normalizeSearchText = (value) =>
         safeString(value)
           .toLowerCase()
           .trim()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "");
+
+      function normalizeText(value) {
+        return String(value || "").trim();
+      }
+
+      function sameText(a, b) {
+        return normalizeText(a).toLowerCase() === normalizeText(b).toLowerCase();
+      }
+
+      function formatCodeName(code, name) {
+        const c = normalizeText(code);
+        const n = normalizeText(name);
+
+        if (!c && !n) return "-";
+        if (c && !n) return c;
+        if (!c && n) return n;
+        if (sameText(c, n)) return c;
+
+        return `${c} - ${n}`;
+      }
 
       const waitForSelectOptions = (selectEl, timeout = 3000) =>
         new Promise((resolve, reject) => {
@@ -3910,12 +3930,12 @@ const auth = getAuth(app);
         });
 
       const findOptionValueByText = (selectEl, target) => {
-        const normalizedTarget = normalizeText(target);
+        const normalizedTarget = normalizeSearchText(target);
         if (!normalizedTarget || !selectEl) return "";
         const found = Array.from(selectEl.options || []).find((option) => {
-          const valueNorm = normalizeText(option.value);
-          const textNorm = normalizeText(option.textContent);
-          const nameNorm = normalizeText(option.dataset?.nombre);
+          const valueNorm = normalizeSearchText(option.value);
+          const textNorm = normalizeSearchText(option.textContent);
+          const nameNorm = normalizeSearchText(option.dataset?.nombre);
           return valueNorm === normalizedTarget || textNorm === normalizedTarget || nameNorm === normalizedTarget;
         });
         return found?.value || "";
@@ -4180,7 +4200,7 @@ const auth = getAuth(app);
         values.forEach((value) => {
           const trimmed = safeString(value).trim();
           if (!trimmed) return;
-          const normalized = normalizeText(trimmed);
+          const normalized = normalizeSearchText(trimmed);
           if (!map.has(normalized)) {
             map.set(normalized, trimmed);
           }
@@ -4203,9 +4223,9 @@ const auth = getAuth(app);
           selectEl.appendChild(option);
         });
         if (current) {
-          const normalizedCurrent = normalizeText(current);
+          const normalizedCurrent = normalizeSearchText(current);
           const matched = uniqueValues.find(
-            (value) => normalizeText(value) === normalizedCurrent
+            (value) => normalizeSearchText(value) === normalizedCurrent
           );
           selectEl.value = matched || "todos";
         } else {
@@ -4790,7 +4810,7 @@ const auth = getAuth(app);
       };
 
       const normalizeStatus = (raw) => {
-        const normalized = normalizeText(raw);
+        const normalized = normalizeSearchText(raw);
         if (!normalized) return "";
         if (normalized === "vendido") return "Vendido";
         if (["existente", "en stock", "disponible", "activo"].includes(normalized)) {
@@ -4805,7 +4825,7 @@ const auth = getAuth(app);
       const normalizeDisponibilidad = (raw, statusCanon) => {
         if (normalizeStatus(statusCanon) === "No definido") return "No definido";
         if (normalizeStatus(statusCanon) === "Vendido") return "No disponible";
-        const normalized = normalizeText(raw);
+        const normalized = normalizeSearchText(raw);
         if (!normalized) return "Disponible";
         if (["no disponible", "agotado", "sin stock", "0"].includes(normalized)) {
           return "No disponible";
@@ -5635,7 +5655,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       const buildSearchKey = (data) => {
         const codigo = safeString(data.codigo || data.code || data.Codigo || data.Code);
         const descripcion = safeString(data.descripcion || data.Descripcion || data.detalles);
-        return normalizeText(`${codigo} ${descripcion}`.trim());
+        return normalizeSearchText(`${codigo} ${descripcion}`.trim());
       };
 
       const pickFirstValue = (...values) => {
@@ -5815,7 +5835,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       };
 
       const getSearchInput = () => safeString(prendasSearch.value);
-      const getSearchTerm = () => normalizeText(prendasSearch.value);
+      const getSearchTerm = () => normalizeSearchText(prendasSearch.value);
       const getSearchRaw = () => safeString(prendasSearch.value).trim();
       const normalizeSelectValue = (value) => (isAllFilter(value) ? null : value);
       const getDateRangeFromFilters = (yearValue, monthValue) => {
@@ -5952,7 +5972,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       };
 
       const applyGlobalFilters = (rows, globalFilters) => {
-        const searchText = normalizeText(globalFilters.searchText);
+        const searchText = normalizeSearchText(globalFilters.searchText);
         const dateRange = getDateRangeFromFilters(globalFilters.year, globalFilters.month);
         return rows.filter((item) => {
           if (item?.eliminado === true || item?.isActive === false) return false;
@@ -6058,9 +6078,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         });
 
       const normalizeSortConfig = (sort) => {
-        const rawKey = normalizeText(sort?.key || DEFAULT_PRENDAS_SORT.key);
+        const rawKey = normalizeSearchText(sort?.key || DEFAULT_PRENDAS_SORT.key);
         const key = rawKey === "fecha" ? "fecha" : "orden";
-        const dir = normalizeText(sort?.dir) === "desc" ? "desc" : "asc";
+        const dir = normalizeSearchText(sort?.dir) === "desc" ? "desc" : "asc";
         return { key, dir };
       };
 
@@ -6570,7 +6590,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
       };
 
 
-      const normalizeFilterValue = (value) => normalizeText(value);
+      const normalizeFilterValue = (value) => normalizeSearchText(value);
       const toNum = (value) => {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : null;
@@ -6631,14 +6651,30 @@ const createPrendaRow = (item) => {
           : (item.disponibilidadCanon || item.disponibilidad);
         const tnValue = safeString(item.tnMatch).trim().toUpperCase() === "OK" ? "OK" : "N/A";
         const tnBadgeClass = tnValue === "OK" ? "badge-ok" : "badge-na";
+        const colorMostrado = formatCodeName(
+          item.colorCodigo || item.colorClave || item.colorCode || item.color,
+          item.colorNombre || item.colorLabel || item.colorDescripcion || item.colorName
+        );
+        const tallaMostrada = formatCodeName(
+          item.tallaCodigo || item.tallaClave || item.tallaCode || item.talla,
+          item.tallaNombre || item.tallaLabel || item.tallaDescripcion || item.tallaName
+        );
+        const tipoMostrado = formatCodeName(
+          item.tipoCodigo || item.tipoClave || item.tipo,
+          item.tipoNombre || item.tipoLabel || item.tipoDescripcion
+        );
+        const proveedorMostrado = formatCodeName(
+          item.proveedorCodigo || item.proveedorClave || item.proveedor,
+          item.proveedorNombre || item.proveedorLabel || item.proveedorDescripcion
+        );
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
           descripcion: safeString(item.descripcion) || "--",
-          tipo: buildDisplayLabel(item.tipoLabel, item.tipoCodigo, item.tipoNombre, item.tipo),
-          color: buildDisplayLabel(item.colorLabel, item.colorCode, item.colorName, item.color),
-          talla: buildDisplayLabel(item.tallaLabel, item.tallaCode, item.tallaName, item.talla),
-          proveedor: buildDisplayLabel(item.proveedorLabel, item.proveedorCodigo, item.proveedorNombre, item.proveedor),
+          tipo: tipoMostrado,
+          color: colorMostrado,
+          talla: tallaMostrada,
+          proveedor: proveedorMostrado,
           status: renderStatusCell(rowStatus),
           disponibilidad: renderDisponibilidadCell(rowDisp, rowStatus),
           qtyAvailable: String(toNumberOrNull(item.qtyAvailable) ?? "—"),
