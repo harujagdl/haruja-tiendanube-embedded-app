@@ -4478,6 +4478,7 @@ const auth = getAuth(app);
         },
         dictsLoaded: false,
         dictEntries: {
+          proveedores: [],
           colores: [],
           tallas: []
         },
@@ -4553,7 +4554,13 @@ const auth = getAuth(app);
             const data = docSnap.data() || {};
             const clave = data.clave || docSnap.id;
             const valor = data.valor || data.nombre || clave;
-            return { clave, valor };
+            return {
+              id: data.id ?? null,
+              orden: data.orden ?? null,
+              codigo: data.codigo ?? null,
+              clave,
+              valor
+            };
           })
           .filter((entry) => entry.clave && entry.valor);
 
@@ -4576,7 +4583,13 @@ const auth = getAuth(app);
             const clave = safeString(data.clave || data.codigo || docSnap.id).trim();
             const valor = safeString(data.valor || data.nombre || data.label || clave).trim();
             if (!clave || !valor) return null;
-            return { clave, valor };
+            return {
+              id: data.id ?? null,
+              orden: data.orden ?? null,
+              codigo: data.codigo ?? null,
+              clave,
+              valor
+            };
           })
           .filter(Boolean);
 
@@ -7304,9 +7317,22 @@ const createPrendaRow = (item) => {
       };
 
       function buildFamiliaCounterKey(proveedorCodigo, tipoCodigo) {
-        const prov = String(proveedorCodigo || "").trim();
+        const diccionarioProveedores = prendasState.dictEntries.proveedores || [];
+        const proveedorCode = String(proveedorCodigo || "").trim().toUpperCase();
         const tipo = String(tipoCodigo || "").trim();
-        return `prov${prov}_tipo${tipo}`;
+        const proveedor = diccionarioProveedores.find(
+          (p) => String(p?.clave ?? p?.codigo ?? "").trim().toUpperCase() === proveedorCode
+        );
+
+        const proveedorId = proveedor?.orden || proveedor?.id;
+
+        if (!proveedorId) {
+          throw new Error("Proveedor sin ID para contador");
+        }
+
+        const key = `prov${proveedorId}_tipo${tipo}`;
+        console.log("[counterKey]", key);
+        return key;
       }
 
       async function obtenerSiguienteCodigoBasePorFamilia(_collectionName, proveedorCodigo, tipoCodigo) {
@@ -8778,9 +8804,11 @@ document.addEventListener("keydown", (event) => {
           }
 
           if (dictionary.proveedores.length) {
+            const sortedProveedores = dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave));
+            prendasState.dictEntries.proveedores = sortedProveedores;
             fillDictionarySelect(
               registroProveedor,
-              dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave))
+              sortedProveedores
             );
           } else {
             setSelectLoading(registroProveedor, "Sin opciones disponibles");
