@@ -63,7 +63,6 @@ function normalizeCodigo(val) {
 }
 
 function getVariantStock(variant) {
-  // 1) Si trae inventory_levels, sumar cantidades
   const levels = variant?.inventory_levels;
   if (Array.isArray(levels) && levels.length) {
     let sum = 0;
@@ -74,10 +73,7 @@ function getVariantStock(variant) {
     return sum;
   }
 
-  // 2) Fallback a variant.stock (puede venir "" para infinito)
   const s = variant?.stock;
-
-  // stock infinito (""), tratamos como null para no mentir
   if (s === "") return null;
   if (s === null || s === undefined) return null;
 
@@ -85,7 +81,6 @@ function getVariantStock(variant) {
   if (Number.isNaN(n)) return null;
   return n;
 }
-
 
 const tnHeaders = ({ accessToken, apiVersion }) => ({
   Authentication: `bearer ${accessToken}`,
@@ -130,17 +125,14 @@ const fetchProductById = async ({ storeId, accessToken, apiVersion, productId })
   const url = `https://api.tiendanube.com/v1/${encodeURIComponent(storeId)}/products/${encodeURIComponent(productId)}`;
   const response = await fetch(url, {
     method: "GET",
-    headers: {
-      Authentication: `bearer ${accessToken}`,
-      "User-Agent": "Haruja (harujagdl@gmail.com)",
-      "Content-Type": "application/json",
-      "X-Api-Version": apiVersion,
-    },
+    headers: tnHeaders({ accessToken, apiVersion }),
   });
+
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Error Tiendanube productById (${response.status}) id=${productId}: ${body || "sin detalle"}`);
   }
+
   return await response.json();
 };
 
@@ -177,6 +169,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
           const sku = normalizeCodigo(variant?.sku);
           const stock = getVariantStock(variant);
           if (!sku || stock === null) continue;
+
           skuStockMap.set(sku, {
             stock,
             tnSku: String(variant?.sku ?? "").trim() || sku,
@@ -207,6 +200,7 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
             const sku = normalizeCodigo(variant?.sku);
             const stock = getVariantStock(variant);
             if (!sku || stock === null) continue;
+
             skuStockMap.set(sku, {
               stock,
               tnSku: String(variant?.sku ?? "").trim() || sku,
@@ -227,16 +221,11 @@ const fetchAllSkuStocks = async ({ storeId, accessToken, apiVersion }) => {
 
 const findAdminDocBySku = async (col, sku) => {
   const skuRaw = String(sku ?? "").trim().toUpperCase();
-  const skuNorm = normalizeCodigo(skuRaw); // convierte / -> -
-  const skuFirstDashToSlash = skuNorm.replace("-", "/"); // SOLO el primer "-" -> "/"
+  const skuNorm = normalizeCodigo(skuRaw);
+  const skuFirstDashToSlash = skuNorm.replace("-", "/");
   const skuNoSpaces = skuRaw.replace(/\s+/g, "");
 
-  const candidates = [
-    skuRaw,
-    skuNoSpaces,
-    skuNorm,
-    skuFirstDashToSlash,
-  ].filter(Boolean);
+  const candidates = [skuRaw, skuNoSpaces, skuNorm, skuFirstDashToSlash].filter(Boolean);
 
   for (const c of candidates) {
     let snap = await col.where("codigo", "==", c).limit(1).get();
@@ -249,69 +238,75 @@ const findAdminDocBySku = async (col, sku) => {
   return null;
 };
 
+const normalizeComparable = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  if (typeof value === "boolean") return value;
+  return String(value).trim();
+};
+
+const pickComparableState = (data = {}) => ({
+  qtyAvailable: normalizeComparable(data.qtyAvailable),
+  disponibilidad: normalizeComparable(data.disponibilidad),
+  disponibilidadCanon: normalizeComparable(data.disponibilidadCanon),
+  status: normalizeComparable(data.status),
+  statusCanon: normalizeComparable(data.statusCanon),
+  inventorySource: normalizeComparable(data.inventorySource),
+  tnMatch: normalizeComparable(data.tnMatch),
+  tnSku: normalizeComparable(data.tnSku),
+  tnStoreId: normalizeComparable(data.tnStoreId),
+  tnVariantId: normalizeComparable(data.tnVariantId),
+  tnProductId: normalizeComparable(data.tnProductId),
+});
+
+const hasRelevantChanges = (currentData, nextPayload) => {
+  const current = pickComparableState(currentData);
+  const next = pickComparableState(nextPayload);
+
+  return Object.keys(next).some((key) => current[key] !== next[key]);
+};
+
+const buildPayload = ({ storeId, sku, tnInfo, nowIso }) => {
+  const qtyAvailable = typeof tnInfo?.stock === "number" ? tnInfo.stock : null;
+  const disponibilidad = qtyAvailable > 0 ? "Disponible" : "No disponible";
+  const statusCanon = qtyAvailable > 0 ? "Disponible" : "Vendido";
+
+  return {
+    qtyAvailable,
+    disponibilidad,
+    disponibilidadCanon: disponibilidad,
+    status: statusCanon,
+    statusCanon,
+    inventorySource: "tiendanube",
+    tnMatch: "OK",
+    tnSku: sku,
+    tnStoreId: String(storeId),
+    tnVariantId: tnInfo?.tnVariantId || null,
+    tnProductId: tnInfo?.tnProductId || null,
+    tnLastSyncAt: nowIso,
+    updatedAt: nowIso,
+  };
+};
+
 const main = async () => {
   const args = parseArgs();
   const dryRun = parseBoolean(process.env.DRY_RUN ?? args.dryRun ?? "false", false);
   const db = initFirestore();
-  const { storeId, accessToken, apiVersion } = await resolveTiendanubeCredentials(db, args.storeId || process.env.TIENDANUBE_STORE_ID);
+  const { storeId, accessToken, apiVersion } = await resolveTiendanubeCredentials(
+    db,
+    args.storeId || process.env.TIENDANUBE_STORE_ID,
+  );
 
   const skuStockMap = await fetchAllSkuStocks({ storeId, accessToken, apiVersion });
   console.log(`SKUs encontrados en Tiendanube: ${skuStockMap.size}`);
-  console.log("DEBUG skuStockMap size:", skuStockMap.size);
-  console.log("DEBUG first 10 SKUs:", Array.from(skuStockMap.keys()).slice(0, 10));
-  console.log("DEBUG first 10 stocks:", Array.from(skuStockMap.values()).slice(0, 10));
 
   const col = db.collection(ADMIN_COLLECTION);
-
-  const resetTnMatches = async () => {
-    console.log("Reseteando tnMatch='N/A' en admin antes de sync...");
-
-    const snap = await col.where("tnMatch", "==", "OK").get();
-    console.log("Docs a resetear:", snap.size);
-
-    if (dryRun) {
-      console.log("DRY_RUN=true → no se aplicará reset tnMatch.");
-      return;
-    }
-
-    const batchSize = 400;
-    let batch = db.batch();
-    let count = 0;
-    let written = 0;
-
-    for (const doc of snap.docs) {
-      batch.update(doc.ref, {
-        tnMatch: "N/A",
-        tnSku: null,
-        tnVariantId: null,
-        tnProductId: null,
-        tnNotes: "reset-before-sync",
-        updatedAt: new Date().toISOString(),
-      });
-      count += 1;
-
-      if (count % batchSize === 0) {
-        await batch.commit();
-        written += batchSize;
-        console.log("Reseteados:", written);
-        batch = db.batch();
-      }
-    }
-
-    if (count % batchSize !== 0) {
-      await batch.commit();
-      written += count % batchSize;
-    }
-
-    console.log("Reset completo. Total reseteados:", written);
-  };
-
-  await resetTnMatches();
-
   const updates = [];
+
   let totalSkusTiendanube = 0;
   let totalSyncedWithTiendanube = 0;
   let totalNotFound = 0;
+  let totalWithoutChanges = 0;
 
   for (const [sku, tnInfo] of skuStockMap.entries()) {
     totalSkusTiendanube += 1;
@@ -327,27 +322,29 @@ const main = async () => {
       continue;
     }
 
-    const qtyAvailable = typeof tnInfo?.stock === "number" ? tnInfo.stock : null;
-    const disponibilidad = qtyAvailable > 0 ? "Disponible" : "No disponible";
-    const statusCanon = qtyAvailable > 0 ? "Disponible" : "Vendido";
+    const nowIso = new Date().toISOString();
+    const payload = buildPayload({ storeId, sku, tnInfo, nowIso });
+
+    const adminSnap = await docRef.get();
+    const adminData = adminSnap.exists ? adminSnap.data() || {} : {};
+
+    const publicRef = db.collection(PUBLIC_COLLECTION).doc(docRef.id);
+    const publicSnap = await publicRef.get();
+    const publicData = publicSnap.exists ? publicSnap.data() || {} : {};
+
+    const adminChanged = !adminSnap.exists || hasRelevantChanges(adminData, payload);
+    const publicChanged = !publicSnap.exists || hasRelevantChanges(publicData, payload);
+
+    if (!adminChanged && !publicChanged) {
+      totalWithoutChanges += 1;
+      continue;
+    }
 
     updates.push({
-      ref: docRef,
-      payload: {
-        qtyAvailable,
-        disponibilidad,
-        disponibilidadCanon: disponibilidad,
-        status: statusCanon,
-        statusCanon,
-        inventorySource: "tiendanube",
-        tnMatch: "OK",
-        tnSku: sku,
-        tnStoreId: String(storeId),
-        tnVariantId: tnInfo?.tnVariantId || null,
-        tnProductId: tnInfo?.tnProductId || null,
-        tnLastSyncAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
+      adminRef: docRef,
+      publicRef,
+      adminPayload: adminChanged ? payload : null,
+      publicPayload: publicChanged ? payload : null,
     });
 
     totalSyncedWithTiendanube += 1;
@@ -355,35 +352,44 @@ const main = async () => {
 
   console.log(`Colección admin: ${ADMIN_COLLECTION}`);
   console.log(`Total SKUs Tiendanube: ${totalSkusTiendanube}`);
-  console.log(`Total sincronizados con Tiendanube: ${totalSyncedWithTiendanube}`);
+  console.log(`Total sincronizados con cambios: ${totalSyncedWithTiendanube}`);
+  console.log(`Total SKUs sin cambios: ${totalWithoutChanges}`);
   console.log(`Total SKUs no encontrados en Firestore: ${totalNotFound}`);
-  console.log(`Documentos a escribir: ${updates.length}`);
+  console.log(`Documentos/lotes a escribir: ${updates.length}`);
 
   if (dryRun) {
     console.log("DRY_RUN=true → no se escribirá en Firestore.");
     updates.slice(0, 20).forEach((item, index) => {
-      console.log(`${index + 1}. ${item.ref.id} -> ${JSON.stringify(item.payload)}`);
+      console.log(`${index + 1}. ${item.adminRef.id} -> ${JSON.stringify(item.adminPayload || item.publicPayload)}`);
     });
     return;
   }
 
-  let written = 0;
+  let writtenAdmin = 0;
+  let writtenPublic = 0;
+
   for (let i = 0; i < updates.length; i += BATCH_LIMIT) {
     const chunk = updates.slice(i, i + BATCH_LIMIT);
     const batch = db.batch();
 
-    chunk.forEach((item) => {
-      batch.set(item.ref, item.payload, { merge: true });
-      const publicRef = db.collection(PUBLIC_COLLECTION).doc(item.ref.id);
-      batch.set(publicRef, item.payload, { merge: true });
-    });
+    for (const item of chunk) {
+      if (item.adminPayload) {
+        batch.set(item.adminRef, item.adminPayload, { merge: true });
+        writtenAdmin += 1;
+      }
+      if (item.publicPayload) {
+        batch.set(item.publicRef, item.publicPayload, { merge: true });
+        writtenPublic += 1;
+      }
+    }
 
     await batch.commit();
-    written += chunk.length;
-    console.log(`✔ Batch ${Math.floor(i / BATCH_LIMIT) + 1}: ${chunk.length} docs`);
+    console.log(`✔ Batch ${Math.floor(i / BATCH_LIMIT) + 1}: ${chunk.length} registros evaluados`);
   }
 
-  console.log(`✔ Total escritos: ${written}`);
+  console.log(`✔ Total escritos admin: ${writtenAdmin}`);
+  console.log(`✔ Total escritos public: ${writtenPublic}`);
+  console.log(`✔ Total escritos global: ${writtenAdmin + writtenPublic}`);
 };
 
 main().catch((err) => {
