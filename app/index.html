@@ -7205,6 +7205,8 @@ const createPrendaRow = (item) => {
         return raw;
       };
 
+      const extraerCodigoCorto = (value) => safeString(value || "").split(" - ")[0].trim().toUpperCase();
+
       const parseOrdenFromBaseCode = (baseCode) => {
         const match = /^HA[A-Z0-9]{2}(\d{3,})$/i.exec(safeString(baseCode).trim());
         if (!match) return null;
@@ -7224,43 +7226,41 @@ const createPrendaRow = (item) => {
         return { numero, digitos: match[1].length };
       };
 
+      const extraerConsecutivoDesdeBase = (codigoBase, prefijoFamilia) => {
+        const normalizedBase = safeString(codigoBase).trim().toUpperCase();
+        const normalizedPrefix = safeString(prefijoFamilia).trim().toUpperCase();
+        if (!normalizedBase || !normalizedPrefix) return 0;
+        const re = new RegExp(`^${normalizedPrefix}(\\d+)$`);
+        const match = normalizedBase.match(re);
+        return match ? Number(match[1]) : 0;
+      };
+
       const buildModelCode = ({ providerCode, typeCode, seqNumber, colorClave, tallaClave, baseCodeOverride = "" }) => {
         const baseCode = safeString(baseCodeOverride).trim().toUpperCase() || `HA${providerCode}${typeCode}${String(seqNumber).padStart(3, "0")}`;
         const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
         return { baseCode, variantKey: `${colorClave}_${tallaClave}`, codigo };
       };
 
-      const obtenerPrendasDeFamilia = async ({ providerCode, typeCode }) => {
-        const provider = safeString(providerCode).trim().toUpperCase();
-        const type = safeString(typeCode).trim().toUpperCase();
-        if (!provider || !type) return [];
-
-        const familySnap = await safeGetDocs(
-          query(
-            collection(db, activePrendasPublicCollection),
-            where("proveedor", "==", provider),
-            where("tipo", "==", type)
-          ),
-          "registro:obtenerPrendasDeFamilia"
-        );
-
-        return familySnap.docs.map((snap) => ({ id: snap.id, ...(snap.data() || {}) }));
-      };
-
       const obtenerSiguienteCodigoBasePorFamilia = async ({ providerCode, typeCode, minNumero = 0 }) => {
-        const family = `${safeString(providerCode).trim().toUpperCase()}${safeString(typeCode).trim().toUpperCase()}`;
-        const prefix = `HA${family}`;
-        const rows = await obtenerPrendasDeFamilia({ providerCode, typeCode });
+        const provider = extraerCodigoCorto(providerCode);
+        const type = extraerCodigoCorto(typeCode);
+        const prefix = `HA${provider}${type}`;
+        if (!provider || !type) return "";
+
+        const snap = await safeGetDocs(collection(db, activePrendasPublicCollection), "registro:obtenerSiguienteCodigoBasePorFamilia");
 
         let maxNumero = Number.isFinite(minNumero) ? minNumero : 0;
         let maxDigitos = 3;
 
-        for (const row of rows) {
-          const rawBase = safeString(row.codigoBase || row.baseCode || row.base || parseBaseCode(row.codigo || row.code || row.id || "")).trim().toUpperCase();
+        for (const docSnap of snap.docs) {
+          const row = docSnap.data() || {};
+          const rawBase = safeString(row.codigoBase || row.codigo_base || row.baseCode || row.base || parseBaseCode(row.codigo || row.code || docSnap.id || "")).trim().toUpperCase();
+          const consecutivo = extraerConsecutivoDesdeBase(rawBase, prefix);
+          if (!consecutivo) continue;
+          if (consecutivo > maxNumero) maxNumero = consecutivo;
+
           const parsed = parseNumeroFromBaseCode(rawBase, prefix);
-          if (!parsed) continue;
-          if (parsed.numero > maxNumero) maxNumero = parsed.numero;
-          if (parsed.digitos > maxDigitos) maxDigitos = parsed.digitos;
+          if (parsed?.digitos > maxDigitos) maxDigitos = parsed.digitos;
         }
 
         const siguiente = maxNumero + 1;
@@ -7363,10 +7363,10 @@ const createPrendaRow = (item) => {
       const getFormPayload = () => {
         if (!ensureRequired()) return null;
 
-        const providerCode = safeString(registroProveedor.value).trim().toUpperCase();
-        const typeCode = safeString(registroProducto.value).trim().toUpperCase();
-        const colorClave = safeString(registroColor.value).trim().toUpperCase();
-        const tallaClave = safeString(registroTalla.value).trim().toUpperCase();
+        const providerCode = extraerCodigoCorto(registroProveedor.value);
+        const typeCode = extraerCodigoCorto(registroProducto.value);
+        const colorClave = extraerCodigoCorto(registroColor.value);
+        const tallaClave = extraerCodigoCorto(registroTalla.value);
         const createdByValue = document.getElementById("registro-created-by").value.trim();
         const detallesValue = registroDetalles.value.trim();
         const codeMode = registroCodeModeValue;
