@@ -18,7 +18,7 @@ on:
           - "false"
 
   schedule:
-    - cron: "*/30 * * * *"
+  - cron: "0 8 * * *"
 
 permissions:
   contents: read
