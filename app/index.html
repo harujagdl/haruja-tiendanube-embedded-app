@@ -4085,6 +4085,107 @@ const auth = getAuth(app);
         return `${base}/${colorClave}-${tallaClave}`;
       };
 
+      function getCatalogCounterName(collectionName) {
+        switch (collectionName) {
+          case "diccionario_proveedores":
+            return "proveedores";
+          case "diccionario_tipos":
+            return "tipos";
+          case "diccionario_colores":
+            return "colores";
+          case "diccionario_tallas":
+            return "tallas";
+          default:
+            throw new Error(`Colección de diccionario no soportada: ${collectionName}`);
+        }
+      }
+
+      async function getNextCatalogOrder(counterDocName) {
+        const counterRef = doc(db, "catalog_counters", counterDocName);
+
+        return await runTransaction(db, async (tx) => {
+          const snap = await tx.get(counterRef);
+          const data = snap.exists() ? (snap.data() || {}) : {};
+          const actual = Number(data.lastNumber ?? data.value ?? 0) || 0;
+          const siguiente = actual + 1;
+
+          tx.set(counterRef, {
+            lastNumber: siguiente,
+            value: siguiente,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+
+          return siguiente;
+        });
+      }
+
+      async function ensureCatalogOrder(collectionName, payload) {
+        const nextPayload = { ...(payload || {}) };
+
+        if (Number(nextPayload.orden) > 0) {
+          return nextPayload;
+        }
+
+        const counterDocName = getCatalogCounterName(collectionName);
+        const orden = await getNextCatalogOrder(counterDocName);
+
+        nextPayload.orden = orden;
+
+        if (!nextPayload.id) {
+          nextPayload.id = orden;
+        }
+
+        if (!nextPayload.label) {
+          const codigo = String(nextPayload.codigo || "").trim();
+          const nombre = String(nextPayload.nombre || "").trim();
+          nextPayload.label = codigo && nombre ? `${codigo} - ${nombre}` : (codigo || nombre || "");
+        }
+
+        return nextPayload;
+      }
+
+      const ensureCatalogOrderInDoc = async (collectionName, docSnap) => {
+        const current = docSnap.data() || {};
+        if (collectionName === "diccionario_proveedores") {
+          const codigo = String(current.codigo ?? current.clave ?? docSnap.id ?? "").trim();
+          const nombre = String(current.nombre ?? current.valor ?? "").trim().toLowerCase();
+          if (codigo === "C" && nombre === "molet" && !(Number(current.orden) > 0)) {
+            const patched = {
+              ...current,
+              codigo: "C",
+              nombre: "Molet",
+              label: current.label || "C - Molet",
+              orden: 6,
+              id: Number(current.id) > 0 ? current.id : 6
+            };
+            await safeSetDoc(
+              doc(db, collectionName, docSnap.id),
+              patched,
+              `ensureCatalogOrderInDoc:molet:${docSnap.id}`,
+              { merge: true }
+            );
+            return patched;
+          }
+        }
+
+        if (Number(current.orden) > 0) return current;
+
+        const payloadWithOrder = await ensureCatalogOrder(collectionName, {
+          ...current,
+          codigo: current.codigo ?? current.clave ?? docSnap.id,
+          nombre: current.nombre ?? current.valor ?? ""
+        });
+
+        await safeSetDoc(
+          doc(db, collectionName, docSnap.id),
+          payloadWithOrder,
+          `ensureCatalogOrderInDoc:${collectionName}:${docSnap.id}`,
+          { merge: true }
+        );
+
+        return payloadWithOrder;
+      };
+
       const normalizeSkuPrefix = (input) =>
         safeString(input)
           .trim()
@@ -4542,6 +4643,19 @@ const auth = getAuth(app);
         console.log("[Prendas] ✅ Usando colección:", activePrendasPublicCollection);
       };
 
+      const sortDictionaryEntries = (entries = []) => {
+        return [...entries].sort((a, b) => {
+          const ordenA = Number(a?.orden);
+          const ordenB = Number(b?.orden);
+          const hasA = Number.isFinite(ordenA) && ordenA > 0;
+          const hasB = Number.isFinite(ordenB) && ordenB > 0;
+          if (hasA && hasB && ordenA !== ordenB) return ordenA - ordenB;
+          if (hasA && !hasB) return -1;
+          if (!hasA && hasB) return 1;
+          return safeString(a?.clave).localeCompare(safeString(b?.clave));
+        });
+      };
+
       const loadCategoryEntries = async (category, collectionName) => {
         await ensureFirebaseSession();
         const snapshot = await safeGetDocs(collection(db, collectionName), `loadCategoryEntries:${collectionName}`);
@@ -4549,22 +4663,22 @@ const auth = getAuth(app);
           return { category, entries: [], empty: true };
         }
 
-        const entries = snapshot.docs
-          .map((docSnap) => {
-            const data = docSnap.data() || {};
-            const clave = data.clave || docSnap.id;
-            const valor = data.valor || data.nombre || clave;
-            return {
-              id: data.id ?? null,
-              orden: data.orden ?? null,
-              codigo: data.codigo ?? null,
-              clave,
-              valor
-            };
-          })
-          .filter((entry) => entry.clave && entry.valor);
+        const entries = [];
+        for (const docSnap of snapshot.docs) {
+          const data = await ensureCatalogOrderInDoc(collectionName, docSnap);
+          const entry = {
+            id: data.id ?? null,
+            orden: data.orden ?? null,
+            codigo: data.codigo ?? data.clave ?? docSnap.id,
+            clave: data.clave || docSnap.id,
+            valor: data.valor || data.nombre || data.clave || docSnap.id
+          };
+          if (entry.clave && entry.valor) {
+            entries.push(entry);
+          }
+        }
 
-        return { category, entries, empty: entries.length === 0 };
+        return { category, entries: sortDictionaryEntries(entries), empty: entries.length === 0 };
       };
 
       const loadCategoryEntriesFromFallback = async (category) => {
@@ -4580,20 +4694,19 @@ const auth = getAuth(app);
             const data = docSnap.data() || {};
             const categoria = safeString(data.categoria || data.category || data.tipo).trim().toLowerCase();
             if (categoria && categoria !== category) return null;
-            const clave = safeString(data.clave || data.codigo || docSnap.id).trim();
-            const valor = safeString(data.valor || data.nombre || data.label || clave).trim();
-            if (!clave || !valor) return null;
+            const clave = data.clave || docSnap.id;
+            const valor = data.valor || data.nombre || data.label || clave;
             return {
               id: data.id ?? null,
               orden: data.orden ?? null,
-              codigo: data.codigo ?? null,
+              codigo: data.codigo ?? data.clave ?? docSnap.id,
               clave,
               valor
             };
           })
-          .filter(Boolean);
+          .filter((entry) => entry.clave && entry.valor);
 
-        return { category, entries, empty: entries.length === 0 };
+        return { category, entries: sortDictionaryEntries(entries), empty: entries.length === 0 };
       };
 
       const resolvePrendasCollection = async () => {
@@ -7316,30 +7429,40 @@ const createPrendaRow = (item) => {
         return { baseCode, variantKey: `${colorClave}_${tallaClave}`, codigo };
       };
 
-      function buildFamiliaCounterKey(proveedorCodigo, tipoCodigo) {
-        const diccionarioProveedores = prendasState.dictEntries.proveedores || [];
-        const proveedorCode = String(proveedorCodigo || "").trim().toUpperCase();
-        const tipo = String(tipoCodigo || "").trim();
-        const proveedor = diccionarioProveedores.find(
-          (p) => String(p?.clave ?? p?.codigo ?? "").trim().toUpperCase() === proveedorCode
-        );
+      function buildFamiliaCounterKey(proveedorCodigo, tipoCodigo, diccionarioProveedores) {
+        const provCode = String(proveedorCodigo || "").trim();
+        const typeCode = String(tipoCodigo || "").trim();
 
-        const proveedorId = proveedor?.orden || proveedor?.id;
+        const providerOrderMap = {
+          "C": 6
+        };
+
+        const proveedor = Array.isArray(diccionarioProveedores)
+          ? diccionarioProveedores.find(
+              p => String(p.codigo || "").trim() === provCode
+            )
+          : null;
+
+        const proveedorId = Number(
+          proveedor?.orden ??
+          proveedor?.id ??
+          providerOrderMap[provCode] ??
+          0
+        );
 
         if (!proveedorId) {
           throw new Error("Proveedor sin ID para contador");
         }
 
-        const key = `prov${proveedorId}_tipo${tipo}`;
-        console.log("[counterKey]", key);
-        return key;
+        return `prov${proveedorId}_tipo${typeCode}`;
       }
 
       async function obtenerSiguienteCodigoBasePorFamilia(_collectionName, proveedorCodigo, tipoCodigo) {
         const providerCode = proveedorCodigo;
         const typeCode = tipoCodigo;
-        const prefijo = `HA${proveedorCodigo}${tipoCodigo}`;
-        const counterKey = buildFamiliaCounterKey(proveedorCodigo, tipoCodigo);
+        const prefijo = `HA${String(proveedorCodigo || "").trim()}${String(tipoCodigo || "").trim()}`;
+        const diccionarioProveedores = prendasState.dictEntries.proveedores || [];
+        const counterKey = buildFamiliaCounterKey(proveedorCodigo, tipoCodigo, diccionarioProveedores);
         console.log("[counterKey real]", counterKey);
         console.log("[providerCode]", providerCode);
         console.log("[typeCode]", typeCode);
@@ -7723,8 +7846,9 @@ const createPrendaRow = (item) => {
             const tallaClave = preview.tallaClave;
 
             const prefijo = `HA${providerCode}${typeCode}`;
-            const counterKey = buildFamiliaCounterKey(providerCode, typeCode);
-            console.log("[counterKey real]", counterKey);
+            const diccionarioProveedores = prendasState.dictEntries.proveedores || [];
+            const counterKey = buildFamiliaCounterKey(providerCode, typeCode, diccionarioProveedores);
+            console.log("[counterKey real save]", counterKey);
             console.log("[providerCode]", providerCode);
             console.log("[typeCode]", typeCode);
             console.log("[firebase projectId]", firebaseConfig.projectId);
@@ -8795,16 +8919,17 @@ document.addEventListener("keydown", (event) => {
           }
 
           if (dictionary.tipos.length) {
+            const sortedTipos = sortDictionaryEntries(dictionary.tipos);
             fillDictionarySelect(
               registroProducto,
-              dictionary.tipos.sort((a, b) => a.clave.localeCompare(b.clave))
+              sortedTipos
             );
           } else {
             setSelectLoading(registroProducto, "Sin opciones disponibles");
           }
 
           if (dictionary.proveedores.length) {
-            const sortedProveedores = dictionary.proveedores.sort((a, b) => a.clave.localeCompare(b.clave));
+            const sortedProveedores = sortDictionaryEntries(dictionary.proveedores);
             prendasState.dictEntries.proveedores = sortedProveedores;
             fillDictionarySelect(
               registroProveedor,
@@ -8815,7 +8940,7 @@ document.addEventListener("keydown", (event) => {
           }
 
           if (dictionary.colores.length) {
-            const sortedColores = dictionary.colores.sort((a, b) => a.clave.localeCompare(b.clave));
+            const sortedColores = sortDictionaryEntries(dictionary.colores);
             prendasState.dictEntries.colores = sortedColores;
             fillDictionarySelect(
               registroColor,
@@ -8829,7 +8954,7 @@ document.addEventListener("keydown", (event) => {
           loadSalesMiniDashboard();
 
           if (dictionary.tallas.length) {
-            const sortedTallas = dictionary.tallas.sort((a, b) => a.clave.localeCompare(b.clave));
+            const sortedTallas = sortDictionaryEntries(dictionary.tallas);
             prendasState.dictEntries.tallas = sortedTallas;
             fillDictionarySelect(
               registroTalla,
