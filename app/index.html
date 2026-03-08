@@ -3896,6 +3896,21 @@ const auth = getAuth(app);
         return String(value || "").trim();
       }
 
+      function splitCodeName(raw) {
+        const text = normalizeText(raw);
+        if (!text) return { code: "", name: "" };
+
+        const parts = text.split(" - ").map((segment) => segment.trim()).filter(Boolean);
+
+        if (parts.length === 0) return { code: "", name: "" };
+        if (parts.length === 1) return { code: parts[0], name: parts[0] };
+
+        return {
+          code: parts[0],
+          name: parts.slice(1).join(" - ")
+        };
+      }
+
       function sameText(a, b) {
         return normalizeText(a).toLowerCase() === normalizeText(b).toLowerCase();
       }
@@ -3910,6 +3925,37 @@ const auth = getAuth(app);
         if (sameText(c, n)) return c;
 
         return `${c} - ${n}`;
+      }
+
+      function resolveDisplayParts(row, fieldBase) {
+        const codigo = normalizeText(row[`${fieldBase}Codigo`]);
+        const nombre = normalizeText(row[`${fieldBase}Nombre`]);
+        const label = normalizeText(row[`${fieldBase}Label`]);
+        const legacy = normalizeText(row[fieldBase]);
+
+        if (codigo || nombre) {
+          return {
+            code: codigo,
+            name: nombre || codigo
+          };
+        }
+
+        if (label) return splitCodeName(label);
+        if (legacy) return splitCodeName(legacy);
+
+        return { code: "", name: "" };
+      }
+
+      function formatDisplaySmart(parts) {
+        const code = normalizeText(parts.code);
+        const name = normalizeText(parts.name);
+
+        if (!code && !name) return "-";
+        if (!code && name) return name;
+        if (code && !name) return code;
+        if (sameText(code, name)) return code;
+
+        return `${code} - ${name}`;
       }
 
       const waitForSelectOptions = (selectEl, timeout = 3000) =>
@@ -6651,22 +6697,15 @@ const createPrendaRow = (item) => {
           : (item.disponibilidadCanon || item.disponibilidad);
         const tnValue = safeString(item.tnMatch).trim().toUpperCase() === "OK" ? "OK" : "N/A";
         const tnBadgeClass = tnValue === "OK" ? "badge-ok" : "badge-na";
-        const colorMostrado = formatCodeName(
-          item.colorCodigo || item.colorClave || item.colorCode || item.color,
-          item.colorNombre || item.colorLabel || item.colorDescripcion || item.colorName
-        );
-        const tallaMostrada = formatCodeName(
-          item.tallaCodigo || item.tallaClave || item.tallaCode || item.talla,
-          item.tallaNombre || item.tallaLabel || item.tallaDescripcion || item.tallaName
-        );
-        const tipoMostrado = formatCodeName(
-          item.tipoCodigo || item.tipoClave || item.tipo,
-          item.tipoNombre || item.tipoLabel || item.tipoDescripcion
-        );
-        const proveedorMostrado = formatCodeName(
-          item.proveedorCodigo || item.proveedorClave || item.proveedor,
-          item.proveedorNombre || item.proveedorLabel || item.proveedorDescripcion
-        );
+        const tipoParts = resolveDisplayParts(item, "tipo");
+        const proveedorParts = resolveDisplayParts(item, "proveedor");
+        const colorParts = resolveDisplayParts(item, "color");
+        const tallaParts = resolveDisplayParts(item, "talla");
+
+        const tipoMostrado = formatDisplaySmart(tipoParts);
+        const proveedorMostrado = formatDisplaySmart(proveedorParts);
+        const colorMostrado = formatCodeName(colorParts.code, colorParts.name);
+        const tallaMostrada = formatCodeName(tallaParts.code, tallaParts.name);
         const values = {
           orden: Number.isFinite(ordenValue) ? String(ordenValue) : "",
           codigo: safeString(item.codigo || item.code) || "--",
