@@ -7624,10 +7624,10 @@ const createPrendaRow = (item) => {
               eliminado: false,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-              eliminadoAt: deleteField(),
-              eliminadoBy: deleteField(),
-              deletedAt: deleteField(),
-              deletedBy: deleteField(),
+              eliminadoAt: null,
+              eliminadoBy: null,
+              deletedAt: null,
+              deletedBy: null,
               deleted: false,
               creadoPor: preview.createdByValue || null
             };
@@ -7761,7 +7761,10 @@ const createPrendaRow = (item) => {
               orden: txResult.orden,
               seqNumber: txResult.orden
             });
+            console.log("[registroSave] payload nuevo:", publicPayload);
+            console.log("[registroSave] docRef:", txResult.docRef.path);
             await safeSetDoc(txResult.docRef, publicPayload, "registroSave:new:write");
+            console.log("[registroSave] setDoc OK:", txResult.codigo);
             const savedSnap = await safeGetDoc(txResult.docRef, "registroSave:new:verify");
             if (!savedSnap.exists()) {
               throw new Error("No se confirmó el guardado del documento en Firestore.");
