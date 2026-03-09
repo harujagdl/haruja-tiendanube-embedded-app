@@ -2501,7 +2501,7 @@ body.haruja-col-resizing{
             </div>
             <div>
               <label for="registro-base-code">Código base (reutilizable)</label>
-              <input id="registro-base-code" name="baseCode" type="text" placeholder="Se llena al buscar" />
+              <input id="registro-base-code" name="baseCode" type="text" placeholder="Se llena al buscar" readonly />
             </div>
             <div id="adminCreateFields" class="admin-create-card hidden" aria-hidden="true">
               <div class="admin-create-title">Admin (opcional)</div>
@@ -7308,6 +7308,12 @@ const createPrendaRow = (item) => {
       let registroCodeModeValue = "haruja";
       let lockedBaseTipo = "";
       let lockedBaseProveedor = "";
+      const registroState = {
+        codigoGenerado: "",
+        codigoBaseInterno: "",
+        codigoBaseReutilizado: "",
+        isReuseMode: false
+      };
 
       const parseBaseCode = (codigoValue) => {
         const raw = safeString(codigoValue).trim().toUpperCase();
@@ -7317,6 +7323,84 @@ const createPrendaRow = (item) => {
         }
         return raw;
       };
+
+      function extraerCodigoBase(codigoCompleto) {
+        return String(codigoCompleto || "").split("/")[0] || "";
+      }
+
+      function construirPrefijoCodigo(proveedorCode, typeCode) {
+        return `HA${String(proveedorCode || "").trim()}${String(typeCode || "").trim()}`;
+      }
+
+      function obtenerConsecutivoSiguiente(baseRows, prefijo) {
+        const bases = (Array.isArray(baseRows) ? baseRows : [])
+          .map((row) => {
+            if (typeof row === "string") return row.split("/")[0];
+            if (row && typeof row.codigo === "string") return row.codigo.split("/")[0];
+            if (row && typeof row.code === "string") return row.code.split("/")[0];
+            return "";
+          })
+          .filter((base) => base.startsWith(prefijo));
+
+        const usados = bases.map((base) => {
+          const m = base.match(new RegExp(`^${prefijo}(\\d{3})$`));
+          return m && m[1] ? parseInt(m[1], 10) : 0;
+        });
+
+        const max = usados.length ? Math.max(...usados) : 0;
+        return String(max + 1).padStart(3, "0");
+      }
+
+      function construirCodigoNuevo({ proveedorCode, typeCode, colorCode, tallaCode, baseRows }) {
+        const prefijo = construirPrefijoCodigo(proveedorCode, typeCode);
+        const consecutivo = obtenerConsecutivoSiguiente(baseRows, prefijo);
+        const codigoBase = `${prefijo}${consecutivo}`;
+        const codigo = `${codigoBase}/${colorCode}-${tallaCode}`;
+        return { codigoBase, codigo };
+      }
+
+      function construirCodigoReutilizado({ codigoBase, colorCode, tallaCode }) {
+        const base = String(codigoBase || "").trim();
+        return {
+          codigoBase: base,
+          codigo: `${base}/${colorCode}-${tallaCode}`
+        };
+      }
+
+      function buildDocIdFromCodigo(codigo) {
+        return String(codigo || "")
+          .trim()
+          .toUpperCase()
+          .replaceAll("/", "_")
+          .replace(/\s+/g, "");
+      }
+
+      function removeUndefinedDeep(obj) {
+        if (Array.isArray(obj)) {
+          return obj
+            .map(removeUndefinedDeep)
+            .filter((v) => v !== undefined);
+        }
+        if (obj && typeof obj === "object") {
+          const out = {};
+          Object.entries(obj).forEach(([k, v]) => {
+            const cleaned = removeUndefinedDeep(v);
+            if (cleaned !== undefined) out[k] = cleaned;
+          });
+          return out;
+        }
+        if (obj === undefined) return undefined;
+        return obj;
+      }
+
+      function isAllowedAdminEmail(email) {
+        const allowed = [
+          "yair.tenorio.silva@gmail.com",
+          "harujagdl@gmail.com",
+          "harujagdl.ventas@gmail.com"
+        ];
+        return allowed.includes(String(email || "").trim().toLowerCase());
+      }
 
       function extraerCodigo(valor) {
         return String(valor || "").split(" - ")[0].trim().toUpperCase();
@@ -7388,6 +7472,19 @@ const createPrendaRow = (item) => {
         return `${prefijo}${String(siguiente).padStart(3, "0")}`;
       }
 
+      const getCodigosBaseRowsByFamilia = async (prefijo) => {
+        const snap = await safeGetDocs(
+          query(
+            collection(db, activePrendasPublicCollection),
+            where("codigo", ">=", prefijo),
+            where("codigo", "<=", `${prefijo}\uf8ff`),
+            limit(500)
+          ),
+          `registro:familiaRows:${prefijo}`
+        );
+        return snap.docs.map((d) => d.data() || {});
+      };
+
       async function generarCodigo() {
         console.log("[generarCodigo] START");
         const proveedorCodigo = extraerCodigo(registroProveedor.value);
@@ -7395,36 +7492,53 @@ const createPrendaRow = (item) => {
         const colorCodigo = extraerCodigo(registroColor.value);
         const tallaCodigo = extraerCodigo(registroTalla.value);
 
-        const codigoBasePrevio = safeString(registroBaseCodeInput?.value || "").trim().toUpperCase();
-        let codigoBase = codigoBasePrevio;
+        console.log("[generarCodigo] providerCode:", proveedorCodigo);
+        console.log("[generarCodigo] typeCode:", tipoCodigo);
+        console.log("[generarCodigo] colorCode:", colorCodigo);
+        console.log("[generarCodigo] tallaCode:", tallaCodigo);
+        console.log("[generarCodigo] isReuseMode:", registroState.isReuseMode);
+        console.log("[generarCodigo] codigoBaseInterno antes:", registroState.codigoBaseInterno);
+        console.log("[generarCodigo] codigoBase visual:", registroBaseCodeInput?.value || "");
 
-        if (!codigoBase) {
-          codigoBase = await obtenerSiguienteCodigoBasePorFamilia(
-            "HarujaPrendas_2025_public",
-            proveedorCodigo,
-            tipoCodigo
-          );
-          console.log("[generarCodigo] base nueva por familia:", codigoBase);
+        let resultado;
+        if (registroState.codigoBaseInterno && registroState.isReuseMode === true) {
+          resultado = construirCodigoReutilizado({
+            codigoBase: registroState.codigoBaseInterno,
+            colorCode: colorCodigo,
+            tallaCode: tallaCodigo
+          });
+          if (registroBaseCodeInput) registroBaseCodeInput.value = registroState.codigoBaseReutilizado || resultado.codigoBase;
         } else {
-          console.log("[generarCodigo] reutilizando base escrita:", codigoBase);
+          const prefijo = construirPrefijoCodigo(proveedorCodigo, tipoCodigo);
+          const baseRows = await getCodigosBaseRowsByFamilia(prefijo);
+          resultado = construirCodigoNuevo({
+            proveedorCode: proveedorCodigo,
+            typeCode: tipoCodigo,
+            colorCode: colorCodigo,
+            tallaCode: tallaCodigo,
+            baseRows
+          });
+          registroState.codigoBaseInterno = resultado.codigoBase;
+          registroState.codigoBaseReutilizado = "";
+          registroState.isReuseMode = false;
+          if (registroBaseCodeInput) registroBaseCodeInput.value = "";
         }
 
-        const codigoFinal = `${codigoBase}/${colorCodigo}-${tallaCodigo}`;
-
-        registroBaseCodeInput.value = codigoBase;
-        registroCodigo.textContent = codigoFinal;
+        registroState.codigoGenerado = resultado.codigo;
+        registroBaseCode = resultado.codigoBase;
+        registroCodigo.textContent = resultado.codigo;
         registroSave.disabled = false;
 
-        console.log("[generarCodigo] END codigo:", codigoFinal);
+        console.log("[generarCodigo] resultado final:", { codigo: resultado.codigo, codigoBase: resultado.codigoBase });
         return {
           providerCode: proveedorCodigo,
           typeCode: tipoCodigo,
           colorClave: colorCodigo,
           tallaClave: tallaCodigo,
-          baseCode: codigoBase,
+          baseCode: resultado.codigoBase,
           variantKey: `${colorCodigo}_${tallaCodigo}`,
-          codigo: codigoFinal,
-          usingExistingBase: Boolean(codigoBasePrevio),
+          codigo: resultado.codigo,
+          usingExistingBase: registroState.isReuseMode,
           isSupplier: false,
           codigoOrigen: ""
         };
@@ -7463,19 +7577,25 @@ const createPrendaRow = (item) => {
         if (baseMode) {
           const normalizedTipo = safeString(tipoValue).trim().toUpperCase();
           const normalizedProv = safeString(provValue).trim().toUpperCase();
-          if (baseValue != null && registroBaseCodeInput) registroBaseCodeInput.value = parseBaseCode(baseValue);
+          const normalizedBase = parseBaseCode(baseValue);
+          if (registroBaseCodeInput) registroBaseCodeInput.value = normalizedBase;
           if (normalizedTipo) registroProducto.value = normalizedTipo;
           if (normalizedProv) registroProveedor.value = normalizedProv;
           lockedBaseTipo = normalizedTipo || registroProducto.value;
           lockedBaseProveedor = normalizedProv || registroProveedor.value;
-          registroBaseCode = parseBaseCode(registroBaseCodeInput?.value || registroBaseCode || baseValue || "");
+          registroBaseCode = normalizedBase;
+          registroState.codigoBaseInterno = normalizedBase;
+          registroState.codigoBaseReutilizado = normalizedBase;
+          registroState.isReuseMode = Boolean(normalizedBase);
         } else {
           lockedBaseTipo = "";
           lockedBaseProveedor = "";
-          if (baseValue != null && registroBaseCodeInput) {
-            registroBaseCodeInput.value = safeString(baseValue).trim().toUpperCase();
+          if (registroBaseCodeInput) {
+            registroBaseCodeInput.value = "";
           }
-          registroBaseCode = parseBaseCode(registroBaseCodeInput?.value || "");
+          registroBaseCode = "";
+          registroState.codigoBaseReutilizado = "";
+          registroState.isReuseMode = false;
         }
 
         setLocked(registroProducto, baseMode && canLockDerived);
@@ -7597,8 +7717,12 @@ const createPrendaRow = (item) => {
           registroSearchExistingButton.disabled = true;
           await ensureFirebaseSession();
           const found = await findCodigoExistente(raw);
+          console.log("[buscarCodigoExistente] resultado:", found);
           if (!found) {
             setBaseMode({ enabled: false, baseValue: "" });
+            registroState.codigoBaseInterno = "";
+            registroState.codigoBaseReutilizado = "";
+            registroState.isReuseMode = false;
             setRegistroStatus("No se encontró el código en la fuente disponible.", "warning");
             return;
           }
@@ -7621,6 +7745,13 @@ const createPrendaRow = (item) => {
             provValue: derivedResult.resolvedProveedor || proveedorBase,
             canLockDerived: derivedResult.okTipo && derivedResult.okProveedor
           });
+
+          registroState.codigoBaseInterno = parseBaseCode(found.baseCode);
+          registroState.codigoBaseReutilizado = parseBaseCode(found.baseCode);
+          registroState.isReuseMode = true;
+          if (registroBaseCodeInput) registroBaseCodeInput.value = registroState.codigoBaseReutilizado;
+          console.log("[buscarCodigoExistente] codigoBaseInterno:", registroState.codigoBaseInterno);
+          console.log("[buscarCodigoExistente] isReuseMode:", registroState.isReuseMode);
 
           if (!derivedResult.okTipo || !derivedResult.okProveedor) {
             mostrarWarningRegistro("Se encontró el código base, pero revisa Tipo/Proveedor antes de guardar.");
@@ -7670,238 +7801,163 @@ const createPrendaRow = (item) => {
           registroSave.disabled = true;
           registroSubmit.disabled = true;
 
+          console.log("[auth] currentUser uid:", auth.currentUser?.uid);
+          console.log("[auth] currentUser email:", auth.currentUser?.email);
+          console.log("[auth check] email:", auth.currentUser?.email);
+          console.log("[auth check] isAllowedAdminEmail:", isAllowedAdminEmail(auth.currentUser?.email));
+
+          if (!auth.currentUser?.email || !isAllowedAdminEmail(auth.currentUser?.email)) {
+            setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
+            return;
+          }
+
           const precioConIVAIngresado = toNumber(adminCreatePVentaInput?.value);
           const ajustePrecio = Number.isFinite(precioConIVAIngresado)
             ? ajustarDesdePrecioConIVA(precioConIVAIngresado)
             : null;
-          const buildPublicPayload = ({ codigo, baseCode, variantKey, orden = null, seqNumber = null }) => {
-            const tipoOption = registroProducto?.options?.[registroProducto.selectedIndex];
-            const proveedorOption = registroProveedor?.options?.[registroProveedor.selectedIndex];
-            const colorOption = registroColor?.options?.[registroColor.selectedIndex];
-            const tallaOption = registroTalla?.options?.[registroTalla.selectedIndex];
 
-            const tipoCodigo = safeString(preview.typeCode || registroProducto?.value).trim().toUpperCase();
-            const tipoLabel = safeString(tipoOption?.textContent).trim();
-            const tipoNombre = safeString(tipoOption?.dataset?.nombre || parseNameFromOptionText(tipoLabel)).trim() || tipoCodigo;
+          const tipoOption = registroProducto?.options?.[registroProducto.selectedIndex];
+          const proveedorOption = registroProveedor?.options?.[registroProveedor.selectedIndex];
+          const colorOption = registroColor?.options?.[registroColor.selectedIndex];
+          const tallaOption = registroTalla?.options?.[registroTalla.selectedIndex];
 
-            const proveedorCodigo = safeString(preview.providerCode || registroProveedor?.value).trim().toUpperCase();
-            const proveedorLabel = safeString(proveedorOption?.textContent).trim();
-            const proveedorNombre = safeString(proveedorOption?.dataset?.nombre || parseNameFromOptionText(proveedorLabel)).trim() || proveedorCodigo;
+          const tipoCodigo = safeString(preview.typeCode || registroProducto?.value).trim().toUpperCase();
+          const proveedorCodigo = safeString(preview.providerCode || registroProveedor?.value).trim().toUpperCase();
+          const colorCodigo = safeString(preview.colorClave || registroColor?.value).trim().toUpperCase();
+          const tallaCodigo = safeString(preview.tallaClave || registroTalla?.value).trim().toUpperCase();
+          const codigo = safeString(preview.codigo || registroState.codigoGenerado).trim().toUpperCase();
+          const codigoBase = safeString(
+            registroState.codigoBaseInterno ||
+            preview.baseCode ||
+            extraerCodigoBase(codigo)
+          ).trim().toUpperCase();
 
-            const colorCodigo = safeString(preview.colorClave || registroColor?.value).trim().toUpperCase();
-            const colorLabel = safeString(colorOption?.textContent).trim();
-            const colorNombre = safeString(colorOption?.dataset?.nombre || parseNameFromOptionText(colorLabel)).trim() || colorCodigo;
+          registroState.codigoGenerado = codigo;
+          registroState.codigoBaseInterno = codigoBase;
 
-            const tallaCodigo = safeString(preview.tallaClave || registroTalla?.value).trim().toUpperCase();
-            const tallaLabel = safeString(tallaOption?.textContent).trim();
-            const tallaNombre = safeString(tallaOption?.dataset?.nombre || parseNameFromOptionText(tallaLabel)).trim() || tallaCodigo;
+          const tipoLabel = safeString(tipoOption?.textContent).trim();
+          const tipoNombre = safeString(tipoOption?.dataset?.nombre || parseNameFromOptionText(tipoLabel)).trim() || tipoCodigo;
+          const proveedorLabel = safeString(proveedorOption?.textContent).trim();
+          const proveedorNombre = safeString(proveedorOption?.dataset?.nombre || parseNameFromOptionText(proveedorLabel)).trim() || proveedorCodigo;
+          const colorLabel = safeString(colorOption?.textContent).trim();
+          const colorNombre = safeString(colorOption?.dataset?.nombre || parseNameFromOptionText(colorLabel)).trim() || colorCodigo;
+          const tallaLabel = safeString(tallaOption?.textContent).trim();
+          const tallaNombre = safeString(tallaOption?.dataset?.nombre || parseNameFromOptionText(tallaLabel)).trim() || tallaCodigo;
 
-            const payload = {
-              docId: safeDocId(codigo),
-              codigo,
-              code: codigo,
-              codigoBase: baseCode,
-              baseCode,
-              variantKey,
-              proveedor: proveedorCodigo || null,
-              proveedorCodigo: proveedorCodigo || null,
-              proveedorNombre: proveedorNombre || null,
-              proveedorLabel: proveedorLabel || (proveedorCodigo ? `${proveedorCodigo} - ${proveedorNombre}` : null),
-              tipo: tipoCodigo || null,
-              tipoCodigo: tipoCodigo || null,
-              tipoNombre: tipoNombre || null,
-              tipoLabel: tipoLabel || (tipoCodigo ? `${tipoCodigo} - ${tipoNombre}` : null),
-              color: colorCodigo,
-              colorCode: colorCodigo,
-              colorName: colorNombre,
-              colorNombre: colorNombre,
-              colorLabel: colorLabel || (colorCodigo ? `${colorCodigo} - ${colorNombre}` : null),
-              talla: tallaCodigo,
-              tallaCode: tallaCodigo,
-              tallaName: tallaNombre,
-              tallaNombre: tallaNombre,
-              tallaLabel: tallaLabel || (tallaCodigo ? `${tallaCodigo} - ${tallaNombre}` : null),
-              descripcion: preview.descripcion || null,
-              detalles: preview.detallesValue || null,
-              orden: Number.isFinite(orden) ? orden : null,
-              seqNumber: Number.isFinite(seqNumber) ? seqNumber : null,
-              status: "ACTIVO",
-              disponibilidad: "DISPONIBLE",
-              isActive: true,
-              eliminado: false,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-              eliminadoAt: null,
-              eliminadoBy: null,
-              deletedAt: null,
-              deletedBy: null,
-              deleted: false,
-              creadoPor: preview.createdByValue || null
-            };
-            if (ajustePrecio) {
-              payload.pVenta = ajustePrecio.precioConIVA;
-              payload.precioConIva = ajustePrecio.precioConIVA;
-              payload.precioConIVA = ajustePrecio.precioConIVA;
-              payload.precioSinIVA = ajustePrecio.precioSinIVA;
-              payload.iva = ajustePrecio.iva;
-              payload.precioConIVAIngresado = precioConIVAIngresado;
-              payload.precioUpdatedAt = serverTimestamp();
-            }
-            return payload;
-          };
-
-          const reserveNextPublicCodeByFamilia = async () => {
-            const providerCode = preview.providerCode;
-            const typeCode = preview.typeCode;
-            const colorClave = preview.colorClave;
-            const tallaClave = preview.tallaClave;
-
-            const prefijo = `HA${providerCode}${typeCode}`;
-            const diccionarioProveedores = prendasState.dictEntries.proveedores || [];
-            const counterKey = buildFamiliaCounterKey(providerCode, typeCode, diccionarioProveedores);
-            console.log("[counterKey real save]", counterKey);
-            console.log("[providerCode]", providerCode);
-            console.log("[typeCode]", typeCode);
-            console.log("[firebase projectId]", firebaseConfig.projectId);
-            const counterRef = doc(db, "counters", counterKey);
-
-            return await runTransaction(db, async (tx) => {
-              const counterSnap = await tx.get(counterRef);
-              const counterData = counterSnap.exists() ? (counterSnap.data() || {}) : {};
-              const actual = Number(counterData.value ?? counterData.lastNumber ?? 0) || 0;
-              const siguiente = actual + 1;
-
-              const baseCode = `${prefijo}${String(siguiente).padStart(3, "0")}`;
-              const codigo = `${baseCode}/${colorClave}-${tallaClave}`;
-              const docRef = doc(db, activePrendasPublicCollection, safeDocId(codigo));
-
-              const existingSnap = await tx.get(docRef);
-              if (existingSnap.exists()) {
-                throw new Error(`El código ${codigo} ya existe.`);
-              }
-
-              tx.set(counterRef, {
-                value: siguiente,
-                lastNumber: siguiente,
-                updatedAt: serverTimestamp()
-              }, { merge: true });
-
-              return {
-                orden: siguiente,
-                baseCode,
-                codigo,
-                variantKey: `${colorClave}_${tallaClave}`,
-                docRef
-              };
-            });
+          const payloadRaw = {
+            docId: buildDocIdFromCodigo(codigo),
+            codigo,
+            code: codigo,
+            codigoBase: codigoBase || extraerCodigoBase(codigo),
+            baseCode: codigoBase || extraerCodigoBase(codigo),
+            variantKey: `${colorCodigo}_${tallaCodigo}`,
+            providerCode: proveedorCodigo,
+            typeCode: tipoCodigo,
+            colorCode: colorCodigo,
+            tallaCode: tallaCodigo,
+            providerName: proveedorNombre,
+            typeName: tipoNombre,
+            colorName: colorNombre,
+            tallaName: tallaNombre,
+            proveedor: proveedorCodigo,
+            proveedorCodigo: proveedorCodigo,
+            proveedorNombre: proveedorNombre,
+            proveedorLabel: proveedorLabel || (proveedorCodigo ? `${proveedorCodigo} - ${proveedorNombre}` : ""),
+            tipo: tipoCodigo,
+            tipoCodigo: tipoCodigo,
+            tipoNombre: tipoNombre,
+            tipoLabel: tipoLabel || (tipoCodigo ? `${tipoCodigo} - ${tipoNombre}` : ""),
+            color: colorCodigo,
+            colorNombre: colorNombre,
+            colorLabel: colorLabel || (colorCodigo ? `${colorCodigo} - ${colorNombre}` : ""),
+            talla: tallaCodigo,
+            tallaNombre: tallaNombre,
+            tallaLabel: tallaLabel || (tallaCodigo ? `${tallaCodigo} - ${tallaNombre}` : ""),
+            descripcion: safeString(preview.descripcion).trim(),
+            detalles: safeString(preview.detallesValue).trim(),
+            creadoPor: safeString(preview.createdByValue).trim(),
+            status: "ACTIVO",
+            disponibilidad: "DISPONIBLE",
+            isActive: true,
+            eliminado: false,
+            deleted: false,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
           };
 
           if (preview.isSupplier) {
-            const codigoFinal = preview.codigo;
-            const docId = safeDocId(codigoFinal);
-            const publicRef = doc(db, activePrendasPublicCollection, docId);
-            const existingSnap = await safeGetDoc(publicRef, "registroSave:supplier:existing");
-            if (existingSnap.exists()) {
-              throw new Error("Ese código ya existe en la base pública.");
+            payloadRaw.codigoBase = "";
+            payloadRaw.baseCode = "";
+            payloadRaw.modo_codigo = "supplier";
+            payloadRaw.codigo_origen = preview.codigoOrigen;
+          }
+
+          if (ajustePrecio) {
+            payloadRaw.pVenta = ajustePrecio.precioConIVA;
+            payloadRaw.precioConIva = ajustePrecio.precioConIVA;
+            payloadRaw.precioConIVA = ajustePrecio.precioConIVA;
+            payloadRaw.precioSinIVA = ajustePrecio.precioSinIVA;
+            payloadRaw.iva = ajustePrecio.iva;
+            payloadRaw.precioConIVAIngresado = precioConIVAIngresado;
+            payloadRaw.precioUpdatedAt = serverTimestamp();
+          }
+
+          const payload = removeUndefinedDeep(payloadRaw);
+          const docId = buildDocIdFromCodigo(codigo);
+          const publicRef = doc(collection(db, "HarujaPrendas_2025_public"), docId);
+
+          console.log("[guardarPrenda] payloadRaw:", payloadRaw);
+          console.log("[guardarPrenda] payload limpio:", payload);
+          console.log("[guardarPrenda] docId:", docId);
+          console.log("[firestore] docRef path:", publicRef.path);
+          console.log("[firestore] payload:", payload);
+
+          const existingSnap = await safeGetDoc(publicRef, "registroSave:existing");
+          if (existingSnap.exists()) {
+            throw new Error("Ese código ya existe en la base pública.");
+          }
+
+          try {
+            await safeSetDoc(publicRef, payload, "registroSave:write");
+          } catch (error) {
+            console.error("[firestore] write error code:", error?.code);
+            console.error("[firestore] write error message:", error?.message);
+            console.error("[firestore] write error stack:", error?.stack);
+            if (String(error?.code || "").includes("permission") || String(error?.message || "").includes("permission")) {
+              setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
+              return;
             }
-
-            const highestSnap = await safeGetDocs(
-              query(collection(db, activePrendasPublicCollection), orderBy("orden", "desc"), limit(1)),
-              "registroSave:supplier:lastOrden"
-            );
-            const ultimoOrden = Number(highestSnap.docs?.[0]?.data?.()?.orden);
-            const nextOrden = Number.isFinite(ultimoOrden) ? ultimoOrden + 1 : 1;
-
-            const publicPayload = buildPublicPayload({
-              codigo: codigoFinal,
-              baseCode: null,
-              variantKey: preview.variantKey,
-              orden: nextOrden,
-              seqNumber: nextOrden
-            });
-            publicPayload.codigoBase = null;
-            publicPayload.baseCode = null;
-            publicPayload.modo_codigo = "supplier";
-            publicPayload.codigo_origen = preview.codigoOrigen;
-
-            await safeSetDoc(publicRef, publicPayload, "registroSave:supplier:write");
-            const savedSnap = await safeGetDoc(publicRef, "registroSave:supplier:verify");
-            if (!savedSnap.exists()) {
-              throw new Error("No se confirmó el guardado del documento en Firestore.");
+            if (String(error?.message || "").includes("Invalid") || String(error?.message || "").includes("unsupported")) {
+              setRegistroStatus("No se pudo guardar por un campo inválido. Revisar consola.", "error");
+              return;
             }
-            console.log("[Registro] Documento guardado:", publicRef.id);
-            if (adminCreateCostoInput) adminCreateCostoInput.value = "";
-            if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
-            registroForm.reset();
-            registroPreview = null;
-            registroCodeModeValue = "haruja";
-            registroSupplierCodeWrap?.classList.add("hidden");
-            if (registroSupplierCodeInput) registroSupplierCodeInput.value = "";
-            setBaseMode({ enabled: false, baseValue: "" });
-            registroResult.classList.add("hidden");
-            await loadPrendasPage({ reset: true, reason: "save-garment" });
-            setRegistroStatus(`Prenda guardada correctamente: ${safeDocId(codigoFinal)}`, "success");
+            setRegistroStatus("No se pudo guardar la prenda. Revisar consola para detalle técnico.", "error");
             return;
-          } else if (preview.usingExistingBase) {
-            const docId = safeDocId(preview.codigo);
-            const publicRef = doc(db, activePrendasPublicCollection, docId);
-            const existingSnap = await safeGetDoc(publicRef, "registroSave:base:existing");
-            if (existingSnap.exists()) {
-              throw new Error("Ese código ya existe en la base pública.");
-            }
+          }
 
-            const orden = parseOrdenFromBaseCode(preview.baseCode);
-            const publicPayload = buildPublicPayload({
-              codigo: preview.codigo,
-              baseCode: preview.baseCode,
-              variantKey: preview.variantKey,
-              orden,
-              seqNumber: orden
-            });
-            await safeSetDoc(publicRef, publicPayload, "registroSave:base:write");
-            const savedSnap = await safeGetDoc(publicRef, "registroSave:base:verify");
-            if (!savedSnap.exists()) {
-              throw new Error("No se confirmó el guardado del documento en Firestore.");
-            }
-            console.log("[Registro] Documento guardado:", publicRef.id);
-          } else {
-            const txResult = await reserveNextPublicCodeByFamilia();
-            const publicPayload = buildPublicPayload({
-              codigo: txResult.codigo,
-              baseCode: txResult.baseCode,
-              variantKey: txResult.variantKey,
-              orden: txResult.orden,
-              seqNumber: txResult.orden
-            });
-            console.log("[registroSave] payload nuevo:", publicPayload);
-            console.log("[registroSave] docRef:", txResult.docRef.path);
-            await safeSetDoc(txResult.docRef, publicPayload, "registroSave:new:write");
-            console.log("[registroSave] setDoc OK:", txResult.codigo);
-            const savedSnap = await safeGetDoc(txResult.docRef, "registroSave:new:verify");
-            if (!savedSnap.exists()) {
-              throw new Error("No se confirmó el guardado del documento en Firestore.");
-            }
-            console.log("[Registro] Documento guardado:", txResult.docRef.id);
-            preview.codigo = txResult.codigo;
-            preview.baseCode = txResult.baseCode;
+          const savedSnap = await safeGetDoc(publicRef, "registroSave:verify");
+          if (!savedSnap.exists()) {
+            throw new Error("No se confirmó el guardado del documento en Firestore.");
           }
 
           if (adminCreateCostoInput) adminCreateCostoInput.value = "";
           if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
           registroPreview = { ...preview };
-          if (registroBaseCodeInput && preview.baseCode) registroBaseCodeInput.value = preview.baseCode;
-          registroCodigo.textContent = preview.codigo;
+          registroCodigo.textContent = codigo;
           registroResult.classList.remove("hidden");
           await loadPrendasPage({ reset: true, reason: "save-garment" });
-          setRegistroStatus(
-            preview.usingExistingBase
-              ? `Prenda guardada correctamente: ${safeDocId(preview.codigo)}`
-              : `Prenda guardada correctamente: ${safeDocId(preview.codigo)}`,
-            "success"
-          );
+          setRegistroStatus("Prenda guardada correctamente.", "success");
         } catch (error) {
           console.error(error);
-          setRegistroStatus(error?.message || "No se pudo guardar la prenda.", "error");
+          const errorCode = String(error?.code || "");
+          const errorMessage = String(error?.message || "");
+          if (errorCode.includes("permission") || errorMessage.includes("permission")) {
+            setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
+          } else if (errorMessage.includes("Invalid") || errorMessage.includes("unsupported")) {
+            setRegistroStatus("No se pudo guardar por un campo inválido. Revisar consola.", "error");
+          } else {
+            setRegistroStatus("No se pudo guardar la prenda. Revisar consola para detalle técnico.", "error");
+          }
         } finally {
           registroSave.disabled = false;
           registroSubmit.disabled = false;
@@ -7921,6 +7977,10 @@ const createPrendaRow = (item) => {
       const handleRegistroReset = () => {
         registroForm.reset();
         registroPreview = null;
+        registroState.codigoGenerado = "";
+        registroState.codigoBaseInterno = "";
+        registroState.codigoBaseReutilizado = "";
+        registroState.isReuseMode = false;
         registroCodeModeValue = "haruja";
         registroSupplierCodeWrap?.classList.add("hidden");
         if (registroSupplierCodeInput) registroSupplierCodeInput.value = "";
@@ -7949,6 +8009,10 @@ const createPrendaRow = (item) => {
             if (!isSupplier && registroSupplierCodeInput) registroSupplierCodeInput.value = "";
             if (isSupplier) {
               setBaseMode({ enabled: false, baseValue: "" });
+              registroState.codigoGenerado = "";
+              registroState.codigoBaseInterno = "";
+              registroState.codigoBaseReutilizado = "";
+              registroState.isReuseMode = false;
               if (registroBaseCodeInput) registroBaseCodeInput.value = "";
               if (registroExistingCode) registroExistingCode.value = "";
             }
@@ -7960,16 +8024,16 @@ const createPrendaRow = (item) => {
             const raw = safeString(registroExistingCode.value).trim();
             if (!raw) {
               setBaseMode({ enabled: false, baseValue: "" });
+              registroState.codigoBaseInterno = "";
+              registroState.codigoBaseReutilizado = "";
+              registroState.isReuseMode = false;
               if (registroBaseCodeInput) registroBaseCodeInput.value = "";
             }
           });
         }
         if (registroBaseCodeInput) {
           registroBaseCodeInput.addEventListener("input", () => {
-            registroBaseCode = parseBaseCode(registroBaseCodeInput.value);
-            if (!registroBaseCode) {
-              setBaseMode({ enabled: false, baseValue: "" });
-            }
+            // readonly informativo: no usar como fuente de verdad
           });
         }
         setSupplierLock(registroCodeMode.value === "supplier");
