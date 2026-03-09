@@ -20,6 +20,43 @@ service cloud.firestore {
       return isAdminEmail();
     }
 
+
+    function hasOnlyFields(data, allowedFields) {
+      return data.keys().hasOnly(allowedFields);
+    }
+
+    function isValidPrendaPublica() {
+      return hasOnlyFields(request.resource.data, [
+        "codigo",
+        "code",
+        "codigoBase",
+        "baseCode",
+        "providerCode",
+        "typeCode",
+        "colorCode",
+        "tallaCode",
+        "providerName",
+        "typeName",
+        "colorName",
+        "tallaName",
+        "descripcion",
+        "detalles",
+        "creadoPor",
+        "orden",
+        "seqNumber",
+        "createdAt",
+        "updatedAt"
+      ]) &&
+      (
+        !("orden" in request.resource.data) ||
+        request.resource.data.orden is number
+      ) &&
+      (
+        !("seqNumber" in request.resource.data) ||
+        request.resource.data.seqNumber is number
+      );
+    }
+
     // Diccionario (colección fallback)
     match /diccionario/{doc} {
       allow read: if true;
@@ -55,8 +92,8 @@ service cloud.firestore {
 
     match /HarujaPrendas_2025_public/{doc=**} {
       allow read: if true;
-      allow update: if isAdmin();
-      allow create: if isAdmin();
+      allow update: if isAdmin() && isValidPrendaPublica();
+      allow create: if isAdmin() && isValidPrendaPublica();
       allow delete: if isAdmin();
     }
 
