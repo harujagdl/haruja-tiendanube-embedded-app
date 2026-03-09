@@ -7803,102 +7803,77 @@ const createPrendaRow = (item) => {
 
           console.log("[auth] currentUser uid:", auth.currentUser?.uid);
           console.log("[auth] currentUser email:", auth.currentUser?.email);
-          const precioConIVAIngresado = toNumber(adminCreatePVentaInput?.value);
-          const ajustePrecio = Number.isFinite(precioConIVAIngresado)
-            ? ajustarDesdePrecioConIVA(precioConIVAIngresado)
-            : null;
+          const getSelectedCode = (selectEl) => {
+            const option = selectEl?.options?.[selectEl.selectedIndex];
+            return safeString(option?.value || selectEl?.value || "").trim().toUpperCase();
+          };
 
-          const tipoOption = registroProducto?.options?.[registroProducto.selectedIndex];
-          const proveedorOption = registroProveedor?.options?.[registroProveedor.selectedIndex];
-          const colorOption = registroColor?.options?.[registroColor.selectedIndex];
-          const tallaOption = registroTalla?.options?.[registroTalla.selectedIndex];
+          const getSelectedLabel = (selectEl) => {
+            const option = selectEl?.options?.[selectEl.selectedIndex];
+            return safeString(option?.dataset?.nombre || parseNameFromOptionText(option?.textContent || "") || option?.textContent || "").trim();
+          };
 
-          const tipoCodigo = safeString(preview.typeCode || registroProducto?.value).trim().toUpperCase();
-          const proveedorCodigo = safeString(preview.providerCode || registroProveedor?.value).trim().toUpperCase();
-          const colorCodigo = safeString(preview.colorClave || registroColor?.value).trim().toUpperCase();
-          const tallaCodigo = safeString(preview.tallaClave || registroTalla?.value).trim().toUpperCase();
-          const codigo = safeString(preview.codigo || registroState.codigoGenerado).trim().toUpperCase();
-          const codigoBase = safeString(
+          const codigoFinal = String(registroState.codigoGenerado || "").trim().toUpperCase();
+          const codigoBaseFinal = String(
             registroState.codigoBaseInterno ||
-            preview.baseCode ||
-            extraerCodigoBase(codigo)
+            extraerCodigoBase(codigoFinal) ||
+            ""
           ).trim().toUpperCase();
 
-          registroState.codigoGenerado = codigo;
-          registroState.codigoBaseInterno = codigoBase;
+          const providerCode = String(getSelectedCode(registroProveedor) || "").trim();
+          const typeCode = String(getSelectedCode(registroProducto) || "").trim();
+          const colorCode = String(getSelectedCode(registroColor) || "").trim();
+          const tallaCode = String(getSelectedCode(registroTalla) || "").trim();
 
-          const tipoLabel = safeString(tipoOption?.textContent).trim();
-          const tipoNombre = safeString(tipoOption?.dataset?.nombre || parseNameFromOptionText(tipoLabel)).trim() || tipoCodigo;
-          const proveedorLabel = safeString(proveedorOption?.textContent).trim();
-          const proveedorNombre = safeString(proveedorOption?.dataset?.nombre || parseNameFromOptionText(proveedorLabel)).trim() || proveedorCodigo;
-          const colorLabel = safeString(colorOption?.textContent).trim();
-          const colorNombre = safeString(colorOption?.dataset?.nombre || parseNameFromOptionText(colorLabel)).trim() || colorCodigo;
-          const tallaLabel = safeString(tallaOption?.textContent).trim();
-          const tallaNombre = safeString(tallaOption?.dataset?.nombre || parseNameFromOptionText(tallaLabel)).trim() || tallaCodigo;
+          const providerName = String(getSelectedLabel(registroProveedor) || "").trim();
+          const typeName = String(getSelectedLabel(registroProducto) || "").trim();
+          const colorName = String(getSelectedLabel(registroColor) || "").trim();
+          const tallaName = String(getSelectedLabel(registroTalla) || "").trim();
+
+          const descripcion = String(registroDetalles?.value || "").trim();
+          const detalles = String(registroDetalles?.value || "").trim();
+          const creadoPor = String(registroCreatedBy?.value || "").trim();
 
           const payloadRaw = {
-            docId: buildDocIdFromCodigo(codigo),
-            codigo,
-            code: codigo,
-            codigoBase: codigoBase || extraerCodigoBase(codigo),
-            baseCode: codigoBase || extraerCodigoBase(codigo),
-            variantKey: `${colorCodigo}_${tallaCodigo}`,
-            providerCode: proveedorCodigo,
-            typeCode: tipoCodigo,
-            colorCode: colorCodigo,
-            tallaCode: tallaCodigo,
-            providerName: proveedorNombre,
-            typeName: tipoNombre,
-            colorName: colorNombre,
-            tallaName: tallaNombre,
-            proveedor: proveedorCodigo,
-            proveedorCodigo: proveedorCodigo,
-            proveedorNombre: proveedorNombre,
-            proveedorLabel: proveedorLabel || (proveedorCodigo ? `${proveedorCodigo} - ${proveedorNombre}` : ""),
-            tipo: tipoCodigo,
-            tipoCodigo: tipoCodigo,
-            tipoNombre: tipoNombre,
-            tipoLabel: tipoLabel || (tipoCodigo ? `${tipoCodigo} - ${tipoNombre}` : ""),
-            color: colorCodigo,
-            colorNombre: colorNombre,
-            colorLabel: colorLabel || (colorCodigo ? `${colorCodigo} - ${colorNombre}` : ""),
-            talla: tallaCodigo,
-            tallaNombre: tallaNombre,
-            tallaLabel: tallaLabel || (tallaCodigo ? `${tallaCodigo} - ${tallaNombre}` : ""),
-            descripcion: safeString(preview.descripcion).trim(),
-            detalles: safeString(preview.detallesValue).trim(),
-            creadoPor: safeString(preview.createdByValue).trim(),
-            status: "ACTIVO",
-            disponibilidad: "DISPONIBLE",
-            isActive: true,
-            eliminado: false,
-            deleted: false,
+            codigo: codigoFinal,
+            code: codigoFinal,
+            codigoBase: codigoBaseFinal,
+            baseCode: codigoBaseFinal,
+            providerCode,
+            typeCode,
+            colorCode,
+            tallaCode,
+            providerName,
+            typeName,
+            colorName,
+            tallaName,
+            descripcion,
+            detalles,
+            creadoPor,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           };
 
-          if (preview.isSupplier) {
-            payloadRaw.codigoBase = "";
-            payloadRaw.baseCode = "";
-            payloadRaw.modo_codigo = "supplier";
-            payloadRaw.codigo_origen = preview.codigoOrigen;
-          }
-
-          if (ajustePrecio) {
-            payloadRaw.pVenta = ajustePrecio.precioConIVA;
-            payloadRaw.precioConIva = ajustePrecio.precioConIVA;
-            payloadRaw.precioConIVA = ajustePrecio.precioConIVA;
-            payloadRaw.precioSinIVA = ajustePrecio.precioSinIVA;
-            payloadRaw.iva = ajustePrecio.iva;
-            payloadRaw.precioConIVAIngresado = precioConIVAIngresado;
-            payloadRaw.precioUpdatedAt = serverTimestamp();
-          }
-
           const payload = removeUndefinedDeep(payloadRaw);
-          const docId = buildDocIdFromCodigo(codigo);
+
+          const requiredKeysOk =
+            !!payload.codigo &&
+            !!payload.codigoBase &&
+            !!payload.providerCode &&
+            !!payload.typeCode &&
+            !!payload.colorCode &&
+            !!payload.tallaCode;
+
+          if (!requiredKeysOk) {
+            console.error("[guardarPrenda] payload inválido para rules:", payload);
+            setRegistroStatus("Faltan campos obligatorios para guardar la prenda.", "error");
+            return;
+          }
+
+          const docId = buildDocIdFromCodigo(codigoFinal);
           const publicRef = doc(collection(db, "HarujaPrendas_2025_public"), docId);
 
-          console.log("[guardarPrenda] payloadRaw:", payloadRaw);
+          console.log("[guardarPrenda] keys payload:", Object.keys(payload).sort());
           console.log("[guardarPrenda] payload limpio:", payload);
           console.log("[guardarPrenda] docId:", docId);
           console.log("[firestore] docRef path:", publicRef.path);
@@ -7910,7 +7885,7 @@ const createPrendaRow = (item) => {
           }
 
           try {
-            await safeSetDoc(publicRef, payload, "registroSave:write");
+            await setDoc(publicRef, payload);
           } catch (error) {
             console.error("[firestore] write error code:", error?.code);
             console.error("[firestore] write error message:", error?.message);
@@ -7935,7 +7910,7 @@ const createPrendaRow = (item) => {
           if (adminCreateCostoInput) adminCreateCostoInput.value = "";
           if (adminCreatePVentaInput) adminCreatePVentaInput.value = "";
           registroPreview = { ...preview };
-          registroCodigo.textContent = codigo;
+          registroCodigo.textContent = codigoFinal;
           registroResult.classList.remove("hidden");
           await loadPrendasPage({ reset: true, reason: "save-garment" });
           setRegistroStatus("Prenda guardada correctamente.", "success");
