@@ -7803,14 +7803,6 @@ const createPrendaRow = (item) => {
 
           console.log("[auth] currentUser uid:", auth.currentUser?.uid);
           console.log("[auth] currentUser email:", auth.currentUser?.email);
-          console.log("[auth check] email:", auth.currentUser?.email);
-          console.log("[auth check] isAllowedAdminEmail:", isAllowedAdminEmail(auth.currentUser?.email));
-
-          if (!auth.currentUser?.email || !isAllowedAdminEmail(auth.currentUser?.email)) {
-            setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
-            return;
-          }
-
           const precioConIVAIngresado = toNumber(adminCreatePVentaInput?.value);
           const ajustePrecio = Number.isFinite(precioConIVAIngresado)
             ? ajustarDesdePrecioConIVA(precioConIVAIngresado)
@@ -7924,7 +7916,7 @@ const createPrendaRow = (item) => {
             console.error("[firestore] write error message:", error?.message);
             console.error("[firestore] write error stack:", error?.stack);
             if (String(error?.code || "").includes("permission") || String(error?.message || "").includes("permission")) {
-              setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
+              setRegistroStatus("No se pudo guardar la prenda. Revisa rules, payload o conectividad.", "error");
               return;
             }
             if (String(error?.message || "").includes("Invalid") || String(error?.message || "").includes("unsupported")) {
@@ -7952,7 +7944,7 @@ const createPrendaRow = (item) => {
           const errorCode = String(error?.code || "");
           const errorMessage = String(error?.message || "");
           if (errorCode.includes("permission") || errorMessage.includes("permission")) {
-            setRegistroStatus("Tu sesión actual no tiene permisos para guardar.", "error");
+            setRegistroStatus("No se pudo guardar la prenda por reglas o permisos de Firestore.", "error");
           } else if (errorMessage.includes("Invalid") || errorMessage.includes("unsupported")) {
             setRegistroStatus("No se pudo guardar por un campo inválido. Revisar consola.", "error");
           } else {
