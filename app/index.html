@@ -7874,9 +7874,13 @@ const createPrendaRow = (item) => {
             ? `${tallaCodigo} - ${tallaNombre}`
             : "";
           const nextOrden = getNextOrdenFromRows(
-            prendasState?.baseRows || prendasState?.rowsAfterAll || prendasState?.filtered || []
+            prendasState?.rows ||
+            prendasState?.allRows ||
+            prendasState?.rowsAfterAll ||
+            prendasState?.baseRows ||
+            []
           );
-          console.log('[guardarPrenda] nextOrden:', nextOrden);
+          console.log('[save] nextOrden:', nextOrden);
           console.log('[guardarPrenda] proveedorNombre:', proveedorNombre);
           console.log('[guardarPrenda] tipoNombre:', tipoNombre);
 
@@ -7937,11 +7941,11 @@ const createPrendaRow = (item) => {
 
           console.log("[guardarPrenda] keys payload:", Object.keys(payload).sort());
           console.log("[guardarPrenda] payload limpio:", payload);
-          console.log('[guardarPrenda] payload final:', payload);
+          console.log('[save] payload final:', payload);
           console.log('[guardarPrenda] orden:', payload.orden);
           console.log('[guardarPrenda] seqNumber:', payload.seqNumber);
           console.log("[guardarPrenda] docId:", docId);
-          console.log("[firestore] docRef path:", publicRef.path);
+          console.log('[save] doc path:', publicRef.path);
           console.log("[firestore] payload:", payload);
 
           const existingSnap = await safeGetDoc(publicRef, "registroSave:existing");
@@ -7977,6 +7981,7 @@ const createPrendaRow = (item) => {
           registroPreview = { ...preview };
           registroCodigo.textContent = codigoFinal;
           registroResult.classList.remove("hidden");
+          if (prendasSearch) prendasSearch.value = "";
           await loadPrendasPage({ reset: true, reason: "save-garment" });
           setRegistroStatus("Prenda guardada correctamente.", "success");
         } catch (error) {
