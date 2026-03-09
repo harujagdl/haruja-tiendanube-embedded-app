@@ -5788,6 +5788,109 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         return maxOrden + 1;
       }
 
+      const buildPrendaBackfillPatch = (data = {}, nextOrdenHint = 0) => {
+        const patch = {};
+        const providerCode = safeString(data.providerCode ?? data.proveedorCodigo ?? data.proveedor ?? "").trim().toUpperCase();
+        const providerName = safeString(data.providerName ?? data.proveedorNombre ?? "").trim() || parseNameFromOptionText(data.proveedorLabel);
+        const typeCode = safeString(data.typeCode ?? data.tipoCodigo ?? data.tipo ?? "").trim().toUpperCase();
+        const typeName = safeString(data.typeName ?? data.tipoNombre ?? "").trim() || parseNameFromOptionText(data.tipoLabel);
+        const colorCode = safeString(data.colorCode ?? data.color ?? "").trim().toUpperCase();
+        const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || parseNameFromOptionText(data.colorLabel);
+        const tallaCode = safeString(data.tallaCode ?? data.talla ?? "").trim().toUpperCase();
+        const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || parseNameFromOptionText(data.tallaLabel);
+
+        const ordenActual = Number(data.orden ?? data.seqNumber ?? 0);
+        const ordenFinal = Number.isFinite(ordenActual) && ordenActual > 0
+          ? ordenActual
+          : Number(nextOrdenHint || 0);
+        if (!Number.isFinite(Number(data.orden)) || Number(data.orden) <= 0) {
+          patch.orden = ordenFinal;
+        }
+        if (!Number.isFinite(Number(data.seqNumber)) || Number(data.seqNumber) <= 0) {
+          patch.seqNumber = ordenFinal;
+        }
+
+        if (providerCode && !safeString(data.providerCode).trim()) patch.providerCode = providerCode;
+        if (providerName && !safeString(data.providerName).trim()) patch.providerName = providerName;
+        if (typeCode && !safeString(data.typeCode).trim()) patch.typeCode = typeCode;
+        if (typeName && !safeString(data.typeName).trim()) patch.typeName = typeName;
+        if (colorCode && !safeString(data.colorCode).trim()) patch.colorCode = colorCode;
+        if (colorName && !safeString(data.colorName).trim()) patch.colorName = colorName;
+        if (tallaCode && !safeString(data.tallaCode).trim()) patch.tallaCode = tallaCode;
+        if (tallaName && !safeString(data.tallaName).trim()) patch.tallaName = tallaName;
+
+        if (providerCode && !safeString(data.proveedorCodigo ?? data.proveedor).trim()) {
+          patch.proveedor = providerCode;
+          patch.proveedorCodigo = providerCode;
+        }
+        if (providerName && !safeString(data.proveedorNombre).trim()) patch.proveedorNombre = providerName;
+        if (typeCode && !safeString(data.tipoCodigo ?? data.tipo).trim()) {
+          patch.tipo = typeCode;
+          patch.tipoCodigo = typeCode;
+        }
+        if (typeName && !safeString(data.tipoNombre).trim()) patch.tipoNombre = typeName;
+        if (colorCode && !safeString(data.color).trim()) patch.color = colorCode;
+        if (colorName && !safeString(data.colorNombre).trim()) patch.colorNombre = colorName;
+        if (tallaCode && !safeString(data.talla).trim()) patch.talla = tallaCode;
+        if (tallaName && !safeString(data.tallaNombre).trim()) patch.tallaNombre = tallaName;
+
+        if (Object.keys(patch).length > 0) {
+          patch.updatedAt = serverTimestamp();
+        }
+        return patch;
+      };
+
+      const backfillPrendasPublicCollection = async ({ docIds = [], dryRun = true, limitDocs = 300 } = {}) => {
+        await ensureFirebaseSession();
+        const collectionRef = collection(db, COL_PRENDAS_PUBLIC);
+        const ids = Array.isArray(docIds)
+          ? docIds.map((value) => safeString(value).trim()).filter(Boolean)
+          : [];
+        const snaps = [];
+        if (ids.length) {
+          for (const id of ids) {
+            const snap = await safeGetDoc(doc(collectionRef, id), `backfill:${id}`);
+            if (snap.exists()) snaps.push(snap);
+          }
+        } else {
+          const querySnap = await safeGetDocs(query(collectionRef, limit(Number(limitDocs) || 300)), "backfill:list");
+          querySnap.forEach((docSnap) => snaps.push(docSnap));
+        }
+
+        const rowsSnapshot = snaps.map((snap) => ({ id: snap.id, ...snap.data() }));
+        let ordenCursor = rowsSnapshot.reduce((max, row) => {
+          const n = Number(row?.orden ?? row?.seqNumber ?? 0);
+          return Number.isFinite(n) ? Math.max(max, n) : max;
+        }, 0);
+
+        const report = [];
+        for (const snap of snaps) {
+          const data = snap.data() || {};
+          const patch = buildPrendaBackfillPatch(data, ordenCursor + 1);
+          if (!Object.keys(patch).length) continue;
+          ordenCursor = Math.max(ordenCursor, Number(patch.orden ?? patch.seqNumber ?? 0) || ordenCursor);
+          report.push({ docId: snap.id, patch });
+          if (!dryRun) {
+            await setDoc(doc(collectionRef, snap.id), patch, { merge: true });
+          }
+        }
+
+        console.log("[backfill] prendas public", {
+          dryRun,
+          scanned: snaps.length,
+          patched: report.length,
+          report
+        });
+        return {
+          dryRun,
+          scanned: snaps.length,
+          patched: report.length,
+          report
+        };
+      };
+
+      window.backfillPrendasPublicCollection = backfillPrendasPublicCollection;
+
       const normalizeDoc = (docSnap) => {
         const data = docSnap.data() || {};
         const codigo = safeString(
@@ -5827,9 +5930,9 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         console.log('[mapper] tipoNombre final:', tipoNombre);
         const colorCode = safeString(data.color ?? data.colorCode ?? data.Color ?? "").trim().toUpperCase();
         const tallaCode = safeString(data.talla ?? data.tallaCode ?? data.Talla ?? "").trim().toUpperCase();
-        const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || parseNameFromOptionText(data.colorLabel) || resolveColorName(colorCode);
+        const colorName = safeString(data.colorNombre ?? data.colorName ?? "").trim() || parseNameFromOptionText(data.colorLabel) || resolveColorName(colorCode);
         const colorLabel = safeString(data.colorLabel ?? "").trim();
-        const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || parseNameFromOptionText(data.tallaLabel) || resolveTallaName(tallaCode);
+        const tallaName = safeString(data.tallaNombre ?? data.tallaName ?? "").trim() || parseNameFromOptionText(data.tallaLabel) || resolveTallaName(tallaCode);
         const tallaLabel = safeString(data.tallaLabel ?? "").trim();
         const qtyAvailable = Number(data.qtyAvailable ?? data.qty_available ?? data.cantidad ?? 0) || 0;
         let statusCanon = normalizeStatus(
@@ -5875,7 +5978,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
-        const orden = toNumberOrNull(data.orden ?? data.seqNumber ?? data.Orden);
+        const orden = Number(data.orden ?? data.seqNumber ?? data.Orden ?? 0);
         const seqNumber = toNumberOrNull(data.seqNumber ?? data.seq ?? data.secuencia);
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
@@ -5893,7 +5996,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         return {
           id: docSnap.id,
           docId: safeString(data.docId ?? docSnap.id),
-          orden: Number.isFinite(orden) ? orden : seqNumber,
+          orden: Number.isFinite(orden) && orden > 0 ? orden : seqNumber,
           seqNumber,
           codigo,
           descripcion,
