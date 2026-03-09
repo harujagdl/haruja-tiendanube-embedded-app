@@ -107,7 +107,7 @@ service cloud.firestore {
     match /HarujaPrendas_2025_public/{doc=**} {
       allow read: if true;
       allow update: if isAdmin() && isValidPrendaPublica();
-      allow create: if isAdmin() && isValidPrendaPublica();
+      allow create: if isSignedIn() && isValidPrendaPublica();
       allow delete: if isAdmin();
     }
 
