@@ -5767,6 +5767,15 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         return normalizedLegacy || "-";
       };
 
+      function getNextOrdenFromRows(rows) {
+        const list = Array.isArray(rows) ? rows : [];
+        const maxOrden = list.reduce((max, row) => {
+          const n = Number(row?.orden);
+          return Number.isFinite(n) ? Math.max(max, n) : max;
+        }, 0);
+        return maxOrden + 1;
+      }
+
       const normalizeDoc = (docSnap) => {
         const data = docSnap.data() || {};
         const codigo = safeString(
@@ -5785,14 +5794,25 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
             data.Detalles ??
             ""
         ).trim();
-        const tipoCodigo = safeString(data.tipoCodigo ?? data.tipo ?? data.Tipo ?? "").trim();
-        const tipoNombre = safeString(data.tipoNombre ?? "").trim() || parseNameFromOptionText(data.tipoLabel);
+        const tipoCodigo = safeString(
+          data.tipoCodigo ?? data.tipo ?? data.typeCode ?? data.Tipo ?? ""
+        ).trim();
+        const tipoNombre = safeString(
+          data.tipoNombre ?? data.typeName ?? ""
+        ).trim() || parseNameFromOptionText(data.tipoLabel);
         const tipoLabel = safeString(data.tipoLabel ?? "").trim();
         const tipo = safeString(data.tipo || data.Tipo || tipoCodigo || "").trim();
-        const proveedorCodigo = safeString(data.proveedorCodigo ?? data.proveedor ?? data.Proveedor ?? "").trim();
-        const proveedorNombre = safeString(data.proveedorNombre ?? "").trim() || parseNameFromOptionText(data.proveedorLabel);
+        const proveedorCodigo = safeString(
+          data.proveedorCodigo ?? data.proveedor ?? data.providerCode ?? data.Proveedor ?? ""
+        ).trim();
+        const proveedorNombre = safeString(
+          data.proveedorNombre ?? data.providerName ?? ""
+        ).trim() || parseNameFromOptionText(data.proveedorLabel);
         const proveedorLabel = safeString(data.proveedorLabel ?? "").trim();
         const proveedor = safeString(data.proveedor || data.Proveedor || proveedorCodigo || "").trim();
+        console.log('[mapper] proveedorNombre final:', proveedorNombre);
+        console.log('[mapper] proveedorCodigo final:', proveedorCodigo);
+        console.log('[mapper] tipoNombre final:', tipoNombre);
         const colorCode = safeString(data.colorCode ?? data.color ?? data.Color ?? "").trim().toUpperCase();
         const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
         const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || parseNameFromOptionText(data.colorLabel) || resolveColorName(colorCode);
@@ -7833,13 +7853,52 @@ const createPrendaRow = (item) => {
           const descripcion = String(registroDetalles?.value || "").trim();
           const detalles = String(registroDetalles?.value || "").trim();
           const creadoPor = String(registroCreatedBy?.value || "").trim();
-          const nowOrder = Date.now();
+          const proveedorCodigo = providerCode;
+          const proveedorNombre = providerName;
+          const proveedorLabel = proveedorCodigo
+            ? `${proveedorCodigo} - ${proveedorNombre}`
+            : "";
+          const tipoCodigo = typeCode;
+          const tipoNombre = typeName;
+          const tipoLabel = tipoCodigo
+            ? `${tipoCodigo} - ${tipoNombre}`
+            : "";
+          const colorCodigo = colorCode;
+          const colorNombre = colorName;
+          const colorLabel = colorCodigo
+            ? `${colorCodigo} - ${colorNombre}`
+            : "";
+          const tallaCodigo = tallaCode;
+          const tallaNombre = tallaName;
+          const tallaLabel = tallaCodigo
+            ? `${tallaCodigo} - ${tallaNombre}`
+            : "";
+          const nextOrden = getNextOrdenFromRows(
+            prendasState?.baseRows || prendasState?.rowsAfterAll || prendasState?.filtered || []
+          );
+          console.log('[guardarPrenda] nextOrden:', nextOrden);
+          console.log('[guardarPrenda] proveedorNombre:', proveedorNombre);
+          console.log('[guardarPrenda] tipoNombre:', tipoNombre);
 
           const payloadRaw = {
             codigo: codigoFinal,
             code: codigoFinal,
             codigoBase: codigoBaseFinal,
             baseCode: codigoBaseFinal,
+            proveedor: proveedorCodigo,
+            proveedorCodigo,
+            proveedorNombre,
+            proveedorLabel,
+            tipo: tipoCodigo,
+            tipoCodigo,
+            tipoNombre,
+            tipoLabel,
+            color: colorCodigo,
+            colorNombre,
+            colorLabel,
+            talla: tallaCodigo,
+            tallaNombre,
+            tallaLabel,
             providerCode,
             typeCode,
             colorCode,
@@ -7851,8 +7910,8 @@ const createPrendaRow = (item) => {
             descripcion,
             detalles,
             creadoPor,
-            orden: nowOrder,
-            seqNumber: nowOrder,
+            orden: nextOrden,
+            seqNumber: nextOrden,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           };
@@ -7878,6 +7937,7 @@ const createPrendaRow = (item) => {
 
           console.log("[guardarPrenda] keys payload:", Object.keys(payload).sort());
           console.log("[guardarPrenda] payload limpio:", payload);
+          console.log('[guardarPrenda] payload final:', payload);
           console.log('[guardarPrenda] orden:', payload.orden);
           console.log('[guardarPrenda] seqNumber:', payload.seqNumber);
           console.log("[guardarPrenda] docId:", docId);
