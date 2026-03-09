@@ -3060,6 +3060,7 @@ const auth = getAuth(app);
       const printRoot = document.getElementById("printRoot");
 
       const prendasSearch = document.getElementById("prendas-search");
+      const prendasSearchInput = prendasSearch;
       const toolbar = document.getElementById("toolbar");
       const prendasHeadRow = document.getElementById("prendas-head-row");
       const prendasYear = document.getElementById("prendas-year");
@@ -3326,9 +3327,11 @@ const auth = getAuth(app);
       const loadBaseRows = async () => {
         const cacheKey = activePrendasPublicCollection || "public";
 
+        console.log('[loadBaseRows] usando cache:', prendasState.baseRows.length);
         if (prendasState.baseRows.length && prendasState.baseRowsCacheKey === cacheKey) {
           return prendasState.baseRows;
         }
+        console.log('[loadBaseRows] consultando Firestore...');
 
         let cursor = null;
         let hasMore = true;
@@ -5741,6 +5744,15 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         return normalizeSearchText(`${codigo} ${descripcion}`.trim());
       };
 
+      function normalizeCodeForSearch(value) {
+        return safeString(value)
+          .toUpperCase()
+          .replaceAll("/", "")
+          .replaceAll("-", "")
+          .replace(/\s+/g, "")
+          .trim();
+      }
+
       const pickFirstValue = (...values) => {
         for (const value of values) {
           if (value !== undefined && value !== null && value !== "") {
@@ -5863,7 +5875,7 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         const createdAt = data.createdAt ?? data.CreatedAt ?? null;
         const fechaAlta = data.fechaAlta ?? data.FechaAlta ?? null;
         const fecha = data.fecha ?? data.Fecha ?? null;
-        const orden = toNumberOrNull(data.orden ?? data.Orden);
+        const orden = toNumberOrNull(data.orden ?? data.seqNumber ?? data.Orden);
         const seqNumber = toNumberOrNull(data.seqNumber ?? data.seq ?? data.secuencia);
         const fechaAltaTexto = safeString(
           data.fechaAltaTexto ?? data.FechaAltaTexto ?? data.fechaTexto ?? data.FechaTexto ?? ""
@@ -6092,7 +6104,13 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
           const codigo = normalizeFilterValue(item.codigo);
           const descripcion = normalizeFilterValue(item.descripcion);
           if (looksLikeCodeSearch(searchText)) {
-            return codigo.toUpperCase().startsWith(searchText.toUpperCase());
+            const rawCodigo = safeString(item.codigo);
+            const codigoNorm = normalizeCodeForSearch(rawCodigo);
+            const searchNorm = normalizeCodeForSearch(searchText);
+            const matchesCodigo =
+              rawCodigo.toUpperCase().includes(searchText.toUpperCase()) ||
+              codigoNorm.includes(searchNorm);
+            return matchesCodigo;
           }
           return descripcion.includes(searchText);
         });
@@ -7874,10 +7892,9 @@ const createPrendaRow = (item) => {
             ? `${tallaCodigo} - ${tallaNombre}`
             : "";
           const nextOrden = getNextOrdenFromRows(
-            prendasState?.rows ||
-            prendasState?.allRows ||
-            prendasState?.rowsAfterAll ||
             prendasState?.baseRows ||
+            prendasState?.rows ||
+            prendasState?.rowsAfterAll ||
             []
           );
           console.log('[save] nextOrden:', nextOrden);
@@ -7981,7 +7998,18 @@ const createPrendaRow = (item) => {
           registroPreview = { ...preview };
           registroCodigo.textContent = codigoFinal;
           registroResult.classList.remove("hidden");
-          if (prendasSearch) prendasSearch.value = "";
+
+          console.log('[save] invalidando cache baseRows');
+          prendasState.baseRows = [];
+          prendasState.baseRowsCacheKey = "";
+          prendasState.rowsAfterGlobal = [];
+          prendasState.rowsAfterAll = [];
+          prendasState.sort = normalizeSortConfig({ key: "orden", dir: "desc" });
+          updateOrdenSortToggleUi();
+
+          if (prendasSearchInput) prendasSearchInput.value = codigoFinal;
+          if (prendasSearch) prendasSearch.value = codigoFinal;
+          console.log('[save] recargando tabla desde Firestore');
           await loadPrendasPage({ reset: true, reason: "save-garment" });
           setRegistroStatus("Prenda guardada correctamente.", "success");
         } catch (error) {
