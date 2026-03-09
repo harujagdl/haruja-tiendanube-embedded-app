@@ -5813,8 +5813,8 @@ const buildLabelZpl = ({ sku, price, qty = 1 }) => {
         console.log('[mapper] proveedorNombre final:', proveedorNombre);
         console.log('[mapper] proveedorCodigo final:', proveedorCodigo);
         console.log('[mapper] tipoNombre final:', tipoNombre);
-        const colorCode = safeString(data.colorCode ?? data.color ?? data.Color ?? "").trim().toUpperCase();
-        const tallaCode = safeString(data.tallaCode ?? data.talla ?? data.Talla ?? "").trim().toUpperCase();
+        const colorCode = safeString(data.color ?? data.colorCode ?? data.Color ?? "").trim().toUpperCase();
+        const tallaCode = safeString(data.talla ?? data.tallaCode ?? data.Talla ?? "").trim().toUpperCase();
         const colorName = safeString(data.colorName ?? data.colorNombre ?? "").trim() || parseNameFromOptionText(data.colorLabel) || resolveColorName(colorCode);
         const colorLabel = safeString(data.colorLabel ?? "").trim();
         const tallaName = safeString(data.tallaName ?? data.tallaNombre ?? "").trim() || parseNameFromOptionText(data.tallaLabel) || resolveTallaName(tallaCode);
