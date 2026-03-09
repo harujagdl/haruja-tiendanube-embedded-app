@@ -7833,6 +7833,7 @@ const createPrendaRow = (item) => {
           const descripcion = String(registroDetalles?.value || "").trim();
           const detalles = String(registroDetalles?.value || "").trim();
           const creadoPor = String(registroCreatedBy?.value || "").trim();
+          const nowOrder = Date.now();
 
           const payloadRaw = {
             codigo: codigoFinal,
@@ -7850,6 +7851,8 @@ const createPrendaRow = (item) => {
             descripcion,
             detalles,
             creadoPor,
+            orden: nowOrder,
+            seqNumber: nowOrder,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           };
@@ -7875,6 +7878,8 @@ const createPrendaRow = (item) => {
 
           console.log("[guardarPrenda] keys payload:", Object.keys(payload).sort());
           console.log("[guardarPrenda] payload limpio:", payload);
+          console.log('[guardarPrenda] orden:', payload.orden);
+          console.log('[guardarPrenda] seqNumber:', payload.seqNumber);
           console.log("[guardarPrenda] docId:", docId);
           console.log("[firestore] docRef path:", publicRef.path);
           console.log("[firestore] payload:", payload);
