@@ -55,6 +55,10 @@
         "destination": "/apartados-historial/index.html"
       },
       {
+        "source": "/apartado/**",
+        "destination": "/apartado/index.html"
+      },
+      {
         "source": "/apartados/**",
         "destination": "/apartados/index.html"
       },

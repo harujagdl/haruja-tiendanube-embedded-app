@@ -85,122 +85,6 @@ const ORDER_SELLER_COLLECTION = "order_seller";
 const TIENDANUBE_CLIENT_ID = defineSecret("TIENDANUBE_CLIENT_ID");
 const TIENDANUBE_CLIENT_SECRET = defineSecret("TIENDANUBE_CLIENT_SECRET");
 
-function getProjectId_() {
-  try {
-    if (process.env.GCLOUD_PROJECT) return String(process.env.GCLOUD_PROJECT);
-    if (process.env.GCP_PROJECT) return String(process.env.GCP_PROJECT);
-    if (process.env.FIREBASE_CONFIG) {
-      const cfg = JSON.parse(String(process.env.FIREBASE_CONFIG));
-      if (cfg && cfg.projectId) return String(cfg.projectId);
-    }
-  } catch (_e) {}
-  return "haruja-tiendanube";
-}
-
-function getTiendanubeRedirectUri_() {
-  const projectId = getProjectId_();
-  return `https://us-central1-${projectId}.cloudfunctions.net/tnAuthCallback`;
-}
-
-/**
- * GET /tnAuthStart
- * Inicia autorización. Para app privada no pedimos store_id;
- * Tiendanube manda store_id en el callback.
- */
-exports.tnAuthStart = onRequest(
-  { ...RUNTIME_OPTS, secrets: [TIENDANUBE_CLIENT_ID] },
-  async (req, res) => {
-    try {
-      const clientId = String(TIENDANUBE_CLIENT_ID.value() || "").trim();
-      if (!clientId) {
-        return res.status(500).send("Missing TIENDANUBE_CLIENT_ID secret.");
-      }
-
-      const redirectUri = getTiendanubeRedirectUri_();
-      const authUrl =
-        `https://www.tiendanube.com/apps/${encodeURIComponent(clientId)}/authorize` +
-        `?redirect_uri=${encodeURIComponent(redirectUri)}`;
-
-      return res.redirect(authUrl);
-    } catch (err) {
-      console.error("tnAuthStart error", err);
-      return res.status(500).send("Error iniciando OAuth.");
-    }
-  }
-);
-
-/**
- * GET /tnAuthCallback?code=...
- * Intercambia code -> access_token y lo guarda en Firestore:
- * tn_stores/{storeId}
- */
-exports.tnAuthCallback = onRequest(
-  { ...RUNTIME_OPTS, secrets: [TIENDANUBE_CLIENT_ID, TIENDANUBE_CLIENT_SECRET] },
-  async (req, res) => {
-    try {
-      const clientId = String(TIENDANUBE_CLIENT_ID.value() || "").trim();
-      const clientSecret = String(TIENDANUBE_CLIENT_SECRET.value() || "").trim();
-      if (!clientId || !clientSecret) {
-        return res.status(500).send("Missing TIENDANUBE_CLIENT_ID / TIENDANUBE_CLIENT_SECRET secrets.");
-      }
-
-      const code = String(req.query.code || "").trim();
-      if (!code) return res.status(400).send("Missing code.");
-
-      const redirectUri = getTiendanubeRedirectUri_();
-
-      // Token exchange
-      const tokenRes = await fetch("https://www.tiendanube.com/apps/authorize/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({
-          client_id: Number(clientId),
-          client_secret: clientSecret,
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: redirectUri,
-        }),
-      });
-
-      const rawText = await tokenRes.text();
-      let payload = {};
-      try { payload = rawText ? JSON.parse(rawText) : {}; } catch {}
-
-      if (!tokenRes.ok || !payload?.access_token) {
-        console.error("Token exchange failed:", tokenRes.status, rawText);
-        return res.status(400).json({ ok: false, step: "token_exchange_failed", status: tokenRes.status, payload, rawText });
-      }
-
-      // storeId puede venir como store_id en query, o como user_id en payload (documentación)
-      const storeId = String(req.query.store_id || payload.store_id || payload.user_id || "").trim();
-      if (!storeId) {
-        console.error("Missing storeId. Payload keys:", Object.keys(payload || {}));
-        return res.status(400).json({ ok: false, step: "missing_store_id", payload });
-      }
-
-      // 🔒 Blindado: usar SIEMPRE Admin SDK directo
-      const dbAdmin = admin.firestore();
-
-      await dbAdmin.collection("tn_stores").doc(storeId).set(
-        {
-          storeId,
-          access_token: payload.access_token,
-          scope: payload.scope || null,
-          token_type: payload.token_type || "bearer",
-          installedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return res.status(200).send("✅ Tiendanube conectado. Ya puedes cerrar esta ventana.");
-    } catch (err) {
-      console.error("tnAuthCallback unexpected error:", err);
-      return res.status(500).json({ ok: false, step: "unexpected_catch", message: String(err?.message || err) });
-    }
-  }
-);
-
 /**
  * =========================
  *  TIENDANUBE OAUTH (PRO - storeId -> Firestore)
@@ -2018,6 +1902,55 @@ const normalizeApartadoItem = (docSnap) => {
   };
 };
 
+const inferApartadoStatus = ({saldoPendiente = 0, fechaLimite = ""} = {}) => {
+  if (saldoPendiente <= 0) return "liquidado";
+  if (!fechaLimite) return "activo";
+  const limitDate = new Date(fechaLimite);
+  if (Number.isNaN(limitDate.getTime())) return "activo";
+  return limitDate.getTime() < Date.now() ? "vencido" : "activo";
+};
+
+const buildPublicApartadoPayload = (folio, data = {}) => {
+  const subtotal = round2(Number(data.subtotal) || 0) || 0;
+  const anticipo = round2(Number(data.anticipo) || 0) || 0;
+  const descuento = round2(Number(data.descVal ?? data.descuento ?? 0) || 0) || 0;
+  const total = round2(Number(data.total) || Math.max(0, subtotal - descuento - anticipo)) || 0;
+  const saldoPendiente = round2(Math.max(0, total)) || 0;
+  const historialRaw = Array.isArray(data.historialAbonos) ? data.historialAbonos : (Array.isArray(data.abonos) ? data.abonos : []);
+  const historialAbonos = historialRaw.map((item) => ({
+    fecha: String(item?.fecha || ""),
+    monto: round2(Number(item?.monto) || 0) || 0,
+    nota: String(item?.nota || "")
+  }));
+  const fechaBase = String(data.fecha || "").trim();
+  let fechaLimite = String(data.fechaLimite || "").trim();
+  if (!fechaLimite && fechaBase) {
+    const date = new Date(fechaBase);
+    if (!Number.isNaN(date.getTime())) {
+      date.setDate(date.getDate() + 30);
+      fechaLimite = date.toISOString().slice(0, 10);
+    }
+  }
+
+  return {
+    folio,
+    cliente: String(data.cliente || ""),
+    telefono: String(data.contacto || data.telefono || ""),
+    fecha: fechaBase,
+    productos: Array.isArray(data.filas) ? data.filas : [],
+    subtotal,
+    descuento,
+    anticipo,
+    total,
+    saldoPendiente,
+    historialAbonos,
+    status: String(data.status || inferApartadoStatus({saldoPendiente, fechaLimite})),
+    fechaLimite,
+    publicUrl: `/apartado/${encodeURIComponent(folio)}`,
+    paymentUrl: String(data.pdfUrl || "")
+  };
+};
+
 const reserveNextFolio = async () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -2356,10 +2289,12 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       return;
     }
 
-    if (path === "/api/apartados/get" && req.method === "GET") {
-      const folio = String(req.query?.folio || "").trim().toUpperCase();
-      if (!folio) {
-        res.status(400).json({ok: false, error: "Falta query param folio."});
+    if ((path === "/api/apartados/get" || path.startsWith("/api/apartados/")) && req.method === "GET") {
+      const folioFromPath = path.startsWith("/api/apartados/") ? path.slice("/api/apartados/".length) : "";
+      const folio = String(req.query?.folio || folioFromPath || "").trim().toUpperCase();
+      const blockedSegments = new Set(["next-folio", "list", "get", "registrar"]);
+      if (!folio || blockedSegments.has(folio.toLowerCase())) {
+        res.status(400).json({ok: false, error: "Falta folio válido."});
         return;
       }
 
@@ -2372,14 +2307,16 @@ exports.api = onRequest(RUNTIME_OPTS, async (req, res) => {
       const data = snap.data() || {};
       const createdAtTs = data.createdAt instanceof admin.firestore.Timestamp ? data.createdAt : null;
       const updatedAtTs = data.updatedAt instanceof admin.firestore.Timestamp ? data.updatedAt : null;
+      const fullItem = {
+        folio: snap.id,
+        ...data,
+        createdAt: createdAtTs ? createdAtTs.toMillis() : null,
+        updatedAt: updatedAtTs ? updatedAtTs.toMillis() : null
+      };
       res.status(200).json({
         ok: true,
-        item: {
-          folio: snap.id,
-          ...data,
-          createdAt: createdAtTs ? createdAtTs.toMillis() : null,
-          updatedAt: updatedAtTs ? updatedAtTs.toMillis() : null
-        }
+        item: fullItem,
+        apartado: buildPublicApartadoPayload(snap.id, fullItem)
       });
       return;
     }
